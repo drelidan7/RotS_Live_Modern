@@ -2053,6 +2053,95 @@ TEST(ScopedRoomOccupantsTest, PublishesANonNpcWithALitLightWithoutZoneTableOrLig
     EXPECT_TRUE(is_in_room(&player, 3));
 }
 
+TEST(ScopedRoomOccupantsTest, RestampsAManagedCharacterThatWasAlreadyInTheDisplacedChain)
+{
+    // THE NESTED WHOLE-CHAIN-RESTATEMENT SHAPE (the pilot's idiom rule 4), and
+    // the review finding it carried: the inner helper's managed set includes a
+    // character that is ALSO the chain it displaces. Live in-tree at
+    // act_wiz_format_tests.cpp's StatRoomFormatsCharsPresentLineForSecondPc /
+    // ...ForMob and act_offe_tests.cpp's DoRescue suite. Before the fix the
+    // inner unwind stamped the restored HEAD as NOWHERE while leaving it linked
+    // into the room -- a character in a room claiming to be nowhere, the exact
+    // torn state this wave exists to make unrepresentable.
+    room_data room = make_stub_room();
+    char_data resident { };
+
+    ScopedRoomOccupants outer(&room, 6, { &resident });
+    ASSERT_EQ(room.people, &resident);
+
+    {
+        char_data visitor { };
+        ScopedRoomOccupants inner(&room, 6, { &visitor, &resident });
+        ASSERT_EQ(room.people, &visitor);
+        ASSERT_EQ(visitor.next_in_room, &resident);
+    }
+
+    // The displaced chain is back...
+    EXPECT_EQ(room.people, &resident);
+    EXPECT_EQ(resident.next_in_room, nullptr);
+    // ...and the character it is made of still says it is in the room.
+    EXPECT_EQ(location_of(&resident), 6);
+    EXPECT_TRUE(is_in_room(&resident, 6));
+}
+
+TEST(ScopedRoomOccupantsTest, RestoresLinksThroughAManagedCharacterInsteadOfTruncatingTheChain)
+{
+    // The other half of the same finding: the managed character sits in the
+    // MIDDLE of the displaced chain, so the publish loop overwrites the link it
+    // carried. A destructor that restored only the head handed back a chain
+    // that stopped dead at that character -- every occupant behind it silently
+    // dropped out of the room for the rest of the process.
+    room_data room = make_stub_room();
+    char_data head { };
+    char_data middle { };
+    char_data tail { };
+    room.people = &head;
+    head.next_in_room = &middle;
+    middle.next_in_room = &tail;
+    tail.next_in_room = nullptr;
+
+    {
+        char_data visitor { };
+        ScopedRoomOccupants occupants(&room, 2, { &visitor, &middle });
+        ASSERT_EQ(room.people, &visitor);
+        ASSERT_EQ(middle.next_in_room, nullptr); // the link the publish overwrote
+    }
+
+    std::vector<char_data*> collected;
+    for (char_data* occ : rots::entity::occupants(&room)) {
+        collected.push_back(occ);
+    }
+
+    EXPECT_EQ(collected, (std::vector<char_data*> { &head, &middle, &tail }));
+    EXPECT_EQ(location_of(&middle), 2);
+}
+
+TEST(ScopedZoneTableOwnerTest, DeletesItsOwnAllocationEvenWhenTheGlobalWasReassigned)
+{
+    // review-2 F3: the destructor used to `delete[] zone_table`, i.e. whatever
+    // the GLOBAL pointed at when the scope ended. A test body that reassigns
+    // zone_table mid-scope -- which nothing forbids, and which the surrounding
+    // suites do to the other world globals routinely -- therefore freed a table
+    // this fixture never allocated and leaked the one it did. Under ASan the
+    // old shape reports a double free on the `delete[]` below; without ASan it
+    // is a silent heap corruption. The fixture now deletes the pointer it owns.
+    zone_data* const foreign_table = new zone_data[1] { };
+
+    {
+        ScopedZoneTableOwner zone_guard;
+        ASSERT_NE(zone_table, foreign_table);
+
+        // A test body doing exactly what the old destructor could not survive.
+        zone_table = foreign_table;
+    }
+
+    // The global is restored regardless...
+    EXPECT_NE(zone_table, foreign_table);
+    // ...and this delete is the discriminator: it is a DOUBLE free if the
+    // fixture freed foreign_table for us.
+    delete[] foreign_table;
+}
+
 TEST(ScopedZoneTableOwnerTest, MakesZoneByIdResolveTheOwnedZone)
 {
     ScopedZoneTableOwner zone_guard;

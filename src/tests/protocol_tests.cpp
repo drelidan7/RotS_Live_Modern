@@ -27,6 +27,7 @@
 #include <sys/socket.h>
 #endif
 
+#include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
 
 #include <cstdlib>
@@ -254,6 +255,19 @@ private:
     descriptor_data* m_previous_descriptor_list;
 };
 
+// NESTING IS FORBIDDEN, and the destructor says so out loud (LS-3a follow-up).
+// This fixture installs str_dup()'d strings on world[0] and frees them again
+// before restoring the pointers it saved. That is correct only while nothing
+// else replaces them in between -- and ScopedTestWorld's constructor does
+// exactly that for every room it resets: it free()s .name/.description and
+// installs its own copies. A ScopedTestWorld constructed INSIDE this fixture's
+// scope therefore leaves the destructor below freeing pointers this fixture
+// never owned, with that owner's own free still to come (a double free), and
+// republishing saved pointers whose owner may have moved on. Rather than
+// str_dup the saved originals -- which would leak the real ones and quietly
+// change who owns world[0]'s strings -- the destructor DETECTS the situation
+// and fails the test, which is the honest signal for a fixture misuse that
+// cannot be made safe from this side.
 class ScopedMSDPTestRoom {
 public:
     ScopedMSDPTestRoom()
@@ -281,6 +295,8 @@ public:
         // restoring the saved originals.
         room.name = str_dup("MSDP Test Room");
         room.description = str_dup("A room used for MSDP update tests.\n\r");
+        m_installed_name = room.name;
+        m_installed_description = room.description;
         room.room_flags = INDOORS;
         room.sector_type = SECT_INSIDE;
         room.light = 0;
@@ -294,8 +310,24 @@ public:
         // Free what this fixture str_dup()'d in the constructor before putting
         // the saved originals back; the saved pointers are owned by whoever
         // installed them (ScopedTestWorld / dummy_room_data) and are not ours.
-        std::free(room.name);
-        std::free(room.description);
+        //
+        // ...but only if what is on the room is still what this fixture put
+        // there. See the nesting note above the class: on the misuse path the
+        // current strings belong to somebody else, so they are left untouched
+        // (freeing them is the double free), the saved originals still go back
+        // so this fixture's own owner finds the world as it left it, and the
+        // test fails.
+        if (room.name == m_installed_name && room.description == m_installed_description) {
+            std::free(room.name);
+            std::free(room.description);
+        } else {
+            ADD_FAILURE()
+                << "ScopedMSDPTestRoom: world[0]'s name/description were replaced while this "
+                   "fixture was live -- almost certainly a ScopedTestWorld constructed inside "
+                   "its scope, whose reset frees and re-installs them. These fixtures must not "
+                   "be nested. The replacement strings are deliberately NOT freed here, to "
+                   "avoid a double free on their real owner.";
+        }
         room.name = m_name;
         room.description = m_description;
         room.room_flags = m_room_flags;
@@ -308,6 +340,12 @@ private:
     int m_number = 0;
     char* m_name = nullptr;
     char* m_description = nullptr;
+    // The exact pointers this fixture str_dup()'d and installed on world[0].
+    // The destructor compares the room's current strings against these to tell
+    // "still mine, safe to free" from "somebody else replaced them" -- the
+    // nesting misuse the class comment forbids.
+    char* m_installed_name = nullptr;
+    char* m_installed_description = nullptr;
     long m_room_flags = 0;
     int m_sector_type = 0;
     byte m_light = 0;
@@ -2134,6 +2172,37 @@ TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterHasAnOrdinaryNonNegativeLoc
            "any MSDPSet* call, exactly as the pre-conversion ch->in_room >= 0 guard did, for "
            "every character in an ordinary (non-negative) room.";
     EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString, "");
+}
+
+// The nesting guard on ScopedMSDPTestRoom (LS-3a follow-up). The misuse it
+// exists for is a ScopedTestWorld constructed inside a live ScopedMSDPTestRoom
+// scope; rather than construct one here -- which would hand this test a world
+// whose string ownership is exactly the tangle under discussion -- the body
+// reproduces the ONE thing ScopedTestWorld's constructor does that matters:
+// free world[0]'s name/description and install its own copies.
+TEST(ScopedMSDPTestRoomGuard, FailsTheTestWhenAnotherFixtureReplacedTheStringsItInstalled)
+{
+    ScopedTestWorld world_owner;
+
+    char* const replacement_name = str_dup("Replaced by another fixture");
+    char* const replacement_description = str_dup("A replacement description.\n\r");
+
+    EXPECT_NONFATAL_FAILURE(
+        {
+            ScopedMSDPTestRoom msdp_room;
+            room_data& room = *room_by_id_total(0);
+            std::free(room.name);
+            std::free(room.description);
+            room.name = replacement_name;
+            room.description = replacement_description;
+        },
+        "must not be nested");
+
+    // The discriminator: the guard left the replacements alone, so freeing
+    // them here is a single free. Had the destructor gone on freeing whatever
+    // sat on the room, this would be the second free of both pointers.
+    std::free(replacement_name);
+    std::free(replacement_description);
 }
 
 } // namespace

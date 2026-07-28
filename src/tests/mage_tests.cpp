@@ -92,6 +92,17 @@ void ensure_test_world(int minimum_room_number) {
     // factually false -- neither function touches funct/bfs_dir/bfs_next. The
     // real consumer is find_first_step(), whose BFS uses bfs_dir/bfs_next as
     // scratch state across every room in [0, top_of_world].)
+    //
+    // CHANGE DISCLOSURE, and the risk taken with it: the scrub used to run on
+    // EVERY call to this function, i.e. effectively once per test that touches
+    // the world. It now runs ONCE, when shared_world is constructed. Anything
+    // that dirties funct/bfs_dir/bfs_next BETWEEN tests in the monolithic
+    // single-process runner is therefore no longer scrubbed before the next
+    // test reads them. That is accepted rather than overlooked: the only
+    // consumer is find_first_step()'s BFS, which writes bfs_dir/bfs_next as its
+    // own scratch before reading them, and nothing in this suite sets .funct.
+    // If a pathfinding test ever lands in this binary that leaves a room's BFS
+    // scratch meaningful, this is the line to revisit.
 
     if (top_of_world < minimum_room_number) {
         top_of_world = minimum_room_number;
@@ -127,10 +138,17 @@ struct RoomExitGuard {
     // (LS-3a T3, test_placement.h). A std::optional because the room it points
     // at only exists once the constructor body's ensure_test_world() has run;
     // it is destroyed AFTER the destructor body, so the exits and room_flags
-    // still go back first, exactly as before. random_exit() -- the only
-    // function these guards fence -- reads dir_option/room_flags/to_room and
-    // never the occupant chain, and ScopedTestWorld's reset leaves every room's
-    // head null anyway, so publishing empty is inert here.
+    // still go back first, exactly as before.
+    //
+    // CHANGE DISCLOSURE: this guard did not previously EMPTY the room's chain,
+    // it only saved and restored the head. Publishing an empty chain is a new
+    // observable state for the guard's lifetime, and it is inert here for two
+    // independent reasons, both checked: random_exit() and loclife_add_rooms()
+    // -- the only functions these guards fence -- read dir_option/room_flags/
+    // to_room and never the occupant chain at all; and ScopedTestWorld's reset
+    // leaves every room's head null anyway, so there is nothing to empty in
+    // practice. A future test that fences a room-occupant-reading function
+    // with this guard must re-check that claim.
     std::optional<ScopedRoomOccupants> occupants;
 
     explicit RoomExitGuard(int room)

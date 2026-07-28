@@ -25,9 +25,32 @@ table as a whole rather than reading a character's location.)
 ``docs/superpowers/specs/2026-07-23-locationsystem-program-design.md``'s
 own As-built "out of LS-2's charter" list for the full account (O-I8,
 ``ls2-wholebranch-review-opus.md``).
+
+Wave **LS-3b T5** (THE SPLIT) privatized ``char_data::in_room`` /
+``char_data::next_in_room`` / ``room_data::people`` by RENAME, to
+``char_data::ls_location_id_`` / ``char_data::ls_next_in_room_`` /
+``room_data::ls_first_occupant_`` (ruling R-3b-A, the private-handle keying
+option). The rename is what makes corrected criterion (a)'s "no location
+field" clause provable: the OLD spellings are now simply gone from
+``char_data``/``room_data``, so any surviving ``->in_room``/``.people``/etc.
+site is necessarily either ``obj_data``/``shop_data`` (objects were never in
+this wave's charter) or a genuine regression. **T8** re-tokened this script
+for the post-split tree: the five original tokens STAY exactly as they were
+(deleting one would re-open a blind spot for the object-side population that
+still legitimately uses the ``in_room``/``people`` spellings, and every
+surviving char/room-side annotation under them now serves as a
+reintroduction TRIPWIRE instead of a live-representation marker), and three
+new BARE-WORD tokens were added for the private spellings themselves --
+``ls_location_id_``/``ls_next_in_room_``/``ls_first_occupant_`` -- for a
+total of **eight**. T8 also retired a second reason prefix (``manual
+occupant-list splice``, zero production lines; nine prefixes now) and raised
+``MINIMUM_SCANNED_FILE_COUNT`` 250 -> 300 against a 315-file scan. See
+``ls3b-t8-report.md`` for the full token/prefix audit.
+
 This census is the checked-in regression gate (LS-1 T3, widened by LS-2
-T5 and again by LS-3a T4): it flags any raw token outside the census-named
-allow-list file set or an inline ``// LS1-ALLOW: <reason>`` annotation ("LS1" names LocationSystem
+T5, again by LS-3a T4, and again by LS-3b T8): it flags any raw token
+outside the census-named allow-list file set or an inline
+``// LS1-ALLOW: <reason>`` annotation ("LS1" names LocationSystem
 Stage 1, which spans both LS-1 and LS-2 -- see the ledger doc). Modeled on
 ``tools/string_view_census.py`` (rglob discovery, comment/string masking,
 ``--check`` mode, non-zero exit on violation) -- see
@@ -97,8 +120,14 @@ import sys
 # (R-B8) when retiring the `src/tests` deferral took the scanned count from
 # 181 to 307: a floor left at 100 would have gone on passing even if the
 # entire newly-added test tier silently dropped back out of the sweep, which
-# is precisely the regression this wave must make impossible.
-MINIMUM_SCANNED_FILE_COUNT = 250
+# is precisely the regression this wave must make impossible. LS-3b T8
+# re-measured the scanned count against the current tree (315 -- the wave's
+# own T2/T3 tasks added files such as render_cursor.h and the perf-benchmark
+# headers/tests) and raised the floor again, 250 -> 300: still 15 files of
+# headroom below the real count (proportionally similar to the 250-against-
+# 307 headroom T4 itself left), tight enough that losing a handful of files
+# from the sweep is caught rather than tolerated.
+MINIMUM_SCANNED_FILE_COUNT = 300
 
 SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
 # Widened past the original (".cpp", ".h", ".hpp") after the LS-2 whole-branch
@@ -167,6 +196,33 @@ TOKEN_PATTERNS = (
     ("world[", re.compile(r"\bworld\s*\[")),
     ("next_in_room", re.compile(r"\bnext_in_room\b")),
     ("people", re.compile(r"(?:->|\.|::)\s*people\b")),
+    # LS-3b T5 privatized char_data::in_room / char_data::next_in_room /
+    # room_data::people by RENAME (not deletion) to char_data::ls_location_id_ /
+    # char_data::ls_next_in_room_ / room_data::ls_first_occupant_ -- see
+    # ls3b-t5-report.md Sec 1.1. Left untracked, these three new spellings would
+    # be a silent blind spot exactly like the pre-.people gap R-B6 closed: every
+    # production line the T5 rename touched still carries its ORIGINAL
+    # annotation comment (the rename changed only the field spelling, not the
+    # prose beside it), but with no token matching the new spelling those
+    # annotations sit on lines this gate no longer even LOOKS at -- measured at
+    # T8 kickoff: zero findings anywhere in the tree for any of the three new
+    # names before this token widen landed, including the two field
+    # DECLARATIONS themselves (character.h / room.h), neither of which had ever
+    # needed to carry a `representation-decl` annotation because nothing
+    # previously required one. Unlike `people` (an English word needing an
+    # accessor anchor to avoid over-matching), each of these three identifiers
+    # is unique enough tree-wide to use a bare `\b...\b` word-boundary pattern
+    # with NO accessor requirement -- the same design LS-1 chose for
+    # `next_in_room` and for the same reason: a bare-word pattern also catches
+    # the field's own DECLARATION (no `->`/`.`/`::` precedes a declaration),
+    # which an accessor-anchored pattern structurally cannot. `::` access needs
+    # no special widening either, unlike the original `in_room`/`people`
+    # patterns before their LS-3a follow-up widen: the character immediately
+    # before the identifier after `::` is `:`, a non-word character, so `\b`
+    # already matches there with no extra alternation.
+    ("ls_location_id_", re.compile(r"\bls_location_id_\b")),
+    ("ls_next_in_room_", re.compile(r"\bls_next_in_room_\b")),
+    ("ls_first_occupant_", re.compile(r"\bls_first_occupant_\b")),
 )
 
 ANNOTATION_MARKER = "LS1-ALLOW"
@@ -193,11 +249,22 @@ ANNOTATION_PATTERN = re.compile(r"LS1-ALLOW:\s*(.*?)\s*(?:\*/\s*)?$")
 # LS-3b T2 RETIRED `in_room used as mutable room cursor` (the fail-closed
 # burndown rule, .superpowers/sdd/ls3b-global-constraints.md): its last
 # production line converted onto rots::entity::ScopedRenderLocation in the
-# same commit that removed it here, so the count is now TEN. See
-# docs/superpowers/location-read-allowlist.md for the full definition.
+# same commit that removed it here, bringing the count to TEN. LS-3b T8
+# re-audited every remaining prefix's live line count tree-wide (per-prefix
+# counts in ls3b-t8-report.md) and RETIRED a second one, `manual
+# occupant-list splice`: it has carried zero PRODUCTION lines since at least
+# the T0 census (ls3b-census-d.md Sec 6.2, "0 production / 6 test"), and its
+# six surviving test-tier sites (src/tests/test_placement.h) sit inside a
+# file this gate already exempts WHOLE -- `findings_for_file` returns before
+# ever reaching the annotation check there, so those six comments were
+# already inert documentation, not gate-enforced text, both before and after
+# this retirement. Removing the prefix is fail-closed by construction (an
+# off-list reason still fails `--check` as `invalid-reason`), so retiring it
+# changes nothing observable in test_placement.h and closes the count to
+# NINE. See docs/superpowers/location-read-allowlist.md for the full
+# per-prefix disposition table.
 ALLOWED_REASON_PREFIXES = (
     "save-next",
-    "manual occupant-list splice",
     "peek-ahead",
     "manual first-match advance",
     "write",
@@ -640,6 +707,51 @@ SELF_TEST_CASES = (
     # enforces token-scoping must invert this case DELIBERATELY.
     ("multi-token-line-scoped-annotation",
      "to = room_by_id_total(obj->in_room)->people; // LS1-ALLOW: obj-location\n", 0),
+    # --- LS-3b T8: the three NEW private-handle tokens (the T5 rename's
+    # spellings). Each pair proves the token fires unannotated and stays green
+    # once annotated -- the same shape every earlier token's pair uses.
+    ("ls-location-id-unannotated", "int a = ch->ls_location_id_;\n", 1),
+    ("ls-location-id-annotated",
+     "int a = ch->ls_location_id_; // LS1-ALLOW: write\n", 0),
+    ("ls-next-in-room-unannotated", "int a = ch->ls_next_in_room_ != nullptr;\n", 1),
+    ("ls-next-in-room-annotated",
+     "int a = ch->ls_next_in_room_ != nullptr; // LS1-ALLOW: save-next (probe)\n", 0),
+    ("ls-first-occupant-unannotated", "char_data* h = room->ls_first_occupant_;\n", 1),
+    ("ls-first-occupant-annotated",
+     "char_data* h = room->ls_first_occupant_; // LS1-ALLOW: representation-impl (probe)\n", 0),
+    # The three new tokens are BARE-WORD (`\bls_..._\b`, no accessor anchor
+    # required) precisely so a field's own DECLARATION -- which has no `->`/
+    # `.`/`::` before it -- is caught too, the same design `next_in_room` used
+    # and the direct reason character.h:861/room.h:126 (the two real
+    # declarations) needed a `representation-decl` annotation added this task
+    # rather than staying invisible. This body has NO accessor at all.
+    ("ls-location-id-bare-declaration", "int ls_location_id_;\n", 1),
+    ("ls-location-id-bare-declaration-annotated",
+     "int ls_location_id_; // LS1-ALLOW: representation-decl (probe)\n", 0),
+    # `::` qualified access needs no special-casing for these three tokens
+    # (unlike the original `in_room`/`people` patterns' LS-3a follow-up widen):
+    # the character before the identifier after `::` is `:`, already a
+    # non-word boundary, so the bare `\b...\b` pattern matches it for free.
+    ("ls-location-id-qualified", "auto m = &char_data::ls_location_id_;\n", 1),
+    # Over-match guards, both directions: a longer identifier that merely
+    # CONTAINS one of the three new tokens as a substring -- prefixed or
+    # suffixed -- must not trip the gate. `\b` on both ends of the pattern is
+    # what prevents it; these bodies go RED if either boundary is dropped.
+    ("ls-location-id-prefixed-field-not-matched",
+     "int x_ls_location_id_ = 0;\n", 0),
+    ("ls-location-id-suffixed-field-not-matched",
+     "int ls_location_id_2 = 0;\n", 0),
+    # --- LS-3b T8: the fail-closed prefix retirement. `manual occupant-list
+    # splice` was removed from ALLOWED_REASON_PREFIXES this task (zero
+    # production lines; its six surviving sites sit inside the whole-file-
+    # exempt src/tests/test_placement.h and were never gate-enforced either
+    # way). A reason that used to be valid must now fail as `invalid-reason`
+    # -- proving the retirement actually changed gate behavior, not just the
+    # tuple's literal contents. (Reverting the retirement, i.e. adding the
+    # prefix back, turns this case green again -- the sabotage direction a
+    # retirement always needs.)
+    ("retired-prefix-no-longer-authorized",
+     'char_data* h = room->people; // LS1-ALLOW: manual occupant-list splice (retired)\n', 1),
 )
 
 
@@ -672,12 +784,13 @@ def run_self_test():
     # so all of them move with the constant and none of them notices it being
     # lowered -- the exact vacuity a floor check must not have, since lowering
     # it is how this gate would be quietly defeated. T4 set it to 250 against
-    # a 307-file scan; raising it later is fine and needs this literal raised
-    # with it, which is the deliberate second edit.
-    if MINIMUM_SCANNED_FILE_COUNT < 250:
+    # a 307-file scan; LS-3b T8 raised it again to 300 against a 315-file
+    # scan; raising it later is fine and needs this literal raised with it,
+    # which is the deliberate second edit.
+    if MINIMUM_SCANNED_FILE_COUNT < 300:
         failures.append(
-            f"MINIMUM_SCANNED_FILE_COUNT is {MINIMUM_SCANNED_FILE_COUNT}, below the 250 that "
-            "LS-3a T4 set when src/tests joined the scan -- a lowered floor lets a broken scan "
+            f"MINIMUM_SCANNED_FILE_COUNT is {MINIMUM_SCANNED_FILE_COUNT}, below the 300 that "
+            "LS-3b T8 set against a 315-file scan -- a lowered floor lets a broken scan "
             "path pass as a clean tree."
         )
 

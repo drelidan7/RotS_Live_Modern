@@ -35,9 +35,48 @@ Wave **LS-3a T4** closed the last two structural gaps in that claim, and the swe
   went 181 → 307 and a floor left at 100 would have kept passing even if the entire test tier
   silently dropped back out of the sweep.
 
+**Wave LS-3b T5** (THE SPLIT) privatized `char_data::in_room` / `char_data::next_in_room` /
+`room_data::people` **by rename**, to `char_data::ls_location_id_` / `char_data::ls_next_in_room_` /
+`room_data::ls_first_occupant_` (ruling R-3b-A — keying is the private handle, not an external
+pointer-keyed map; see `.superpowers/sdd/ls3b-global-constraints.md`'s T0 close-out). The old
+spellings genuinely no longer exist on either struct — the rename is what makes corrected
+criterion (a)'s "no location field" clause provable at all, and LS-3b's own compile-time absence
+assertion (`src/entity/placement.cpp`, added by **T8**, see below) is its mechanical witness.
+
+**Wave LS-3b T8** re-tokened this script for the post-split tree, and the sweep is now
+**whole-tree and EIGHT-token**:
+
+- The original five tokens (`->in_room`/`.in_room`/`::in_room`/`world[`/`next_in_room`/`people`)
+  **all stay, unchanged, meaning narrowed** rather than retired. `obj_data::in_room` and
+  `shop_data::in_room` were never touched by a chars-only wave, so `in_room`/`.in_room`/`::in_room`
+  keep policing that population exactly as before; `world[` keeps policing corrected criterion
+  (b)'s "`room_data::operator[]` preserved byte-for-byte" clause, untouched by the swap. `people` and
+  `next_in_room` no longer match any live `char_data`/`room_data` site (there is nothing left to
+  match — the fields are gone), so every surviving annotation under them is now a **reintroduction
+  tripwire**: if a future edit ever restores the public spelling, the token fires again immediately,
+  before the compiler even gets a chance to. Retiring either was considered and rejected — see
+  `ls3b-census-d.md` §6.1's own "retire NO token" recommendation, which T8 adopted verbatim.
+- **Three new BARE-WORD tokens** — `ls_location_id_` / `ls_next_in_room_` / `ls_first_occupant_` —
+  catch the private spellings themselves. Unlike `.in_room`/`.people` (accessor-anchored, since
+  `in_room`/`people` are common enough words to need one), these three identifiers are unique
+  tree-wide, so each pattern is a bare `\bIDENTIFIER\b` with no accessor requirement — the same
+  design `next_in_room` already used, and for the same reason: a bare-word pattern also catches the
+  field's own DECLARATION (there is no `->`/`.`/`::` before a declaration), which an
+  accessor-anchored pattern structurally cannot see. Measured at T8 kickoff: every production call
+  site the T5 rename touched already carried its ORIGINAL annotation comment (the rename changed
+  only the field spelling, not the prose beside it) — so adding the three tokens found the annotation
+  contract already satisfied everywhere **except** the two fields' own declarations
+  (`character.h:861`'s `ls_location_id_`, `room.h:126`'s `ls_first_occupant_`), which had never
+  needed one before this task and gained a `representation-decl` annotation apiece.
+- One reason prefix retired in the same task: `manual occupant-list splice` (zero production lines
+  since at least the T0 census; its six test-tier sites sit inside the whole-file-exempt
+  `src/tests/test_placement.h` and were never gate-enforced either way — see "The nine accepted
+  `LS1-ALLOW` reason prefixes" below). `MINIMUM_SCANNED_FILE_COUNT` rose 250 → 300 against a
+  315-file scan.
+
 That still is not every conceivable form of raw representation access (O-I8,
 `.superpowers/sdd/ls2-wholebranch-review-opus.md`). **One** named exclusion remains untracked by
-construction, since it is not one of the five tokens: `char_data::was_in_room`, a second parallel
+construction, since it is not one of the eight tokens: `char_data::was_in_room`, a second parallel
 location store. It is a named LS-3b input recorded in
 `docs/superpowers/specs/2026-07-23-locationsystem-program-design.md`'s own As-built "out of LS-2's
 charter" list, not an oversight this ledger silently omits. Two entries LS-2 listed beside it no
@@ -79,7 +118,7 @@ reader must not have to reverse-engineer that from the absence of a row.
 this program's charter; `zone_by_id()` exists but converting `zone_table[` call sites is not this
 wave's exit criterion).
 
-## The ten accepted `LS1-ALLOW` reason prefixes
+## The nine accepted `LS1-ALLOW` reason prefixes
 
 Hardcoded in the script's `ALLOWED_REASON_PREFIXES`; any other reason fails `--check` as
 `invalid-reason` (self-tested — an off-list reason trips the gate even when a whole-file exemption
@@ -93,11 +132,18 @@ lines converted onto `rots::entity::ScopedRenderLocation` (ruling R-3b-B) in the
 removed the prefix from `ALLOWED_REASON_PREFIXES`, bringing the count to ten. Historical note, kept
 for readers of earlier wave records: that retired prefix covered Family D — `in_room` temporarily
 stashed with a **different kind of value** (a VNUM, not a location index) between two calls, never a
-genuine location read/write pair.
+genuine location read/write pair. **LS-3b T8 RETIRED a second prefix, `manual occupant-list
+splice`**, bringing the count to **nine**: the fail-closed burndown audit (re-measuring every
+remaining prefix's live line count tree-wide, per `ls3b-t8-report.md`) found it had carried **zero**
+production lines since at least the T0 census (`ls3b-census-d.md` §6.2: "0 production / 6 test"),
+and its six surviving test-tier sites (`src/tests/test_placement.h:354-365`) sit inside a file this
+gate already exempts **whole** — `findings_for_file` returns before ever reaching the annotation
+check there, so those six comments were inert documentation, not gate-enforced text, both before and
+after the retirement. Removing a prefix is fail-closed by construction (an off-list reason still
+fails `--check` as `invalid-reason`, self-tested by the `retired-prefix-no-longer-authorized` case),
+so this retirement changed nothing observable anywhere in the tree.
 
 - `save-next` — a save-next-then-advance idiom whose body relocates the current node.
-- `manual occupant-list splice` — hand-rolled chain surgery outside the Placement API's own
-  mutation primitives.
 - `peek-ahead` — a lookahead read that doesn't drive the walk itself.
 - `manual first-match advance` — a find-first idiom with its own early-exit shape.
 - `write` — any raw assignment into the representation. LS-2 was reads-only, so every write stayed

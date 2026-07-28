@@ -858,7 +858,7 @@ public:
     // spoofs a REAL room id and never NOWHERE). Type, size and position are
     // deliberately identical to the `int in_room` this renames: the i386
     // struct layout must not move.
-    int ls_location_id_;
+    int ls_location_id_; // LS1-ALLOW: representation-decl (the location field itself -- not a call site, so it can never "convert"; this is the store's private location handle)
 
     struct char_player_data player; /* Normal data                   */
     struct char_ability_data abilities; /* Max. Abilities                 */

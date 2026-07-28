@@ -123,7 +123,7 @@ struct room_data {
     // only the placement core (src/entity/placement.cpp, containment.cpp)
     // and the test-tier fixture helper (src/tests/test_placement.h) write
     // it. Type, size and position are identical to the `people` it renames.
-    struct char_data* ls_first_occupant_; /* List of NPC / PC in room */
+    struct char_data* ls_first_occupant_; /* List of NPC / PC in room */ // LS1-ALLOW: representation-decl (the occupant-chain head field itself -- not a call site, so it can never "convert"; this is the store's private chain head)
 
     struct affected_type* affected; /* room affects */
 

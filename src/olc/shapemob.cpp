@@ -265,7 +265,17 @@ void new_mob(struct char_data* ch)
     strcpy(SHAPE_PROTO(ch)->proto->player.long_descr, "golem");
     CREATE(SHAPE_PROTO(ch)->proto->player.description, char, 8);
     strcpy(SHAPE_PROTO(ch)->proto->player.description, "golem\n\r");
-    set_location(SHAPE_PROTO(ch)->proto, location_of(ch)); // LS1-ALLOW: write
+    // ls3b T2 (ruling R-3b-B; ls3b-census-review.md F2/F11, P3/P4/P8):
+    // was `set_location(SHAPE_PROTO(ch)->proto, location_of(ch));` -- a
+    // stray live room rnum with no reader anywhere in the tree (every
+    // mob_proto[] consumer was grepped; none reads .in_room) that
+    // read_mobile() always overwrites with NOWHERE before a spawned copy
+    // is ever placed or added to character_list (db_world.cpp:1064) --
+    // see shapemob_tests.cpp's ShapeMob.NewMobStamps.../ShapeMob.
+    // ImplementProtoAndReadMobileSpawn... for the evidence. NOWHERE from
+    // the start closes the class at its source instead of relying on
+    // read_mobile()'s downstream re-stamp.
+    set_location(SHAPE_PROTO(ch)->proto, NOWHERE); // LS1-ALLOW: write
     SHAPE_PROTO(ch)
         ->proto->specials2.pref
         = 0;

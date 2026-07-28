@@ -810,9 +810,9 @@ void point_update(void)
             if (j->obj_flags.timer == 0) {
                 if (j->carried_by) {
                     act("$p decays in your hands.", FALSE, j->carried_by, j, 0, TO_CHAR);
-                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->people)) { // LS1-ALLOW: obj-location
-                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_ROOM); // LS1-ALLOW: obj-location
-                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_CHAR); // LS1-ALLOW: obj-location
+                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->people)) { // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- the is-anyone-here test)
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_ROOM); // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s anchor character)
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_CHAR); // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s anchor character)
                 }
 
                 if (GET_ITEM_TYPE(j) == ITEM_CONTAINER) {

@@ -27,6 +27,7 @@
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
 #include <format>
+#include <limits>
 #include <string>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1209,6 +1210,27 @@ ASPELL(spell_beacon)
 
     if (mode == 1) { // Setting the beacone
 
+        // O-7 WRITE-ARM GUARD (ls3b-global-constraints.md owner ruling O-7;
+        // ls3b-census-review.md F7; a flagged O-2-precedent behavior change,
+        // named in the T7 commit). affected_type::modifier PERSISTS this
+        // room rnum through a sh_int (db_players.cpp's KEY_AFF text codec and
+        // character_json.cpp's require_short_range both round-trip it as
+        // one), and O-7 PRESERVES that save format outright -- a VNUM does
+        // not fit a sh_int either (VNUMs run past top_of_world, extension
+        // rooms start at EXTENSION_ROOM_HEAD = 100000), so widening the
+        // field was rejected, not merely deferred. Once enough extension
+        // rooms exist in one boot (rnums above SHRT_MAX = 32767), the
+        // unguarded assignment below would silently wrap the modifier into
+        // an unrelated -- typically negative -- room id. Refuse the write
+        // outright instead of storing a value that cannot round-trip
+        // through its own save format; the caster keeps whatever beacon
+        // they already had (if any).
+        const int caster_room = location_of(caster);
+        if (caster_room < std::numeric_limits<sh_int>::min() || caster_room > std::numeric_limits<sh_int>::max()) {
+            send_to_char("Your beacon cannot take hold this far from the world's heart.\n\r", caster);
+            return;
+        }
+
         if (IS_SET(room_of(caster)->room_flags, NO_TELEPORT)) {
             send_to_char("You cannot seem to set your beacon here.\n\r", caster);
             return;
@@ -1224,7 +1246,7 @@ ASPELL(spell_beacon)
         int level = get_mage_caster_level(caster);
         newaf.type = SPELL_BEACON;
         newaf.duration = level;
-        newaf.modifier = location_of(caster);
+        newaf.modifier = caster_room;
         newaf.location = 0;
         newaf.bitvector = 0;
 
@@ -1243,7 +1265,15 @@ ASPELL(spell_beacon)
             return;
         }
 
-        if (oldaf->modifier > top_of_world) {
+        // O-7 READ-ARM GUARD: was one-sided (`> top_of_world` only), which
+        // let a persisted NOWHERE (-1) -- or any other negative modifier --
+        // through to the unguarded rots::entity::dispatch_char_from_room() +
+        // char_to_room(caster, oldaf->modifier) below, i.e. an unguarded
+        // char_to_room(ch, -1). Two-sided closes that path: a corrupt or
+        // absent beacon now always takes this failure arm instead of ever
+        // reaching a placement call. ls3b-census-b.md section 1.5 /
+        // ls3b-census-review.md F7.
+        if (oldaf->modifier < 0 || oldaf->modifier > top_of_world) {
 
             send_to_char("Your beacon has been corruped, you cannot return to it.\n\r", caster);
 

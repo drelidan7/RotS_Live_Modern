@@ -1,3 +1,4 @@
+#include "../handler.h"
 #include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
@@ -6,6 +7,7 @@
 #include "test_world.h"
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <limits>
 #include <optional>
 
 int get_mage_caster_level(const char_data *caster);
@@ -782,4 +784,170 @@ TEST_F(MageProcTest, LocateLifeSkipsBlockedDuplicateAndExcludedRooms) {
     EXPECT_EQ(west_room->n, 0);
     EXPECT_EQ(west_room->e, -1);
     EXPECT_EQ(west_room->u, 0);
+}
+
+// ---------------------------------------------------------------------------
+// SPELL_BEACON -- O-7 rider coverage (ls3b-global-constraints.md owner ruling
+// O-7; ls3b-census-review.md F7; ls3b-census-b.md section 1.5). Zero prior
+// coverage existed for spell_beacon() anywhere in the tree before this
+// tranche. affected_type::modifier is a persisted sh_int (db_players.cpp's
+// KEY_AFF / character_json.cpp's require_short_range); O-7 PRESERVES that
+// room-rnum save format and makes the one-sided range guard (mage.cpp,
+// mode == 2) two-sided, and adds a new write-side guard (mode == 1) that
+// refuses to install a beacon whose modifier cannot fit the sh_int at all.
+// Both are flagged, O-2-precedent behavior changes: a corrupt/absent beacon
+// now always takes the spell's existing failure arm instead of ever reaching
+// an unguarded char_to_room(caster, -1) placement, and an overflowing write
+// is refused outright instead of silently truncating.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Saves and restores the process-global top_of_world for exactly the
+// duration of a single test -- ReadArmStillRefusesToReturnWhenTheStoredModifier
+// ExceedsTopOfWorld needs a KNOWN bound to compare its oversized modifier
+// against, and top_of_world is shared process-wide state this whole suite
+// (ensure_test_world()) only ever grows, never shrinks.
+struct ScopedTopOfWorld {
+    int previous;
+    explicit ScopedTopOfWorld(int value)
+        : previous(top_of_world) {
+        top_of_world = value;
+    }
+    ~ScopedTopOfWorld() { top_of_world = previous; }
+};
+
+} // namespace
+
+TEST(SpellBeaconTest, WriteArmRefusesToInstallABeaconWhenTheCastersLocationOverflowsTheSavedModifier) {
+    // The write-arm guard runs BEFORE spell_beacon() ever calls room_of(caster),
+    // so this needs no ScopedTestWorld at all: an out-of-range location is
+    // rejected on its own terms, the same way a real extension-room rnum
+    // above SHRT_MAX would be rejected once ~4630 extension rooms exist in a
+    // real boot (ls3b-census-review.md F7).
+    MageTestContext context;
+    constexpr int kOverflowingRoom = static_cast<int>(std::numeric_limits<sh_int>::max()) + 1;
+    set_location(&context.caster, kOverflowingRoom);
+
+    char set_word[] = "set";
+    txt_block set_text{};
+    set_text.text = set_word;
+    context.caster.delay.targ2.type = TARGET_TEXT;
+    context.caster.delay.targ2.ptr.text = &set_text;
+
+    ASSERT_EQ(affected_by_spell(&context.caster, SPELL_BEACON), nullptr);
+
+    spell_beacon(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+
+    EXPECT_EQ(affected_by_spell(&context.caster, SPELL_BEACON), nullptr)
+        << "Expected the write-arm overflow guard to refuse installing a beacon whose modifier "
+           "cannot fit the persisted sh_int, instead of silently truncating it.";
+}
+
+TEST(SpellBeaconTest, ReadArmRefusesToReturnWhenTheStoredModifierIsNegativeInsteadOfPlacingTheCasterNowhere) {
+    // Simulates a beacon persisted while the caster had no location (or any
+    // other corrupt negative modifier) -- exactly the state O-7's two-sided
+    // guard exists to catch. The failure branch touches no room/zone state,
+    // so this needs no ScopedTestWorld either.
+    MageTestContext context;
+    set_location(&context.caster, NOWHERE);
+
+    affected_type corrupted_beacon{};
+    corrupted_beacon.type = SPELL_BEACON;
+    corrupted_beacon.duration = 5;
+    corrupted_beacon.modifier = -1;
+    corrupted_beacon.location = 0;
+    corrupted_beacon.bitvector = 0;
+    affect_to_char(&context.caster, &corrupted_beacon);
+    ASSERT_NE(affected_by_spell(&context.caster, SPELL_BEACON), nullptr);
+
+    char return_word[] = "return";
+    txt_block return_text{};
+    return_text.text = return_word;
+    context.caster.delay.targ2.type = TARGET_TEXT;
+    context.caster.delay.targ2.ptr.text = &return_text;
+
+    spell_beacon(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+
+    EXPECT_EQ(location_of(&context.caster), NOWHERE)
+        << "Expected the corrupted-beacon failure arm to leave the caster exactly where they "
+           "were -- never placed via an unguarded char_to_room(ch, -1).";
+    EXPECT_EQ(affected_by_spell(&context.caster, SPELL_BEACON), nullptr)
+        << "A rejected beacon is still consumed (removed), matching the pre-rider corrupted-beacon "
+           "arm's own behavior.";
+}
+
+TEST(SpellBeaconTest, ReadArmStillRefusesToReturnWhenTheStoredModifierExceedsTopOfWorld) {
+    // Regression guard for the guard's OTHER side: the pre-rider high-side
+    // check (`> top_of_world`) must still reject an out-of-range modifier
+    // after becoming two-sided -- proves `< 0 ||` was ADDED, not substituted.
+    ScopedTopOfWorld scoped_top(10);
+    MageTestContext context;
+    set_location(&context.caster, 5);
+
+    affected_type corrupted_beacon{};
+    corrupted_beacon.type = SPELL_BEACON;
+    corrupted_beacon.duration = 5;
+    corrupted_beacon.modifier = 5000;
+    corrupted_beacon.location = 0;
+    corrupted_beacon.bitvector = 0;
+    affect_to_char(&context.caster, &corrupted_beacon);
+    ASSERT_NE(affected_by_spell(&context.caster, SPELL_BEACON), nullptr);
+
+    char return_word[] = "return";
+    txt_block return_text{};
+    return_text.text = return_word;
+    context.caster.delay.targ2.type = TARGET_TEXT;
+    context.caster.delay.targ2.ptr.text = &return_text;
+
+    spell_beacon(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+
+    EXPECT_EQ(location_of(&context.caster), 5)
+        << "Expected the pre-existing high-side guard to still reject an out-of-range modifier "
+           "after the rider made the check two-sided.";
+    EXPECT_EQ(affected_by_spell(&context.caster, SPELL_BEACON), nullptr);
+}
+
+TEST(SpellBeaconTest, RoundTripsToAnInRangeStoredRoomUnchanged) {
+    // Positive control: an ordinary in-range room installs and returns
+    // exactly as before this rider -- proves the two new guards reject only
+    // what O-7 says they must, not ordinary use (the "in-range round-trip
+    // unchanged" half of the rider's contract).
+    ScopedTestWorld test_world{3};
+    ScopedZoneTableOwner zone_table_owner;
+    MageTestContext context;
+
+    char_to_room(&context.caster, 1);
+    ASSERT_EQ(location_of(&context.caster), 1);
+
+    char set_word[] = "set";
+    txt_block set_text{};
+    set_text.text = set_word;
+    context.caster.delay.targ2.type = TARGET_TEXT;
+    context.caster.delay.targ2.ptr.text = &set_text;
+
+    spell_beacon(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+
+    affected_type *beacon = affected_by_spell(&context.caster, SPELL_BEACON);
+    ASSERT_NE(beacon, nullptr)
+        << "Expected an ordinary in-range room to still install a beacon -- the write-arm guard "
+           "must not reject valid rooms.";
+    EXPECT_EQ(beacon->modifier, 1);
+
+    detach_char_from_room(&context.caster);
+    char_to_room(&context.caster, 2);
+    ASSERT_EQ(location_of(&context.caster), 2);
+
+    txt_block return_text{};
+    char return_word[] = "return";
+    return_text.text = return_word;
+    context.caster.delay.targ2.ptr.text = &return_text;
+
+    spell_beacon(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+
+    EXPECT_EQ(location_of(&context.caster), 1)
+        << "Expected an in-range stored beacon to relocate the caster exactly as before the O-7 "
+           "rider.";
+    EXPECT_EQ(affected_by_spell(&context.caster, SPELL_BEACON), nullptr)
+        << "A successful return still consumes the beacon.";
 }

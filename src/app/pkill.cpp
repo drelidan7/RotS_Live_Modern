@@ -81,6 +81,11 @@ RANKING total_ranking = { NULL, 0, 0, 0 };
 int __pkill_side(int race)
 {
     struct char_data c {}; // value-init: previously indeterminate (LS-3a R-T0b-4(b)/P14)
+    // LS-3b T1b (ls3b-census-review.md F12, confirmed behavior-neutral: c is
+    // only ever used as a GET_RACE()/RACE_GOOD() carrier below, never a
+    // location read): explicit NOWHERE stamp so P14's token-invisible
+    // "room 0, never NOWHERE" residue is no longer silently reachable here.
+    set_location(&c, NOWHERE);
 
     /* Use a dummy structure so we can use the RACE_GOOD macro */
     GET_RACE(&c) = race;
@@ -372,6 +377,12 @@ long pkill_update_character_by_id(long idnum, int points)
 {
     int idx;
     struct char_data c {}; // value-init: previously indeterminate (LS-3a R-T0b-4(b)/P15)
+    // LS-3b T1b (ls3b-census-review.md F12, confirmed behavior-neutral: c is
+    // only ever used as a GET_RACE()/RACE_GOOD() carrier via __pkill_side()
+    // below, never a location read): explicit NOWHERE stamp so P15's
+    // token-invisible "room 0, never NOWHERE" residue is no longer silently
+    // reachable here.
+    set_location(&c, NOWHERE);
     extern struct player_index_element* player_table;
 
     /* Update the killer's player table entry */

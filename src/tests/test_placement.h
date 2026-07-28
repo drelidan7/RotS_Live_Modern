@@ -42,7 +42,10 @@
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
+#include <cstddef>
 #include <initializer_list>
 #include <utility>
 #include <vector>
@@ -241,6 +244,129 @@ private:
     // destructor a managed character belongs to this room rather than nowhere.
     std::vector<std::pair<char_data*, char_data*>> m_displaced;
 };
+
+// ---------------------------------------------------------------------------
+// The sequence-shape assertion API (LS-3b T4;
+// .superpowers/sdd/ls3b-global-constraints.md's T4 entry,
+// .superpowers/sdd/ls3b-census-c.md §5.5, ls3b-census-review.md F9).
+//
+// Two raw next_in_room SHAPE assertions survived outside this header after
+// LS-3a -- load_room_placement_tests.cpp (6 sites) and spec_pro_tests.cpp
+// (8 sites) both pin the occupant chain's exact link structure, a property no
+// Stage-1 API expressed until now. Read closely, every one of those 14 sites
+// is one of exactly two shapes:
+//
+//   (1) a FULL chain pin: first_occupant(room) is the expected head, each
+//       element's next_in_room is the next expected element, and the last
+//       element's next_in_room is null -- the chain is exactly this long.
+//   (2) a PARTIAL link pin: `predecessor->next_in_room == successor`, nothing
+//       asserted about the room's head or where the chain ends.
+//
+// assert_room_chain_is() below is (1); assert_occupant_link() is (2). Kept as
+// two functions rather than one parameterized by "how much to check" because
+// folding shape (2)'s one migrated call site
+// (LoadRoomChain.RnumShapedLoadRoomSendsOwnerAndFollowerToTheStartRoomTogether)
+// into the full-chain check would make the migrated assertion STRICTLY
+// STRONGER than the raw EXPECT_EQ it replaces (it never asserted
+// termination), which is exactly the semantics drift T4's acceptance
+// criterion forbids.
+
+// Pins an entire room's occupant SEQUENCE against an expected ordered list in
+// one call: first_occupant(room) equals expected's first element, each
+// element's next_in_room equals the one after it, and the last element's
+// next_in_room is null -- the chain is exactly `expected.size()` long, no
+// more. `expected` may be empty, which asserts the room's chain is empty
+// (first_occupant(room) == nullptr).
+//
+// Non-fatal (EXPECT_*, matching every raw EXPECT_EQ line this replaces) --
+// a failure here does not abort the calling test. Stops walking at the first
+// divergence rather than reporting one failure per remaining element, so a
+// single wrong link produces one focused failure instead of a cascade.
+inline void assert_room_chain_is(const room_data* room, std::initializer_list<const char_data*> expected)
+{
+    const char_data* actual = rots::entity::first_occupant(room);
+    std::size_t position = 0;
+    for (const char_data* expected_node : expected)
+    {
+        EXPECT_EQ(actual, expected_node) << "occupant chain position " << position << " (0 = room's head)";
+        if (actual != expected_node)
+        {
+            return; // already diverged -- walking further only adds noise
+        }
+
+        actual = actual->next_in_room; // LS1-ALLOW: representation-impl (sequence-shape assertion helper -- walking the chain it pins)
+        ++position;
+    }
+
+    EXPECT_EQ(actual, nullptr) << "occupant chain has more than the " << expected.size() << " expected element(s)";
+}
+
+// Pins a single occupant-chain LINK -- `predecessor->next_in_room ==
+// expected_successor` -- without asserting anything about the room's head or
+// where the chain terminates. The narrower sibling of assert_room_chain_is()
+// above; see the block comment before it for why the two stay separate.
+inline void assert_occupant_link(const char_data* predecessor, const char_data* expected_successor)
+{
+    EXPECT_EQ(predecessor->next_in_room, expected_successor); // LS1-ALLOW: representation-impl (sequence-shape assertion helper -- pins one occupant-chain link)
+}
+
+// ---------------------------------------------------------------------------
+// Construction/teardown helpers for the test-tier residue that isn't shaped
+// like ScopedRoomOccupants' whole-chain publish/restore (LS-3b T4, same
+// authority as the assertion API above).
+
+// Clears a room's occupant-chain head with no accompanying character
+// bookkeeping -- for fixtures that reset several rooms in bulk to a known
+// empty state rather than publishing anyone into any one of them (the shape
+// ScopedRoomOccupants' single-room, always-set_location()'d contract does not
+// fit; see ScopedVnumWorld in load_room_placement_tests.cpp, which resets
+// kRoomCount+1 rooms per construction/destruction).
+inline void clear_room_occupants(room_data* room)
+{
+    room->people = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- bulk reset, no character to unlink)
+}
+
+// Resets a character's own next_in_room link to null -- for a character that
+// is not currently linked into any chain (freshly clear_char()'d, or about to
+// be published by ScopedRoomOccupants/char_to_room(), both of which stamp
+// their own terminal null anyway) and whose caller wants a known-clean field
+// rather than whatever clear_char() happened to leave there.
+inline void reset_occupant_link(char_data* ch)
+{
+    ch->next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- a character not yet linked into any chain gets a known-clean next pointer)
+}
+
+// Unlinks `ch` from the occupant chain of the room it is CURRENTLY linked
+// into (predecessor scan if `ch` isn't the head), the same O(n) shape
+// detach_char_from_room() uses for its own non-head case -- but WITHOUT that
+// primitive's light/zone white/dark-power bookkeeping, and without touching
+// `ch`'s own next_in_room or location afterward. For a test-tier teardown
+// helper that placed `ch` via the real char_to_room() (which already charged
+// that bookkeeping once, on arrival) and wants the CHAIN LINKAGE undone,
+// leaving the charged deltas alone for the test to still observe, or that is
+// about to discard `ch` outright and has no need to leave it in a
+// fully-reset state. `room` must be the room `ch` is linked into (typically
+// `*room_of(ch)`); `ch` must actually be reachable in `room`'s chain -- a
+// caller that isn't sure should check `location_of(ch) != NOWHERE` first, as
+// every call site below does.
+inline void unlink_from_occupant_chain(room_data& room, char_data* ch)
+{
+    if (room.people == ch) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+    {
+        room.people = ch->next_in_room; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+        return;
+    }
+
+    for (char_data* occupant = room.people; occupant != nullptr; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+         occupant = occupant->next_in_room) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+    {
+        if (occupant->next_in_room == ch) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+        {
+            occupant->next_in_room = ch->next_in_room; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+            return;
+        }
+    }
+}
 
 // Stands up a one-zone zone_table for the duration of a scope, and restores
 // whatever was there before.

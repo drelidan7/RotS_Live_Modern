@@ -23,6 +23,15 @@
 //     value, deliberately and unchanged from today's behavior. Fixing that
 //     hazard is explicitly OUT of this wave's scope (F15) -- it is a
 //     property of the ten call sites, not of this class.
+//   * IT CANNOT SPOOF NOWHERE OVER A LINKED CHARACTER (LS-3b T9b,
+//     review-1 finding M-1). The constructor and retarget() refuse that one
+//     write and log a tripwire, because it is the single argument value that
+//     would falsify the location invariant's first half (placement.cpp's
+//     banner) -- the half every absence guard and teardown path relies on.
+//     Every production call site guards its own argument, so the refusal is
+//     unreachable today; it exists so the banner's claim is mechanical.
+//     Writing NOWHERE for a character who is already at NOWHERE is NOT a
+//     spoof and is allowed unchanged.
 //   * Room MEMBERSHIP never changes. Pre-swap (T2 runs before T5's store
 //     split), set_location() is a bare field write with no room->people /
 //     next_in_room bookkeeping, so this class inherits that: constructing,
@@ -102,6 +111,18 @@ public:
     void restore();
 
 private:
+    // THE ABSENCE-INVARIANT PRECONDITION (LS-3b T9b; review-1 finding M-1).
+    // Returns true -- and logs a tripwire -- when writing `room_id` would
+    // put NOWHERE into the field of a character whose captured real location
+    // is a real room, i.e. one the location invariant says is linked into
+    // that room's occupant chain. The constructor and retarget() skip their
+    // write in that case, keeping the real location. Writing NOWHERE for a
+    // character who is ALREADY at NOWHERE is not a spoof and returns false
+    // (fight.cpp's death_cry() opens exactly such a window); see the
+    // implementation's comment in placement.cpp for the full derivation and
+    // for why this is narrower than a blanket "reject NOWHERE".
+    bool would_break_the_absence_invariant(int room_id) const;
+
     // The character this cursor spoofs; never null for the guard's
     // lifetime (set once at construction, read by every retarget()/
     // restore() call and by the destructor).

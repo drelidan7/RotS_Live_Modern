@@ -173,3 +173,79 @@ TEST(ScopedRenderLocationTest, TwoCursorsOnOneCharacterUnwindLifo)
     outer.restore();
     EXPECT_EQ(location_of(&character), 1);
 }
+
+// ===========================================================================
+// LS-3b T9b -- REVIEW-1 FINDING M-1: the absence-invariant precondition
+//
+// placement.cpp's banner claims the location invariant's FIRST half ("the
+// field says NOWHERE ==> the character is linked into no room") holds
+// UNCONDITIONALLY, cursor windows included, because a cursor "spoofs a REAL
+// room id and never NOWHERE". Nothing enforced that until this commit, and
+// the whole-branch review found four live spec_pro.cpp ferry sites that could
+// reach the constructor with an object's NOWHERE in_room on a host already
+// proven chained. Those sites now guard their arguments; the pair below pins
+// the class-level check that makes the banner's claim mechanical instead of
+// audited.
+// ===========================================================================
+
+// THE REFUSAL. A cursor asked to put NOWHERE over a character whose captured
+// real location is a real room keeps the real location and logs a tripwire.
+// (Non-vacuity: with the check removed the write goes through and this reads
+// NOWHERE -- see the commit message's probe log.)
+TEST(ScopedRenderLocationTest, RefusesToSpoofNowhereOverACharacterWithARealLocation)
+{
+    char_data character { };
+    set_location(&character, 10);
+
+    {
+        ScopedRenderLocation cursor(&character, NOWHERE);
+        EXPECT_EQ(location_of(&character), 10)
+            << "a cursor spoofed NOWHERE onto a character the invariant says is chained";
+    }
+
+    EXPECT_EQ(location_of(&character), 10);
+}
+
+// retarget() carries the same check -- it is a separate write path, and
+// deleting the guard from only one of the two would leave the other green.
+TEST(ScopedRenderLocationTest, RetargetRefusesNowhereOverACharacterWithARealLocation)
+{
+    char_data character { };
+    set_location(&character, 10);
+
+    {
+        ScopedRenderLocation cursor(&character, 20);
+        ASSERT_EQ(location_of(&character), 20);
+
+        cursor.retarget(NOWHERE);
+        EXPECT_EQ(location_of(&character), 20)
+            << "retarget spoofed NOWHERE over a real spoofed room";
+    }
+
+    EXPECT_EQ(location_of(&character), 10);
+}
+
+// THE OTHER HALF OF THE CONDITION, and the reason it is narrower than the
+// review's own "reject NOWHERE" wording. fight.cpp's death_cry() opens its
+// window with `was_in = location_of(ch)` -- legitimately NOWHERE for a
+// character who really is nowhere -- and its per-door loop retargets BACK to
+// was_in between doors so the next iteration's CAN_GO() evaluates against the
+// real room. Writing NOWHERE for a character who is ALREADY nowhere is not a
+// spoof, violates nothing, and must keep working: a blanket refusal would
+// have silently left the cursor pointing at the previous door's destination.
+TEST(ScopedRenderLocationTest, StillWritesNowhereForACharacterWhoIsAlreadyNowhere)
+{
+    char_data character { };
+    set_location(&character, NOWHERE);
+
+    ScopedRenderLocation cursor(&character, NOWHERE);
+    EXPECT_EQ(location_of(&character), NOWHERE);
+
+    cursor.retarget(20);
+    ASSERT_EQ(location_of(&character), 20);
+
+    // death_cry()'s exact between-doors restore.
+    cursor.retarget(NOWHERE);
+    EXPECT_EQ(location_of(&character), NOWHERE)
+        << "the guard is too broad: death_cry's per-door restore would be dropped";
+}

@@ -854,8 +854,9 @@ public:
     // detach_char_from_room() (src/entity/placement.cpp). THE INVARIANT the
     // core maintains: ls_location_id_ == NOWHERE implies this character is
     // in NO room's occupant chain -- see placement.cpp's own header block
-    // for the full statement (including the render-cursor exception, which
-    // spoofs a REAL room id and never NOWHERE). Type, size and position are
+    // for the full statement (including the render-cursor exception, whose
+    // NOWHERE-spoof refusal ScopedRenderLocation now ENFORCES mechanically
+    // -- LS-3b T9b, review-1 finding M-1). Type, size and position are
     // deliberately identical to the `int in_room` this renames: the i386
     // struct layout must not move.
     int ls_location_id_; // LS1-ALLOW: representation-decl (the location field itself -- not a call site, so it can never "convert"; this is the store's private location handle)

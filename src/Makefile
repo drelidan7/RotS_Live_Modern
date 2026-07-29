@@ -85,7 +85,15 @@ DEPFLAGS = -MMD -MP
 # the original literal-name collision here too, but the #include_next
 # behavior above is independent of any particular header's name, so both
 # flags stay.)
-ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ipersist/include -Iplatform/include -iquote . -idirafter . $(CPPFLAGS)
+# -Ientity/include: the LS-3b cursor wave (T2) gave rots_entity its first
+# public header consumed from OUTSIDE the library -- app/combat/script TUs
+# bare-quote-include "rots/entity/render_cursor.h" (act_info.cpp,
+# act_othe.cpp, act_wiz.cpp, mob_csv_extract.cpp, fight.cpp, mage.cpp,
+# ranger.cpp, spec_pro.cpp). src/tests/Makefile gained the matching
+# -I../entity/include in that same commit; this file was missed, which
+# broke the i386 legacy-32bit CI job's flat build. Every src/<lib>/include
+# tree that exists must be listed here.
+ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ientity/include -Ipersist/include -Iplatform/include -iquote . -idirafter . $(CPPFLAGS)
 ALL_CXXFLAGS = $(REQ_CXXFLAGS) $(CXXFLAGS)
 ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 

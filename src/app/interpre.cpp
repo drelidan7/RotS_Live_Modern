@@ -3809,6 +3809,22 @@ void nanny(struct descriptor_data* d, char* arg)
             // racial start room, whereas room_by_id_total(location_of(...))
             // ->number would resolve through operator[]'s room-0 fallback and
             // relocate them to whatever room sits at index 0.
+            //
+            // THAT RATIONALE IS LOAD-BEARING ON load_character()'s CHANNEL
+            // RETIREMENT, and was briefly false (LS-3b T9b; review-1 finding
+            // B-1a). The store split left the VNUM channel holding the
+            // persisted login room for the rest of the session, which armed
+            // save_char()'s R23 fail-safe on exactly the shape above
+            // (load_room NOWHERE, location NOWHERE, channel set) and
+            // persisted the stale login VNUM instead of -1 -- routing the
+            // bugged character back to the room they came from rather than to
+            // their racial start room, contradicting the paragraph above
+            // without changing a character of it. load_character() now clears
+            // the channel once it has placed the character (objsave.cpp), so
+            // this call reaches save_char() with both fallback arms dead and
+            // persists -1, exactly as written here. Pinned by
+            // LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsNowhere-
+            // ThroughTheRealLoadCharacter.
             save_char(d->character, NOWHERE, 0);
             STATE(d) = CON_PLYNG;
             report_news(d->character);

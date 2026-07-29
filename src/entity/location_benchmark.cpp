@@ -260,23 +260,32 @@ bool measure_iteration(int room_id, int occupancy, int repetitions, IterationRow
 
     const int inner_repeat = std::max(1, 200 / std::max(occupancy, 1));
 
-    volatile uintptr_t pointer_sink = 0;
+    // The two walks below store into a `volatile` sink so the optimizer cannot
+    // elide them. The accumulation itself runs on a PLAIN local: C++20 deprecates
+    // compound assignment whose left operand is volatile-qualified
+    // ([depr.volatile.type]), and newer Apple clang promotes that deprecation to an
+    // error under -Werror (CI macos-arm64 / macos-arm64-asan). A SIMPLE assignment
+    // TO a volatile object is not deprecated, so one store per walk after the timed
+    // region keeps the elision-proofing with none of the deprecation.
+    uintptr_t pointer_accumulator = 0;
     row->pointer_walk = time_repetitions(repetitions, occupancy * inner_repeat, [&]() {
         for (int r = 0; r < inner_repeat; ++r) {
             for (char_data *c : rots::entity::occupants(room)) {
-                pointer_sink += reinterpret_cast<uintptr_t>(c);
+                pointer_accumulator += reinterpret_cast<uintptr_t>(c);
             }
         }
     });
+    volatile uintptr_t pointer_sink = pointer_accumulator;
 
-    volatile int64_t payload_sink = 0;
+    int64_t payload_accumulator = 0;
     row->payload_walk = time_repetitions(repetitions, occupancy * inner_repeat, [&]() {
         for (int r = 0; r < inner_repeat; ++r) {
             for (char_data *c : rots::entity::occupants(room)) {
-                payload_sink += c->abs_number;
+                payload_accumulator += c->abs_number;
             }
         }
     });
+    volatile int64_t payload_sink = payload_accumulator;
     (void)pointer_sink;
     (void)payload_sink;
 
@@ -333,19 +342,23 @@ bool measure_lookup(const std::vector<int> &room_ids, int character_count, int r
     row->location_checksum = location_checksum;
     row->room_of_correct_count = room_of_correct_count;
 
-    volatile int64_t location_sink = 0;
+    // Plain accumulators + one simple volatile store per walk -- see the
+    // [depr.volatile.type] note in measure_iteration() above.
+    int64_t location_accumulator = 0;
     row->location_of_walk = time_repetitions(repetitions, character_count, [&]() {
         for (std::unique_ptr<char_data> &ch : pool) {
-            location_sink += location_of(ch.get());
+            location_accumulator += location_of(ch.get());
         }
     });
+    volatile int64_t location_sink = location_accumulator;
 
-    volatile uintptr_t room_sink = 0;
+    uintptr_t room_accumulator = 0;
     row->room_of_walk = time_repetitions(repetitions, character_count, [&]() {
         for (std::unique_ptr<char_data> &ch : pool) {
-            room_sink += reinterpret_cast<uintptr_t>(room_of(ch.get()));
+            room_accumulator += reinterpret_cast<uintptr_t>(room_of(ch.get()));
         }
     });
+    volatile uintptr_t room_sink = room_accumulator;
     (void)location_sink;
     (void)room_sink;
 

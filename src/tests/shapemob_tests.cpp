@@ -246,6 +246,18 @@ TEST(ShapeMob, ImplementProtoAndReadMobileSpawnAnIdenticallyLocationlessMobRegar
     sp.permission = 1;
     editor.temp = &sp;
 
+    // LEAK HYGIENE (LS-3b T9b, CI sanitize-linux LSan: 349 bytes in 5
+    // allocations). implement_proto()'s wholesale `*proto =
+    // *SHAPE_PROTO(ch)->proto;` copy-assignment overwrites
+    // fake_mob_proto[0].profs with proto_storage's (null) one, orphaning the
+    // block clear_char() allocated above -- exactly the ownership transfer
+    // sanitize.supp documents for the pre-existing
+    // ImplementProtoCopiesMobProtoWithoutCorruptingItsDamageMap test.
+    // release_profs_now() exists for this shape (see test_char_cleanup.h):
+    // it frees the block NOW and disarms the guard's own destructor, which
+    // would otherwise free the null the copy leaves behind.
+    fake_mob_proto_cleanup.release_profs_now();
+
     implement_proto(&editor);
     // mob_proto[0].in_room now holds whatever proto_storage's did (42,
     // reproducing the pre-fix shape).
@@ -271,6 +283,20 @@ TEST(ShapeMob, ImplementProtoAndReadMobileSpawnAnIdenticallyLocationlessMobRegar
     remove_char_exists(spawned->abs_number);
     spawned->~char_data();
     std::free(spawned);
+
+    // The other four LSan-reported blocks: implement_proto() CREATE()s a
+    // fresh copy of each of the four name/descr strings into its
+    // destination slot (shapemob.cpp), and nothing in the editor flow ever
+    // frees them. fake_mob_proto[0] is a stack object that never reaches
+    // free_char(), so this test owns their release -- and it must happen
+    // AFTER `spawned` is torn down, since read_mobile()'s copy-assignment
+    // left `spawned` sharing these very pointers. proto_storage's own four
+    // fields are string literals (const_cast above) and are deliberately
+    // NOT released.
+    RELEASE(fake_mob_proto[0].player.name);
+    RELEASE(fake_mob_proto[0].player.short_descr);
+    RELEASE(fake_mob_proto[0].player.long_descr);
+    RELEASE(fake_mob_proto[0].player.description);
 
     character_list = previous_character_list;
     mob_index = previous_mob_index;

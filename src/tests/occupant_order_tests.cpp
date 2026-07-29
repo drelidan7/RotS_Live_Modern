@@ -792,3 +792,113 @@ TEST(RecountLightRoomTest,
            "the ground's lit light (the unlit ground light must not count), "
            "overwriting the stale 200.";
 }
+
+// ---------------------------------------------------------------------------
+// (g) THE PRODUCER'S PUBLISH ORDER -- src/entity/placement.cpp's char_to_room
+// (LS-3b T9b; review-1 finding M-6)
+// ---------------------------------------------------------------------------
+//
+// R-3b-C made this file mandatory on the grounds that "the wave's occupant-
+// order regression net is EMPTY" and the goldens cannot witness order. The
+// whole-branch review then ran the obvious probe -- invert char_to_room's
+// tail-append into a head-prepend -- and found that NOT ONE of the six
+// consumer-side witnesses above noticed. They could not: every one of them
+// builds its chain through ScopedRoomOccupants (test_placement.h), which
+// splices the raw chain directly and never calls char_to_room at all. What
+// they pin is consumer order-SENSITIVITY given a chain; the producer that
+// decides what that chain looks like was witnessed only by a test the
+// placement-seam wave wrote (CharToRoomTest.AppendsToTailPreservingExisting-
+// OccupantOrder), which is single-append and predates this wave entirely.
+//
+// The two tests below close that gap directly, through the T4 shape-assertion
+// API, with no ScopedRoomOccupants anywhere: they drive the REAL char_to_room
+// repeatedly and assert the chain's shape after every publish. They are the
+// review's probe P1, checked in.
+//
+// NPCs on purpose: char_to_room's zone-power arm is `if (!IS_NPC(ch))`, so
+// MOB_ISNPC characters exercise the splice and the light sweep without
+// needing a zone table -- the order claim is what is under test here, and
+// RecalcZonePowerTest above already owns the counter claims.
+
+namespace {
+
+// Prepares one stack char_data as a publishable NPC: constructed, marked
+// MOB_ISNPC (so char_to_room skips the zone-power arm), with a clean
+// occupant link and no location.
+void make_publishable_npc(char_data &npc) {
+    clear_char(&npc, MOB_ISNPC);
+    SET_BIT(npc.specials2.act, MOB_ISNPC);
+    npc.specials.position = POSITION_STANDING;
+    set_location(&npc, NOWHERE);
+    reset_occupant_link(&npc);
+}
+
+} // namespace
+
+TEST(CharToRoomProducerOrder, PublishesEachArrivalAtTheTailOfTheChainItFinds) {
+    ScopedTestWorld test_world;
+    clear_room_occupants(room_by_id_total(0));
+
+    char_data first{};
+    char_data second{};
+    char_data third{};
+    ScopedClearCharFields first_cleanup{first};
+    ScopedClearCharFields second_cleanup{second};
+    ScopedClearCharFields third_cleanup{third};
+    make_publishable_npc(first);
+    make_publishable_npc(second);
+    make_publishable_npc(third);
+
+    // Every step asserts the WHOLE chain, so a head-prepend producer is
+    // caught at the second publish rather than only in aggregate.
+    char_to_room(&first, 0);
+    assert_room_chain_is(room_by_id_total(0), {&first});
+
+    char_to_room(&second, 0);
+    assert_room_chain_is(room_by_id_total(0), {&first, &second});
+
+    char_to_room(&third, 0);
+    assert_room_chain_is(room_by_id_total(0), {&first, &second, &third});
+
+    detach_char_from_room(&third);
+    detach_char_from_room(&second);
+    detach_char_from_room(&first);
+    assert_room_chain_is(room_by_id_total(0), {});
+}
+
+// The complement: publish order, not allocation order and not any stable
+// property of the characters themselves. The same three objects, republished
+// in a different sequence after a full teardown, produce that sequence --
+// which a producer that sorted by address (or that happened to preserve a
+// previous chain) could not do. It also pins that a character who leaves and
+// returns rejoins at the TAIL, behind whoever arrived meanwhile.
+TEST(CharToRoomProducerOrder, RepublishingInADifferentSequenceProducesThatSequence) {
+    ScopedTestWorld test_world;
+    clear_room_occupants(room_by_id_total(0));
+
+    char_data first{};
+    char_data second{};
+    char_data third{};
+    ScopedClearCharFields first_cleanup{first};
+    ScopedClearCharFields second_cleanup{second};
+    ScopedClearCharFields third_cleanup{third};
+    make_publishable_npc(first);
+    make_publishable_npc(second);
+    make_publishable_npc(third);
+
+    char_to_room(&third, 0);
+    char_to_room(&first, 0);
+    char_to_room(&second, 0);
+    assert_room_chain_is(room_by_id_total(0), {&third, &first, &second});
+
+    // third leaves and comes back: it rejoins behind the two who stayed.
+    detach_char_from_room(&third);
+    assert_room_chain_is(room_by_id_total(0), {&first, &second});
+    char_to_room(&third, 0);
+    assert_room_chain_is(room_by_id_total(0), {&first, &second, &third});
+
+    detach_char_from_room(&first);
+    detach_char_from_room(&second);
+    detach_char_from_room(&third);
+    assert_room_chain_is(room_by_id_total(0), {});
+}

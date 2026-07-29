@@ -97,10 +97,17 @@
 // THE ONE EXCEPTION, and why it cannot break the half that matters:
 // ScopedRenderLocation (the cursor family, LS-3b T2) deliberately spoofs the
 // field for the duration of a render window without moving the character,
-// so the SECOND half above does not hold inside such a window. It spoofs a
-// REAL room id and never NOWHERE, so the FIRST half -- the one every
-// absence guard, every teardown path and this file's own early returns rely
-// on -- holds unconditionally.
+// so the SECOND half above does not hold inside such a window. The FIRST
+// half -- the one every absence guard, every teardown path and this file's
+// own early returns rely on -- does hold, and as of LS-3b T9b (review-1
+// finding M-1) it holds MECHANICALLY rather than by audit: this file's
+// ScopedRenderLocation constructor and retarget() REFUSE to write NOWHERE
+// over a character whose captured real location is a real room, and log a
+// tripwire if ever asked to. (Writing NOWHERE for a character who really is
+// nowhere -- fight.cpp's death_cry() opens exactly such a window -- is not a
+// spoof and is allowed; see the precondition's own comment beside the
+// implementation below.) Until that check existed the claim was FALSE at
+// four spec_pro.cpp ferry sites, which now guard their arguments too.
 // ==========================================================================
 
 #include "platdef.h"
@@ -369,11 +376,57 @@ room_data* room_of(const char_data* ch)
 
 namespace rots::entity {
 
+// THE INVARIANT PRECONDITION (LS-3b T9b; review-1 finding M-1). The banner
+// at the top of this file claimed the invariant's FIRST half -- "the field
+// says NOWHERE ==> the character is linked into no room" -- holds
+// UNCONDITIONALLY, cursor windows included, on the grounds that a cursor
+// "spoofs a REAL room id and never NOWHERE". Nothing enforced that: neither
+// this constructor nor retarget() checked its argument, and the review found
+// four live call sites (SPECIAL(ferry_captain), spec_pro.cpp) that could
+// reach it with an object's NOWHERE in_room while the host was chained into
+// a live room -- a direct counterexample to the half that every absence
+// guard, every teardown path and this file's own early returns rely on. Those
+// four sites now guard their own argument (byte-equivalently: the windows'
+// bodies are single act(..., TO_ROOM) calls, which comm.cpp's act_impl drops
+// for a NOWHERE character anyway), and this function makes the claim
+// MECHANICAL rather than merely audited.
+//
+// THE CONDITION IS NARROWER THAN THE REVIEW'S OWN WORDING, deliberately.
+// "Reject NOWHERE" as literally recommended would break fight.cpp's
+// death_cry(): that window is opened with `was_in = location_of(ch)`, which
+// is legitimately NOWHERE for a character who really is nowhere, and its
+// per-door loop retargets BACK to `was_in` between doors so the next
+// iteration's CAN_GO() sees the real room. Writing NOWHERE for a character
+// who IS nowhere is not a spoof and violates nothing. What violates the
+// invariant is writing NOWHERE over a REAL location -- and by the invariant
+// itself, a real captured location means the character is chained. So that,
+// exactly, is what is refused.
+//
+// Refused, not aborted: this is a tripwire in the codebase's established
+// unregistered-hook style (log, then take the safe action), because the
+// repository's test tier bans death tests and because the safe action here
+// -- leave the real location in place -- is strictly better than either
+// aborting the server or corrupting the invariant.
+bool ScopedRenderLocation::would_break_the_absence_invariant(int room_id) const
+{
+    if (room_id != NOWHERE || saved_location_ == NOWHERE) {
+        return false;
+    }
+    rots::log::write_stderr(
+        "rots::entity: ScopedRenderLocation asked to spoof NOWHERE over a character who is linked "
+        "into a real room -- refused, the real location is kept. This should be unreachable: every "
+        "cursor call site guards its own argument.");
+    return true;
+}
+
 ScopedRenderLocation::ScopedRenderLocation(char_data* ch, int room_id)
     : ch_(ch)
     , saved_location_(location_of(ch))
     , restored_(false)
 {
+    if (would_break_the_absence_invariant(room_id)) {
+        return;
+    }
     set_location(ch_, room_id);
 }
 
@@ -384,6 +437,9 @@ ScopedRenderLocation::~ScopedRenderLocation()
 
 void ScopedRenderLocation::retarget(int room_id)
 {
+    if (would_break_the_absence_invariant(room_id)) {
+        return;
+    }
     set_location(ch_, room_id);
 }
 

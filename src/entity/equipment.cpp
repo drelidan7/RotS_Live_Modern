@@ -121,11 +121,28 @@ extern int max_race_str[];
 // not wrong ... Delete it then; do not delete it now").
 //
 // It is redundant now because the invariant holds (see placement.cpp's header
-// block): location_of(ch) == NOWHERE if and only if ch is in no room's chain.
-// During the login/rent window the persisted VNUM sits in the channel, not in
-// the location field, so the ITEM_LIGHT arm's outer `location_of(ch) !=
-// NOWHERE` guard already skips every case the walk was there to catch. The
-// deletion is the cheapest proof the split closed R7/R8.
+// block). WHICH HALF, precisely, matters -- the original wording of this
+// paragraph named only the first, and review-1's finding M-1 is right that the
+// substitution actually needs the second:
+//   * the light BUMP below is gated on `location_of(ch) != NOWHERE` and must
+//     fire only for a character genuinely IN the room it resolves, which is
+//     the SECOND half ("the field says room r ==> ch is linked into world[r]
+//     and no other");
+//   * the second half is the one placement.cpp's banner records as SUSPENDED
+//     inside a ScopedRenderLocation window, so the substitution additionally
+//     relies on a precondition worth writing down: NO CURSOR WINDOW REACHES
+//     attach_equipment(). Re-verified at HEAD -- the ten cursor windows'
+//     bodies are act()/do_look()/std::format renders and a room-scan loop;
+//     none wears, equips or invokes a special() that could (the nearest
+//     candidate, act_othe.cpp's do_knock window, dispatches no special);
+//   * the FIRST half is what makes the outer two-term guard's absence arm
+//     correct during the login/rent window, where the persisted VNUM sits in
+//     the channel rather than in the location field.
+// Review-2's finding F-4 adds the complementary bound: were such a window ever
+// created, the post-split behavior inside it would equal the PRE-LS-3a
+// original (which keyed on the raw field), so across the program the net
+// change is zero -- it is LS-3a's interim walk that briefly differed.
+// The deletion is the cheapest proof the split closed R7/R8.
 
 EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
 {
@@ -223,11 +240,18 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
             // M6 (LS-3b T5): the is_linked_into_room() second gate that used to
             // sit between this resolve and the bump is GONE -- see the block
             // above the function for why the outer guard is now sufficient.
-            // F20's ledger entry belongs to this arm: during Crash_load() the
-            // outer guard now fails, so this resolver dispatch (and, for an
-            // out-of-range persisted VNUM, its LEVEL_GRGOD "room outside the
-            // world" mudlog) no longer happens once per lit worn item per
-            // login. The lighting OUTCOME is unchanged: char_to_room() runs its
+            // F20's ledger entry belongs to this arm, with ONE correction
+            // (review-1 finding M-5; the T5 commit message carries the
+            // uncorrected wording and cannot be edited): the guard that fails
+            // during Crash_load() is the INNER one-term bump guard immediately
+            // below (`location_of(ch) != NOWHERE`), NOT the outer two-term
+            // predicate -- the outer one is TRUE across the whole load window,
+            // which is the entire point of its second term and exactly what
+            // LoadRoomRider.RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIs-
+            // PlacedIn measures. With the inner guard false, this resolver
+            // dispatch (and, for an out-of-range persisted VNUM, its
+            // LEVEL_GRGOD "room outside the world" mudlog) no longer happens
+            // once per lit worn item per login. The lighting OUTCOME is unchanged: char_to_room() runs its
             // own equipment sweep at the room the character is really placed in.
             //
             // detach_equipment()'s mirror image below is deliberately NOT given

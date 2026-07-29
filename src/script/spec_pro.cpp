@@ -1253,14 +1253,35 @@ SPECIAL(ferry_captain)
     }
 
     if ((ferry_captain_data[num].timer == 0) && (ferry_captain_data[num].stop_time[ferry_captain_data[num].marker] > 0)) {
-        // ls3b T2: ScopedRenderLocation reproduces the manual
-        // save/write/restore idiom byte-for-byte (contract in
-        // rots/entity/render_cursor.h) -- destructor restores host at the
-        // closing brace below, exactly where the removed
-        // set_location(host, tmp) used to run.
-        rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
-        act(ferry_captain_data[num].leave_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        ferry_cursor.restore();
+        // LS-3b T9b (review-1 finding M-1): THE ARGUMENT GUARD, and the
+        // first of four in this function. `ferryobj` is not guaranteed to be
+        // lying in a room: the fallback object_list scan above can return a
+        // ferry held in an inventory or a container (in_room NOWHERE), and
+        // the unconditional obj_from_room(ferryobj) further down sets in_room
+        // to NOWHERE for the two windows after it. Unguarded, that spoofed
+        // NOWHERE onto a `host` this function has already proven is chained
+        // into a live room (the location_of(host) == NOWHERE early return at
+        // the top) -- the exact counterexample the location invariant's first
+        // half cannot have, and the reason placement.cpp's banner was false
+        // as written.
+        //
+        // BYTE-EQUIVALENT, which is why this is a guard and not a rider: each
+        // window's body is a single act(..., TO_ROOM), and act_impl
+        // (comm.cpp) resolves TO_ROOM through `location_of(ch) != NOWHERE`
+        // and drops the line entirely otherwise. Skipping the window emits
+        // exactly what entering it used to emit: nothing.
+        //
+        // The cursor's scope shrinks into the guarded block, so its
+        // destructor restores host precisely where the explicit
+        // ferry_cursor.restore() used to -- still before the leave_to_inside
+        // broadcast below.
+        if (ferryobj->in_room != NOWHERE) { // LS1-ALLOW: obj-location
+            // ls3b T2: ScopedRenderLocation reproduces the manual
+            // save/write/restore idiom byte-for-byte (contract in
+            // rots/entity/render_cursor.h).
+            rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
+            act(ferry_captain_data[num].leave_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
+        }
         act(ferry_captain_data[num].leave_to_inside, FALSE, host, 0, 0, TO_ROOM);
     }
 
@@ -1270,7 +1291,9 @@ SPECIAL(ferry_captain)
 
     act(ferry_captain_data[num].move_out_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
-    {
+    // LS-3b T9b (review-1 finding M-1): the argument guard, same derivation
+    // and same byte-equivalence as the first one above.
+    if (ferryobj->in_room != NOWHERE) { // LS1-ALLOW: obj-location
         // ls3b T2: ScopedRenderLocation reproduces the manual
         // save/write/restore idiom byte-for-byte (contract in
         // rots/entity/render_cursor.h).
@@ -1304,7 +1327,9 @@ SPECIAL(ferry_captain)
 
     if (ferry_captain_data[num].timer == 0) {
         act(ferry_captain_data[num].move_in_inside, TRUE, host, ferryobj, 0, TO_ROOM);
-        {
+        // LS-3b T9b (review-1 finding M-1): the argument guard, same derivation
+        // and same byte-equivalence as the first one above.
+        if (ferryobj->in_room != NOWHERE) { // LS1-ALLOW: obj-location
             // ls3b T2: ScopedRenderLocation reproduces the manual
             // save/write/restore idiom byte-for-byte (contract in
             // rots/entity/render_cursor.h).
@@ -1314,13 +1339,15 @@ SPECIAL(ferry_captain)
     } else {
         act(ferry_captain_data[num].arrive_to_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
-        // ls3b T2: ScopedRenderLocation reproduces the manual
-        // save/write/restore idiom byte-for-byte (contract in
-        // rots/entity/render_cursor.h) -- destructor restores host at the
-        // closing brace below, exactly where the removed
-        // set_location(host, tmp) used to run.
-        rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
-        act(ferry_captain_data[num].arrive_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
+        // LS-3b T9b (review-1 finding M-1): the argument guard, same derivation
+        // and same byte-equivalence as the first one above.
+        if (ferryobj->in_room != NOWHERE) { // LS1-ALLOW: obj-location
+            // ls3b T2: ScopedRenderLocation reproduces the manual
+            // save/write/restore idiom byte-for-byte (contract in
+            // rots/entity/render_cursor.h).
+            rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
+            act(ferry_captain_data[num].arrive_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
+        }
     }
     return TRUE;
 }

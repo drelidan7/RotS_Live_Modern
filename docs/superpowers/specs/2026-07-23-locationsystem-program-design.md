@@ -724,14 +724,20 @@ summary.
 
 LS-3a's own R-C3 amendment (above) already corrected criterion (b) once. The census review's F1
 found the corrected text still unsatisfiable inside this wave's own declared scope: `room_of()` is,
-verbatim, `room_by_id_total(location_of(ch))` (`src/entity/placement.cpp:228-231`), and both T0
-censuses independently required `location_of()` to keep its plain `int`/`NOWHERE` contract (the
-`location_of` cost is the largest call-site population in the tree — 264 sites — and a
-representation change there was never budgeted). Measured at HEAD: **279 production `room_of(`
-call sites** and **264 production `location_of(` call sites**; every one of the 279 still reaches
+verbatim, `room_by_id_total(location_of(ch))` (`src/entity/placement.cpp`, `room_of()` at `:354`
+post-swap — the `:228-231` citation this paragraph originally carried is a master-baseline line
+that now points at `room_by_id()`; corrected at T9b, review-1 finding m-9), and both T0 censuses
+independently required `location_of()` to keep its plain `int`/`NOWHERE` contract (the
+`location_of` cost is the largest call-site population in the tree and a representation change
+there was never budgeted). Measured **at T0 census time** (`ls3b-census-review.md`, not at HEAD as
+this paragraph originally claimed — review-1 finding m-10): **279 production `room_of(` call
+sites** and **264 production `location_of(` call sites**; a best-effort re-derivation at T9b's HEAD
+gives ~272 / ~258, the ordinary drift of a wave's own edits. The figures are scale-setting, and
+nothing in the ruling below turns on them. Every one of those sites still reaches
 `room_data::operator[](-1)` for an absent character, and the tree pins that fallback
 *deliberately*: `RoomOfTest.ReturnsTheFallbackPointerForANowhereCharacter`
-(`src/tests/placement_tests.cpp:603-617`) exists precisely to hold it. The corrected-once text —
+(`src/tests/placement_tests.cpp:735`; the `:603-617` citation was likewise a stale master-baseline
+line, m-9) exists precisely to hold it. The corrected-once text —
 "no code path can reach `room_data::operator[]` with an index derived from a character's absent
 location" — is therefore false as written the moment `room_of()` is called on an absent character,
 which is every existing call site's contract.
@@ -757,8 +763,22 @@ deletion (`char_data::in_room` → `char_data::ls_location_id_`, `char_data::nex
 program spec's own delegated "or keeps only a private handle" option. Ruling **R-3b-A** records the
 consequence: criterion (a)'s "no location field" clause is satisfied under the reading **"no
 location field OBSERVABLE outside the placement core"**, not "no location field exists at all."
-T8 gave that reading a mechanical, compiler-enforced witness rather than leaving it a documentation
-claim: three C++20 `requires`-expression concepts (`HasPublicInRoomMember<char_data>`,
+**WHAT THAT READING DOES AND DOES NOT ASSERT, corrected at T9b (review-1 finding M-2).** The
+precise, defensible statement is *"no location field observable except through the annotated
+allow-list reasons"* — not "observable only inside the placement core". Re-measured outside the two
+whole-file owners and outside `src/tests`, the members are still named on **37 code lines across 15
+production `.cpp` files** (43 lines across 17 files if headers are included and the three field
+declarations excluded — both reviewers' bases reproduce exactly; see docs/BUILD.md's
+"DEVIATION 1" table). Every one of those lines carries a chartered `LS1-ALLOW` annotation and is
+seen by the gate, which is what the three bare-word tokens T8 added exist to guarantee. T5's own
+commit message recorded this as DEVIATION 1 and said the brief's "everything else compiles without
+naming them" proof was therefore not yet available; T6 re-expressed the test tier and T8 re-tokened
+the gate, but neither burned the production set down, and it is still 37 at T9b's HEAD. Burning it
+down is a future wave's work and was never in LS-3b's scope.
+
+T8 gave the reading a mechanical, compiler-enforced witness rather than leaving it a documentation
+claim — of the narrower half of it, which matters: the assertions prove the OLD PUBLIC SPELLINGS are
+gone, and say nothing about observability of the new members, which are ordinary public members. three C++20 `requires`-expression concepts (`HasPublicInRoomMember<char_data>`,
 `HasPublicNextInRoomMember<char_data>`, `HasPublicPeopleMember<room_data>`) plus three
 `static_assert`s, landed in `src/entity/placement.cpp` (already a whole-file `LS1-ALLOW`
 exemption, and `rots_entity` is an always-built target on every preset). The assertions are quiet
@@ -796,7 +816,18 @@ review finding (F20) discovered during landing:
 10. **R23 armed** — `save_char()` persists the stashed VNUM instead of `NOWHERE` when there is no
     `load_room` and no location, so the player returns to the room they left rather than their
     racial start room → `SaveCharChannelFallback.PersistsTheStashedVnumWhenThereIsNoLoadRoomAndNoLocation`
-    (+ its negative control).
+    (+ its negative control). **SCOPE CORRECTED AT T9b** (review-1 findings B-1a/B-1d/M-4): the
+    row as written silently applied to the whole session, because nothing ever cleared the VNUM
+    channel after login. That intercepted `interpre.cpp`'s DELIBERATE post-login
+    `save_char(d->character, NOWHERE, 0)` — whose own comment, six lines above the call, documents
+    that a character `calc_load_room()` could not place must persist `-1` and be routed to their
+    racial start room next login — and persisted the stale login VNUM instead. `load_character()`
+    now retires the channel at the placement point, restoring the pre-split answer at every
+    downstream reader; R23 keeps its real job, a FRESH channel as the rent path leaves one
+    statement before it saves. Pinned by
+    `LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheRealLoadCharacter` and
+    `LoadRoomRider.LoadCharacterRetiresTheVnumChannelOnceThePlacementIsDone`, the first two tests
+    in the tree that drive the real `load_character()`.
 11. **LS-3a rider R12 becomes real** — `stat <char>` reports the stashed room VNUM rather than an
     unrelated room's number → `ActWizInspection.StatCharacterReportsTheStashedRoomVnumForACharacterInTheLoginWindow`.
 12. **`store_to_char()` postcondition** — the character it fills in is explicitly nowhere →
@@ -811,8 +842,37 @@ normalizing every rent-loaded lamp. Fixed to the two-term shape
 `(location_of(ch) != NOWHERE) || (peek_load_room_vnum(ch) != NOWHERE)` (the same shape as R9/R10),
 pinned by `LoadRoomRider.RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn` +
 `AttachEquipmentTest.LightSlotHasNoRoomEffectWhenCharacterIsNowhere`. Every one of the 13 deltas is
-non-golden-observable: both boot goldens and the seed42 characterization golden stayed
-byte-identical at every commit of the wave, satisfying O-5's binding condition.
+non-golden-observable: the seed42 characterization golden stayed byte-identical at every commit of
+the wave and the native boot golden matched wherever it was run (T2/T5/T7, then every T9b
+production-touching commit — see AGENTS.md's corrected sentence), satisfying O-5's binding
+condition.
+
+**Riders 14 and 15, added at T9b (review-1 BLOCKER B-1).** The inventory above was scoped to the
+MENU-SITTER — census review F21's bounded three-reader set, whose three-site BOUND both
+whole-branch reviewers independently re-derived as CORRECT, though its stated reasoning is
+inverted and the right one is simply that a menu-sitter never reaches `load_character()` at all
+(review-1 finding m-12; `interpre.cpp`'s `CON_SLCT` option `'1'` is its only caller) — and was
+never extended to the character being LOADED, who is inside the same window and runs a great deal more code. Two further
+observable deltas live there, and both are now named and pinned:
+
+14. **The zap broadcast goes silent inside the load window** (B-1c). `equip_char()`'s two zap arms
+    narrate with `act(..., TO_ROOM)`; `act_impl` (`src/app/comm.cpp`) resolves TO_ROOM through
+    `location_of(ch) != NOWHERE` and now drops the line, where the pre-split code resolved the
+    persisted VNUM as an index and delivered "$n is zapped by $p" into an unrelated live room (or
+    into room 0 via the fallback). Rider 8's text named only the ITEM outcome. Strictly an
+    improvement, so pinned as characterization rather than reverted →
+    `LoadWindowBroadcast.ZapBroadcastIsSilentForALoadWindowWearer` + its placed-wearer control.
+15. **The corpse's destination on a load-window death** (B-1b, with the review's own mechanism
+    REFUTED). The review claimed `extract_char()`'s else arm now `extract_obj()`s — destroys — every
+    worn item that the pre-split path `obj_to_room()`'d. The tree says otherwise: `raw_kill()` calls
+    `make_corpse()` FIRST, and `make_physical_corpse()` unequips every worn slot into the corpse, so
+    `extract_char()` sees an empty `equipment[]` and its else arm has nothing to destroy. Worn gear
+    is not lost on that path, before or after the split. What IS different is where the corpse lands:
+    `make_physical_corpse()` ends with `obj_to_room(corpse, location_of(character))`, now the room-0
+    fallback rather than `world[persisted-vnum]` — the same room-0-fallback class riders 1-2 name →
+    `LoadWindowDeath.MakeCorpseEmptiesWornGearIntoTheCorpseBeforeExtractCharCanSeeIt`.
+
+Neither is golden-observable (both boot goldens and the seed42 golden unchanged across T9b).
 
 ### (d) The keying ruling (R-3b-A) and its evidence headline
 
@@ -831,6 +891,21 @@ unregistration mechanism is owed at all** — the store dies with the struct —
 non-issue rather than a fix.
 
 ### (e) The cursor family: `ScopedRenderLocation` (ruling R-3b-B)
+
+**T9b addendum (review-1 finding M-1): the invariant's first half is now MECHANICAL.**
+`placement.cpp`'s banner claimed the first half — *the field says `NOWHERE` implies the character
+is linked into no room* — holds unconditionally, cursor windows included, "because a cursor spoofs
+a REAL room id and never `NOWHERE`". Nothing enforced that, and the review found four live
+counterexamples: `SPECIAL(ferry_captain)` (`src/script/spec_pro.cpp`) opened cursors on
+`ferryobj->in_room` with no guard, on a host the function has already proven is chained, and that
+field is reachably `NOWHERE` two ways. Both sides are now closed: the four sites guard their own
+argument (byte-equivalently — each window's body is a single `act(..., TO_ROOM)`, which `act_impl`
+drops for a `NOWHERE` character anyway), and `ScopedRenderLocation`'s constructor and `retarget()`
+REFUSE to write `NOWHERE` over a character whose captured real location is a real room, logging a
+tripwire. The condition is deliberately NARROWER than the review's own "reject `NOWHERE`" wording:
+`fight.cpp`'s `death_cry()` legitimately opens a window on a genuinely absent character and
+retargets back to `NOWHERE` between doors, and a blanket refusal would have broken it. Three tests
+in `render_cursor_tests.cpp` pin the refusal, the `retarget()` path, and the narrowing.
 
 The census review's Table 1 found the definitive cursor inventory to be **35** production
 `set_location()` call sites — not the 47 (a LINE count, not a site count) or 31 either prior census

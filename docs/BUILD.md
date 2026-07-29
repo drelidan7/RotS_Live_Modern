@@ -1133,8 +1133,10 @@ move (nothing persists these three members directly). The rename was driven comp
 TU was re-run with `-fsyntax-only -ferror-limit=0` and only compiler-flagged positions were
 rewritten, closing at 310 re-spellings across 22 files with zero guessed sites.
 
-**The invariant**, stated at the top of `src/entity/placement.cpp` (the sole non-test owner of
-the three fields, alongside `containment.cpp`):
+**The invariant**, stated at the top of `src/entity/placement.cpp` (the placement core; the
+whole-file representation owners are `placement.cpp` and `containment.cpp`, and `handler.h`'s
+`occupant_range`/`first_occupant` API bodies are named as an owner by `placement.cpp`'s own banner
+-- see "DEVIATION 1" below for the production sites that still name the members outside all three):
 
 > `location_of(ch) == NOWHERE` implies `ch` is linked into no room's occupant chain, anywhere.
 > `location_of(ch) == r` implies `ch` is linked into exactly `world[r]`'s chain and no other.
@@ -1163,9 +1165,16 @@ spellings anywhere in the tree (`\bnext_in_room\b` does not match inside `ls_nex
 the character before the substring is `_`, not a word boundary) -- a true green from the check no
 longer applying to anything, not a bug. T8 closed it:
 
-- **Tokens: five -> eight**, per the established counting convention (the accessor-spelling
-  variants of one field count as one token, matching how the LS-3a "five, not four" narrative
-  above already counts `->in_room`/`.in_room`/`world[`/`next_in_room`/`people`). The three new
+- **Tokens: +3, taking `TOKEN_PATTERNS` from six entries to nine** (LS-3b T9b then added a tenth,
+  the `##` paste operator -- see below). The *delta* was always right; the absolutes this section
+  originally carried ("five -> eight") were not, and review-1's m-7 / review-2's F-2 are both
+  correct about it. The only re-derivable metric is the tuple's own length: master @`1c4f2e6`
+  carries **six** patterns (`->in_room`, `.in_room`, `::in_room`, `world[`, `next_in_room`,
+  `people`), LS-3b T8 took it to **nine**, and T9b to **ten**. The stale "five" predates
+  `::in_room`, which the LS-2 follow-up added on master (`bc3f8362`); the "accessor variants of one
+  field count as one" defence offered here originally is self-refuting, since the list it appeals
+  to counts `->in_room` and `.in_room` separately. AGENTS.md's LS-3a paragraph carries the same
+  inherited "five" and is corrected in place. The three new
   bare-word patterns, `ls_location_id_`/`ls_next_in_room_`/`ls_first_occupant_`, are chosen
   bare-word (not accessor-anchored) so they also catch a field's own DECLARATION, which is exactly
   where the gate's cold run found its only two real violations (`character.h:861`, `room.h:126` --
@@ -1177,12 +1186,26 @@ longer applying to anything, not a bug. T8 closed it:
   occupant-list splice` (zero production lines since at least the T0 census; its six surviving
   instances sit inside a whole-file-exempt test helper, so the retirement changes nothing
   observable, only tightens the ledger).
-- **Floor: 250 -> 300.** Re-verified against a 315-file scan (headroom had shrunk from the LS-3a
-  T4-era 57 files to 8); raised to restore proportional headroom.
+- **Floor: 250 -> 300.** Re-verified against a 315-file scan. The justification originally
+  recorded here had its arithmetic inverted (review-1, m-8): 307 - 250 = 57 at LS-3a T4, but
+  315 - 250 = **65**, so headroom had *grown* by 8, not shrunk to 8. The raise is still the right
+  call -- a floor is only useful if it tracks the real count closely enough to catch a broken scan
+  path -- and 315 - 300 = 15 is the headroom it actually leaves. The conclusion stands; the
+  reasoning as first written did not.
 - **The T8 self-test: 35 -> 47 cases** (net +12), covering the three new tokens' unannotated/
   annotated pairs, the bare-declaration catch, the `::`-qualified case, two over-match guards
   (prefixed/suffixed identifiers), and the retired-prefix rejection -- every new case
-  sabotage-proven RED before being restored green.
+  sabotage-proven RED before being restored green. **T9b took it to 56** (+9: the token-paste
+  evasion and its annotation/authorization paths, three over-match controls, and three
+  new-suffix probes), and the prefix count nine -> **ten** (`token-paste`).
+- **The token-paste evasion, closed (T9b; review-1 finding m-13).** The whole-branch review
+  demonstrated that a preprocessor `##` paste splits a tracked identifier across two macro
+  operands, defeating every identifier pattern while the compiler reassembles it -- `--check` exit
+  0 on a file that reached the private field for real. `##` is now a tracked token in its own
+  right (free: the tree's only two occurrences sit inside string literals the masker blanks), and
+  `SOURCE_SUFFIXES` gained six missing C++ spellings. What is still open -- member pointers,
+  `reinterpret_cast`, hand-computed offsets -- is now stated in
+  `docs/superpowers/location-read-allowlist.md` rather than papered over by the word "tripwire".
 - **The compile-time absence assertion (criterion (a)'s witness).** Three C++20
   `requires`-expression concepts plus three `static_assert`s in `src/entity/placement.cpp` fire a
   named, readable build error the instant a future edit reintroduces `char_data::in_room`,
@@ -1191,6 +1214,29 @@ longer applying to anything, not a bug. T8 closed it:
   `ctest` entry (a build-time witness, not a test); ctest counts are identical across every
   T8 commit.
 
+**DEVIATION 1, carried forward (review-1 finding M-2).** T5's commit message recorded this
+honestly and the tracked docs then dropped it; it belongs here. The private-handle rename satisfies
+corrected criterion (a) under R-3b-A's reading -- *no location field OBSERVABLE outside the
+placement core* -- and the `static_assert` trio is a real, compiler-enforced witness, but of a
+narrower claim than the phrasing suggests: it proves the **old public spellings**
+(`in_room`/`next_in_room`/`people`) are gone from `char_data`/`room_data`. It says nothing about
+the new members, which are ordinary public members with an `ls_`-prefixed name. Re-measured at this
+commit, outside the two whole-file owners and outside `src/tests`:
+
+| basis | lines | files |
+|---|---|---|
+| every line naming `ls_location_id_`/`ls_next_in_room_`/`ls_first_occupant_` | 52 | 18 |
+| ...code lines only (6 comment-only lines dropped) | 46 | 18 |
+| ...code lines excluding the 3 field DECLARATIONS (review-2's F-2 basis) | 43 | 17 |
+| ...code lines in `.cpp` files only (review-1's M-2 basis) | 37 | 15 |
+
+Both reviewers' figures reproduce exactly; they use different counting bases, not different trees.
+So the honest statement of criterion (a) at this commit is **"no location field observable except
+through the annotated allow-list reasons"** -- every one of those lines carries a chartered
+`LS1-ALLOW` annotation and is seen by the gate (the three bare-word tokens T8 added are what make
+that true). Burning the residual down to the placement core is a future wave's work, not something
+this one did; it was never in LS-3b's scope, and saying otherwise is what M-2 objected to.
+
 See `docs/superpowers/location-read-allowlist.md` for the full per-prefix disposition table and
 `.superpowers/sdd/ls3b-t8-report.md` for the byte-level audit.
 
@@ -1198,7 +1244,9 @@ See `docs/superpowers/location-read-allowlist.md` for the full per-prefix dispos
 T2 +13 (`f49fa799`+8/`e23d78e6`+3/`1787c7b9`+0/`c9c01016`+2) = **1826** -> T3 +4 (`445e61a5`+4/
 `8d2cca8d`+0) = **1830** -> T4 +0 (`47492483`+0/`b56f1e56`+0) = **1830** -> T5 +13 (`accccb95`) =
 **1843** -> T6 +0 (`6c171d2f`) = **1843** -> T7 +6 (`4c6e23ca`+4/`8b655c9a`+2/`d42c6e41`+0) =
-**1849** -> T8 +0 (`5cd9ab5c`+0/`5b6bfa9b`+0/`61d8613d`+0) = **1849**. See AGENTS.md's Testing
+**1849** -> T8 +0 (`5cd9ab5c`+0/`5b6bfa9b`+0/`61d8613d`+0) = **1849** -> T9b +10 (`381957e1`+0
+the three CI defects; `467cdd3c`+5 review-1 BLOCKER B-1; `a0622f28`+3 review-1 M-1 + M-5;
+`d4098cef`+2 review-1 M-6; the docs/gate-hardening commit +0) = **1859**. See AGENTS.md's Testing
 Guidelines chain entry for the full per-commit gate citation. No library-membership or
 `*LayerAcyclicity` change -- the nine linkchecks stay nine; the combat row stays DONE. This is the
 program's second not-strictly-zero-behavior-change wave (owner rulings O-5/O-6/O-7, following

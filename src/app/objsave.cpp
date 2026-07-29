@@ -511,6 +511,40 @@ void load_character(struct char_data* ch)
     char_to_room(ch, ch->specials2.load_room);
     act("$n has entered the game.", TRUE, ch, 0, 0, TO_ROOM);
 
+    // THE CHANNEL'S LIFETIME ENDS HERE (LS-3b T9b; review-1 findings B-1a,
+    // B-1d and M-4). The VNUM channel exists to carry the PERSISTED room
+    // number across the login window -- store_to_char() stashes it
+    // (db_players.cpp), calc_load_room() reads it (:555/:561/:579), and the
+    // char_to_room() one line above is the moment its job is done. Before the
+    // store split the channel and the location were literally one field, so
+    // that char_to_room() ENDED the channel's life by overwriting it: after
+    // placement peek_load_room_vnum() reported the placement rnum, and for a
+    // character calc_load_room() could not place (its bugged arm can return
+    // -1) it reported NOWHERE. Splitting the stores accidentally extended the
+    // channel to the whole session instead, which changed three readers'
+    // answers for any character who is at NOWHERE later on:
+    //   * save_char()'s R23 arm (db_players.cpp) -- it intercepted
+    //     interpre.cpp's deliberate `save_char(d->character, NOWHERE, 0)` six
+    //     lines after this function returns and persisted the STALE login
+    //     VNUM, defeating the racial-start-room routing that call site's own
+    //     comment documents (finding B-1a);
+    //   * equip_char()'s two zap guards (fight.cpp) and attach_equipment()'s
+    //     light-bump guard (equipment.cpp) -- their second term is scoped to
+    //     the load window by design (riders 8/10/12), and a channel that
+    //     outlives login silently widens all three (finding B-1d);
+    //   * `stat`'s in-room line (act_wiz.cpp:797).
+    // Retiring the channel at the placement point restores the pre-split
+    // answer at every one of them EXACTLY -- for a placed character the first
+    // term of each guard is true anyway, and for an unplaced one the pre-split
+    // field was NOWHERE too. It also makes rider 9's stated semantics ("return
+    // to the room they left") true as written, since the only channels R23
+    // can now see are fresh ones (the rent path re-stashes one statement
+    // before it saves, objsave.cpp:1490).
+    // NOT placed inside char_to_room(): the channel is a login-window
+    // concern, not a placement concern, and every other char_to_room() caller
+    // in the tree would then be clearing a channel it never wrote.
+    stash_load_room_vnum(ch, NOWHERE);
+
     // Crash_load already applied board points/aliases/followers directly from
     // its in-memory ObjectSaveData; `fp` (when non-null) is now only a
     // truthy "the load succeeded" signal, not a stream to keep reading from.

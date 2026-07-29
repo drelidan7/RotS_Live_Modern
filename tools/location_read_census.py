@@ -129,7 +129,17 @@ import sys
 # from the sweep is caught rather than tolerated.
 MINIMUM_SCANNED_FILE_COUNT = 300
 
-SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
+# LS-3b T9b (review-1 finding m-13, second half): the tuple stays CLOSED-WORLD
+# by design -- an open-world "scan every file" sweep would pull in goldens,
+# JSON fixtures and world data -- but it was missing six C++ spellings a
+# future file could legitimately use, each of which would have been a silent
+# blind spot: `.hxx`/`.h++` (alternate header spellings), `.tcc` (libstdc++'s
+# own template-implementation convention), `.inc` (textual include), and
+# `.ixx`/`.cppm` (C++20 module interface units -- not used in this codebase
+# today, which is exactly the kind of new-file-type migration that reopens a
+# gate hole). A suffix nothing uses costs nothing to list.
+SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp",
+                   ".hxx", ".h++", ".tcc", ".inc", ".ixx", ".cppm")
 # Widened past the original (".cpp", ".h", ".hpp") after the LS-2 whole-branch
 # review (Fable M4): the tuple was closed-world, so a future .cc/.cxx/.inl/.ipp
 # file would have escaped the sweep SILENTLY -- the one failure mode this gate
@@ -223,6 +233,38 @@ TOKEN_PATTERNS = (
     ("ls_location_id_", re.compile(r"\bls_location_id_\b")),
     ("ls_next_in_room_", re.compile(r"\bls_next_in_room_\b")),
     ("ls_first_occupant_", re.compile(r"\bls_first_occupant_\b")),
+    # THE PASTE OPERATOR ITSELF (LS-3b T9b; review-1 finding m-13). The
+    # whole-branch review demonstrated a working evasion of every pattern
+    # above, and it compiled clean into `ageland`:
+    #
+    #     #define LS_EVADE_A(a, b) a##b
+    #     ch->LS_EVADE_A(ls_location, _id_) = 0;
+    #
+    # Neither line ever contains a tracked identifier as a contiguous run of
+    # characters -- the preprocessor assembles it at expansion time -- so no
+    # amount of widening the identifier patterns can reach it. Line-based
+    # normalization does not help either: the `##` sits on the DEFINITION and
+    # the operands sit on the USE, in different files as often as not.
+    #
+    # So the operator is tracked directly. This is the cheapest closure that
+    # actually works, and it is free in this tree: `##` appears on exactly TWO
+    # lines tree-wide, both inside string literals ("Usage: top ##"), which
+    # the masker blanks before this pattern ever sees them -- so the gate
+    # stays green today and the FIRST future use of token pasting anywhere
+    # under src/ has to justify itself with a `token-paste` annotation. A
+    # single `#` (stringize, and every `#include`/`#define` line in the tree)
+    # is deliberately NOT matched.
+    #
+    # WHAT THIS STILL DOES NOT CATCH, said plainly rather than left implied:
+    # a member pointer handed out of an allow-listed file
+    # (`&char_data::ls_location_id_` as an `int char_data::*`), a
+    # `reinterpret_cast` over the struct, or a hand-computed offset. Those
+    # are not name-based evasions, and neither this gate nor the compile-time
+    # static_assert companion in src/entity/placement.cpp can see them. The
+    # gate is a tripwire against accidental reintroduction plus the one
+    # deliberate trick that was actually demonstrated -- not a sandbox, and
+    # docs/superpowers/location-read-allowlist.md now says so.
+    ("## (preprocessor token paste)", re.compile(r"##")),
 )
 
 ANNOTATION_MARKER = "LS1-ALLOW"
@@ -273,6 +315,12 @@ ALLOWED_REASON_PREFIXES = (
     "representation-decl",
     "representation-impl",
     "not-a-location",
+    # LS-3b T9b (review-1 finding m-13): the annotation path for the `##`
+    # token above. Minted because the token has no other escape hatch and a
+    # legitimate token-pasting macro is a perfectly ordinary thing for a
+    # future wave to write -- it just has to be visible when it happens. The
+    # prefix count goes nine -> ten; T8 had taken it eleven -> nine.
+    "token-paste",
 )
 
 RAW_STRING_PATTERN = re.compile(r'(?:u8|u|U|L)?R"([^ ()\\\t\r\n]{0,16})\(')
@@ -752,6 +800,37 @@ SELF_TEST_CASES = (
     # retirement always needs.)
     ("retired-prefix-no-longer-authorized",
      'char_data* h = room->people; // LS1-ALLOW: manual occupant-list splice (retired)\n', 1),
+    # --- LS-3b T9b: the token-paste evasion (review-1 finding m-13, probe P6).
+    # The reviewer's own probe, verbatim in shape. Note that NEITHER line
+    # contains a tracked identifier as a contiguous run of characters: that is
+    # the entire finding, and it is why the operator rather than the
+    # reassembled name is what this gate now tracks.
+    ("token-paste-evasion",
+     "#define LS_EVADE_A(a, b) a##b\nint z = ch->LS_EVADE_A(ls_location, _id_);\n", 1),
+    # The annotation path for the new token: a legitimate paste is silenceable,
+    # like every other tracked spelling.
+    ("token-paste-annotated",
+     "#define JOIN(a, b) a##b // LS1-ALLOW: token-paste (a real one)\n", 0),
+    # ...and only under the NEW prefix -- proving the mint changed gate
+    # behavior rather than just the tuple's contents.
+    ("token-paste-bogus-reason",
+     "#define JOIN(a, b) a##b // LS1-ALLOW: not-an-authorized-reason\n", 1),
+    # OVER-MATCH CONTROLS. A single `#` -- stringize, and every #include/
+    # #define/#ifdef line in the tree -- must not fire, or the gate would flag
+    # thousands of lines. And the two `##` occurrences that DO exist in the
+    # tree today live inside string literals; masking runs first, so they stay
+    # green (src/app/act_wiz.cpp:4207's "Usage: top ##" is this body verbatim).
+    ("stringize-single-hash-not-matched", "#define STR(x) #x\nconst char* s = STR(a);\n", 0),
+    ("include-directive-not-matched", "#include \"handler.h\"\nint clean = 0;\n", 0),
+    ("token-paste-inside-string-literal",
+     'send_to_char("Usage: top ## [[oldest] race].", ch);\n', 0),
+    # --- LS-3b T9b: SOURCE_SUFFIXES coverage for the six spellings added with
+    # the paste token. `header-suffix-scanned` above proves `.h` is scanned;
+    # these prove the closed-world tuple was widened for real, across a
+    # header-shaped, a template-implementation and a module suffix.
+    ("hxx-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.hxx"),
+    ("tcc-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.tcc"),
+    ("cppm-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.cppm"),
 )
 
 

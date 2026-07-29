@@ -76,8 +76,13 @@ assertion (`src/entity/placement.cpp`, added by **T8**, see below) is its mechan
 
 That still is not every conceivable form of raw representation access (O-I8,
 `.superpowers/sdd/ls2-wholebranch-review-opus.md`). **One** named exclusion remains untracked by
-construction, since it is not one of the eight tokens: `char_data::was_in_room`, a second parallel
-location store. It is a named LS-3b input recorded in
+construction, since it is not one of the tracked tokens: `char_data::was_in_room`, a second parallel
+location store. **Its disposition is recorded here rather than only in an ignored planning file**
+(LS-3b T9b, review-1 finding m-11): ruling **R-C5** (LS-3b census D §2, row 4) is *LEAVE AS A PLAIN
+`int` rnum sentinel* — it is a linkdead STASH (the character is genuinely in no room while it holds
+a value), its provenance is closed (every write tree-wide is either `NOWHERE` or a live
+`location_of()` read), and it never reaches `char_file_u`, so it costs no save-format decision. The
+same disposition is stated at the declaration itself, `src/core/include/rots/core/character.h`. It is a named LS-3b input recorded in
 `docs/superpowers/specs/2026-07-23-locationsystem-program-design.md`'s own As-built "out of LS-2's
 charter" list, not an oversight this ledger silently omits. Two entries LS-2 listed beside it no
 longer apply: `.people` is now tracked, and **`get_world()` was DELETED outright** by LS-3a T2
@@ -118,7 +123,7 @@ reader must not have to reverse-engineer that from the absence of a row.
 this program's charter; `zone_by_id()` exists but converting `zone_table[` call sites is not this
 wave's exit criterion).
 
-## The nine accepted `LS1-ALLOW` reason prefixes
+## The accepted `LS1-ALLOW` reason prefixes (**ten** as of LS-3b T9b)
 
 Hardcoded in the script's `ALLOWED_REASON_PREFIXES`; any other reason fails `--check` as
 `invalid-reason` (self-tested — an off-list reason trips the gate even when a whole-file exemption
@@ -199,6 +204,13 @@ so this retirement changed nothing observable anywhere in the tree.
   fourth `in_room` field in this tree alongside `char_data::in_room` (the subject),
   `obj_data::in_room` (`obj-location`), and `char_data::was_in_room` (a second parallel location
   store, out of LS-2 scope, an LS-3 input — see `.superpowers/sdd/ls2-census.md` R5).
+- `token-paste` **(LS-3b T9b)** — the annotation path for the `##` preprocessor paste operator,
+  which became a tracked token in its own right when review-1's finding m-13 demonstrated a working
+  evasion of every identifier pattern (see "What this gate does and does not guarantee" below).
+  **Zero production sites** today: the only two `##` occurrences in the tree sit inside string
+  literals and are blanked by the masker before the gate ever sees them, so this prefix exists for
+  the first future macro that legitimately pastes tokens — which will then be visible when it
+  happens.
 
 ## The `src/tests` deferral is RETIRED
 
@@ -238,9 +250,44 @@ location tokens and needs no ledger entry or annotation of its own. Do not read 
 sweep (§ above) now stands watch over: any future edit that reintroduces a raw `world[]`/`->in_room`
 into a macro body, or any other header, trips the gate the same way a `.cpp` body would.
 
+## What this gate does and does not guarantee (LS-3b T9b, review-1 finding m-13)
+
+This ledger has described the gate as a "reintroduction TRIPWIRE". That is accurate for the class
+it was built for — an ordinary edit, or a whole wave of them, putting a raw spelling back into a
+call site — and the LS-3a/LS-3b burndowns are the evidence. It is **not** accurate as a claim of
+tamper-resistance, and review-1's probe P6 demonstrated exactly that: a preprocessor token paste
+splits a tracked identifier across two macro operands, so no identifier pattern ever sees it, while
+the compiler reassembles it and the private field is reached for real. The probe
+
+```c
+#define LS_EVADE_A(a, b) a##b
+    ch->LS_EVADE_A(ls_location, _id_) = 0;
+```
+
+added to a non-owner app-tier file left `--check` at **exit 0** and compiled clean into `ageland`.
+
+**Closed, at the operator rather than at the name.** No amount of widening the identifier patterns
+can reach that shape — the `##` sits on the macro DEFINITION and the operands sit on the USE, often
+in different files — so `##` is now a tracked token in its own right, with `token-paste` as its
+annotation prefix. This is free in this tree: `##` appears on exactly two lines tree-wide, both
+inside string literals that the masker blanks, so the gate stays green today and the first future
+use anywhere under `src/` has to justify itself. Three self-test cases pin the closure (the probe
+itself, the annotation path, and the new prefix's authorization) and three over-match controls pin
+that a single `#` — every `#include`/`#define`/stringize in the tree — does not fire.
+`SOURCE_SUFFIXES`, the other half of the same finding, gained six spellings (`.hxx`, `.h++`,
+`.tcc`, `.inc`, `.ixx`, `.cppm`) so a future file type is not a silent blind spot; three more
+self-test cases pin those.
+
+**What remains open, stated plainly rather than left implied.** A member pointer handed out of an
+allow-listed file (`&char_data::ls_location_id_` as an `int char_data::*`), a `reinterpret_cast`
+over the struct, or a hand-computed offset are not name-based evasions; neither this gate nor the
+compile-time `static_assert` companion below can see any of them. Nothing name-anchored can. Read
+this gate as what it is: a tripwire against accidental reintroduction, plus the one deliberate
+trick that was actually demonstrated against it.
+
 ## The compile-time absence assertion — corrected criterion (a)'s mechanical witness
 
-This gate can only see PRESENCE: every one of its eight tokens flags a raw spelling wherever one
+This gate can only see PRESENCE: every one of its tracked tokens flags a raw spelling wherever one
 exists. It structurally cannot see an ABSENCE, so a clean `--check` alone never proved that
 `char_data::in_room` / `char_data::next_in_room` / `room_data::people` are actually gone rather than
 merely unused. **LS-3b T8** closed that gap with a compile-time check, not a gate line:

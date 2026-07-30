@@ -519,9 +519,10 @@ void load_character(struct char_data* ch)
     // store split the channel and the location were literally one field, so
     // that char_to_room() ENDED the channel's life by overwriting it: after
     // placement peek_load_room_vnum() reported the placement rnum, and for a
-    // character calc_load_room() could not place (its bugged arm can return
-    // -1) it reported NOWHERE. Splitting the stores accidentally extended the
-    // channel to the whole session instead, which changed three readers'
+    // character calc_load_room() could not place (its bugged arm used to be
+    // able to return -1, before m-14's clamp) it reported NOWHERE. Splitting
+    // the stores accidentally extended the channel to the whole session
+    // instead, which changed three readers'
     // answers for any character who is at NOWHERE later on:
     //   * save_char()'s R23 arm (db_players.cpp) -- it intercepted
     //     interpre.cpp's deliberate `save_char(d->character, NOWHERE, 0)` six
@@ -618,8 +619,19 @@ int calc_load_room(struct char_data* ch, int load_result)
         load_room = r_mortal_start_room[GET_RACE(ch)];
 
     /* here checking for bugged characters */
-    if (ch->tmpabilities.str < 1 || ch->abilities.str < 1 || ch->tmpabilities.dex < 1 || ch->abilities.dex < 1 || ch->tmpabilities.move < 1 || ch->points.spirit < 0 || ch->points.spirit > 100000 || ch->tmpabilities.move > 1000)
+    if (ch->tmpabilities.str < 1 || ch->abilities.str < 1 || ch->tmpabilities.dex < 1 || ch->abilities.dex < 1 || ch->tmpabilities.move < 1 || ch->points.spirit < 0 || ch->points.spirit > 100000 || ch->tmpabilities.move > 1000) {
+        // m-14 (LS-3b review follow-up): r_bugged_start_room holds a VNUM
+        // despite its r_ spelling and is never boot-recomputed, and this arm
+        // sits AFTER the general `< 0` clamp above -- so a world without that
+        // vnum made this the function's only -1 return, sending a CON_PLYNG
+        // character into char_to_room(ch, NOWHERE). Fall back to the racial
+        // start room instead. Deliberately a LOCAL clamp, not a relocation of
+        // the general one: moving that would silently change what any future
+        // arm added below it inherits.
         load_room = real_room(r_bugged_start_room);
+        if (load_room < 0)
+            load_room = r_mortal_start_room[GET_RACE(ch)];
+    }
 
     /* Special exception for characters that aren't level 1 yet... */
     if (!GET_LEVEL(ch))

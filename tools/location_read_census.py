@@ -24,7 +24,10 @@ table as a whole rather than reading a character's location.)
 ``was_in_room`` is a named LS-3b input, not an oversight -- see
 ``docs/superpowers/specs/2026-07-23-locationsystem-program-design.md``'s
 own As-built "out of LS-2's charter" list for the full account (O-I8,
-``ls2-wholebranch-review-opus.md``).
+``ls2-wholebranch-review-opus.md``). Its disposition, and every other room-id
+store's, is now recorded closed-world in the ledger's "Location-state
+registry" (Tables A/B), cross-checked against ``TOKEN_PATTERNS`` below by
+``--check`` -- see ``parse_registry``/``check_registry_consistency``.
 
 Wave **LS-3b T5** (THE SPLIT) privatized ``char_data::in_room`` /
 ``char_data::next_in_room`` / ``room_data::people`` by RENAME, to
@@ -518,6 +521,149 @@ def load_allow_listed_files(exception_path, repository_root):
     return allow_listed
 
 
+# The registry's two tables are marker-anchored for the same reason the
+# allow-list table is (Opus M10: a look-alike table elsewhere in the doc must
+# be inert). Floors are pinned per table so the check can never pass by
+# finding an empty or truncated registry.
+REGISTRY_TABLE_A_MARKER = "<!-- LOCATION-STATE-REGISTRY-TABLE-A -->"
+REGISTRY_TABLE_A_HEADER = "| Store | Declared at | Kind | Repr | Coverage |"
+REGISTRY_TABLE_B_MARKER = "<!-- LOCATION-STATE-REGISTRY-TABLE-B -->"
+REGISTRY_TABLE_B_HEADER = "| Carrier | Declared at | Repr | Class |"
+#
+# The A floor is pinned at 8, one BELOW the real ledger's current 9 rows --
+# not equal to it. The self-test's sabotage (b) direction drops exactly one
+# non-exempt TOKEN row (`ls_load_room_vnum_`) from a 9-row fixture to prove
+# `check_registry_consistency`'s Direction 2 catches an unregistered token;
+# a floor pinned AT 9 would raise the parser's own fail-closed SystemExit on
+# that 8-row probe before Direction 2 ever runs, masking the very check the
+# probe exists to exercise. One row of headroom is what lets the row-drop
+# probe reach the consistency check instead of the parser's floor -- the
+# below-floor sabotage (c') truncates to a single row and still trips this
+# floor with room to spare, so headroom here costs no real coverage.
+MINIMUM_REGISTRY_ROWS_A = 8
+MINIMUM_REGISTRY_ROWS_B = 6
+
+# Tokens that legitimately map to no Table-A row. Structural tokens track
+# syntax, not stores; the retired-spelling guards track member names no
+# current store spells (kept to catch reintroduction). Validity condition
+# recorded in the ledger beside the registry.
+REGISTRY_EXEMPT_TOKENS = frozenset({
+    "world[",
+    "## (preprocessor token paste)",
+    "next_in_room",
+    "people",
+})
+
+
+def _strip_fences(text):
+    """Drop fenced code blocks -- documentation, never data (M10 precedent)."""
+    live_lines = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            live_lines.append(line)
+    return live_lines
+
+
+def _parse_marked_table(live_lines, marker, header, minimum_rows, label):
+    """Parse the rows of the single marker-anchored table. Fails closed."""
+    marker_count = sum(1 for line in live_lines if line.strip() == marker)
+    if marker_count != 1:
+        raise SystemExit(
+            f"error: registry: {label} marker {marker!r} must appear exactly once "
+            f"outside any fenced code block (found {marker_count})."
+        )
+    rows = []
+    state = "before-marker"
+    for line in live_lines:
+        stripped = line.strip()
+        if state == "before-marker":
+            if stripped == marker:
+                state = "awaiting-header"
+            continue
+        if state == "awaiting-header":
+            if not stripped:
+                continue
+            if stripped != header:
+                raise SystemExit(
+                    f"error: registry: the line after {marker!r} must be "
+                    f"{header!r}, got {stripped!r}."
+                )
+            state = "in-table"
+            continue
+        if stripped.startswith("|") and set(stripped) <= set("|- :"):
+            continue
+        if not stripped.startswith("|"):
+            break
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        first_cell_match = re.match(r"^`([^`]+)`", cells[0])
+        if first_cell_match is None:
+            continue
+        spelling = first_cell_match.group(1)
+        member = spelling.rsplit("::", 1)[-1].rsplit(".", 1)[-1]
+        coverage_tokens = re.findall(r"`([^`]+)`", cells[-1]) if cells[-1].startswith("TOKEN") else []
+        rows.append({"store": spelling, "member": member, "coverage_tokens": coverage_tokens})
+    if len(rows) < minimum_rows:
+        raise SystemExit(
+            f"error: registry: {label} has {len(rows)} rows, below the floor of "
+            f"{minimum_rows} -- a truncated registry must not pass."
+        )
+    return rows
+
+
+def parse_registry(text):
+    """Parse the location-state registry (Tables A and B) out of ledger text."""
+    live_lines = _strip_fences(text)
+    rows_a = _parse_marked_table(live_lines, REGISTRY_TABLE_A_MARKER,
+                                 REGISTRY_TABLE_A_HEADER, MINIMUM_REGISTRY_ROWS_A, "Table A")
+    rows_b = _parse_marked_table(live_lines, REGISTRY_TABLE_B_MARKER,
+                                 REGISTRY_TABLE_B_HEADER, MINIMUM_REGISTRY_ROWS_B, "Table B")
+    return rows_a, rows_b
+
+
+def check_registry_consistency(rows_a, rows_b):
+    """The bidirectional closed-world cross-check (spec 1.3). Returns errors."""
+    del rows_b  # Table B is floor-checked by the parser; it carries no tokens.
+    errors = []
+    patterns_by_name = dict(TOKEN_PATTERNS)
+
+    # Direction 1: every TOKEN row names real tokens whose pattern matches a
+    # synthesized probe for the member. Accessor-anchored patterns cannot
+    # match a bare spelling (the anchor is their point -- spec review O-5), so
+    # probe with each access shape and accept any hit.
+    for row in rows_a:
+        for token_name in row["coverage_tokens"]:
+            pattern = patterns_by_name.get(token_name)
+            if pattern is None:
+                errors.append(
+                    f"registry row `{row['store']}` names token `{token_name}`, "
+                    f"which is not in TOKEN_PATTERNS"
+                )
+                continue
+            member = row["member"]
+            probes = (member, f"x->{member}", f"x.{member}", f"char_data::{member}")
+            if not any(pattern.search(probe) for probe in probes):
+                errors.append(
+                    f"registry row `{row['store']}`: token `{token_name}`'s pattern "
+                    f"matches no synthesized probe for member `{member}`"
+                )
+
+    # Direction 2: every non-exempt token maps to at least one Table-A row.
+    covered = {name for row in rows_a for name in row["coverage_tokens"]}
+    for token_name, _ in TOKEN_PATTERNS:
+        if token_name in REGISTRY_EXEMPT_TOKENS:
+            continue
+        if token_name not in covered:
+            errors.append(
+                f"token `{token_name}` has no location-state registry row and no "
+                f"exemption -- register the store or exempt the token, in the ledger"
+            )
+    return errors
+
+
 def source_files(search_paths, repository_root):
     """Return every eligible C++ source/header file under search_paths, recursively.
 
@@ -648,6 +794,35 @@ An example of the format, in a fence -- must NOT be parsed as the table:
 | Path | Count | Note |
 | --- | --- | --- |
 | `src/app/appendix.cpp` | 5 | an informational appendix row, NOT an exemption |
+"""
+
+# A synthetic, known-good registry mirroring the real one's token coverage.
+# Used only by --self-test; the real registry lives in the ledger doc and is
+# asserted by --check. If a future wave adds a token, this fixture needs the
+# matching row too -- the self-test failing here is the reminder.
+SELF_TEST_REGISTRY_OK = """
+<!-- LOCATION-STATE-REGISTRY-TABLE-A -->
+| Store | Declared at | Kind | Repr | Coverage |
+| --- | --- | --- | --- | --- |
+| `char_data::ls_location_id_` | `core/character.h:862` | live | rnum | TOKEN `ls_location_id_` |
+| `char_data::ls_next_in_room_` | `core/character.h:898` | live | handle | TOKEN `ls_next_in_room_` |
+| `room_data::ls_first_occupant_` | `core/room.h:126` | live | handle | TOKEN `ls_first_occupant_` |
+| `char_data::specials.ls_load_room_vnum_` | `core/character.h:353` | live | vnum | TOKEN `ls_load_room_vnum_` |
+| `char_data::specials.was_in_room` | `core/character.h:340` | live | rnum | UNTRACKED-BY-DESIGN (R-C5) |
+| `char_special2_data::load_room` | `core/types.h` | PERSISTED | vnum | UNTRACKED-BY-DESIGN (pervasive) |
+| `affected_type::modifier` | `core/types.h:719` | PERSISTED | rnum | UNTRACKED-BY-DESIGN (generic name) |
+| `obj_data::in_room` | `core/object.h:165` | deferred | rnum | TOKEN `->in_room` `.in_room` `::in_room` |
+| `shop_data::in_room` | `app/shop.cpp:63` | not-a-location | vnum | TOKEN `->in_room` `.in_room` `::in_room` |
+
+<!-- LOCATION-STATE-REGISTRY-TABLE-B -->
+| Carrier | Declared at | Repr | Class |
+| --- | --- | --- | --- |
+| `room_direction_data::to_room` | `core/types.h:395` | rnum | world topology |
+| `shop_data::stock_room` | `app/shop.cpp:64` | vnum | object-parameter |
+| `obj_data::obj_flags.value[0]` | `core/object.h` | vnum | object-parameter |
+| `target_data::ptr.room` | `core/types.h:248` | handle | transient targeting |
+| `r_mortal_start_room[]` etc. | `core/consts.cpp` | rnum | boot configuration |
+| `r_bugged_start_room` | `core/consts.cpp:2554` | vnum | boot configuration |
 """
 
 # (source body, expected --check exit code). Each runs the REAL gate end to
@@ -1009,6 +1184,55 @@ def run_self_test():
         if exit_code != 0:
             failures.append(f"an ANNOTATED src/tests file was still flagged\n{output}")
 
+        # ------------------------------------------------------------------
+        # Location-state registry cross-check (deferred-MINORs follow-up,
+        # spec 1.3). All synthetic: the real ledger is never read or mutated
+        # here -- --check owns the real-doc assertion.
+        # ------------------------------------------------------------------
+        rows_a, rows_b = parse_registry(SELF_TEST_REGISTRY_OK)
+        errors = check_registry_consistency(rows_a, rows_b)
+        if errors:
+            failures.append(f"registry: the known-good synthetic registry failed: {errors}")
+
+        # Sabotage (a): a TOKEN row naming a token that does not exist.
+        bad_a, bad_b = parse_registry(
+            SELF_TEST_REGISTRY_OK.replace("TOKEN `ls_location_id_`",
+                                          "TOKEN `no_such_token_`"))
+        if not check_registry_consistency(bad_a, bad_b):
+            failures.append("registry: a row naming a nonexistent token was not caught")
+
+        # Sabotage (b): a non-exempt token with no registry row. Drop the
+        # ls_load_room_vnum_ row entirely.
+        dropped = "\n".join(line for line in SELF_TEST_REGISTRY_OK.splitlines()
+                            if "ls_load_room_vnum_" not in line)
+        drop_a, drop_b = parse_registry(dropped)
+        if not check_registry_consistency(drop_a, drop_b):
+            failures.append("registry: a rowless non-exempt token was not caught")
+
+        # Sabotage (c): registry missing / unparseable -- parse_registry must
+        # raise, not return empty (fail closed).
+        for broken in ("no tables at all",
+                       SELF_TEST_REGISTRY_OK.replace(
+                           "<!-- LOCATION-STATE-REGISTRY-TABLE-A -->", "")):
+            try:
+                parse_registry(broken)
+                failures.append("registry: a missing/unmarked table parsed as success")
+            except SystemExit:
+                pass
+
+        # Sabotage (c'): below the row floor -- Table A truncated to one row.
+        header_end = SELF_TEST_REGISTRY_OK.index("| `char_data::ls_next_in_room_`")
+        try:
+            parse_registry(SELF_TEST_REGISTRY_OK[:header_end])
+            failures.append("registry: a below-floor Table A parsed as success")
+        except SystemExit:
+            pass
+
+        # Accessor-anchored coverage must satisfy check 1 via probe synthesis
+        # (spec review O-5/F-5): the known-good registry's obj_data::in_room
+        # row is the standing witness -- it is covered by the three accessor
+        # patterns, none of which matches the bare member spelling.
+
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -1042,6 +1266,22 @@ def main():
         else repository_root / "docs/superpowers/location-read-allowlist.md"
     )
     allow_listed_files = load_allow_listed_files(exception_path, repository_root)
+
+    # The location-state registry consistency assertion (spec 1.3) runs in
+    # --check against the REAL ledger only. A caller supplying --exceptions
+    # (the hermetic self-test's synthetic ledgers, which carry no registry)
+    # is probing the token gate, not the registry -- the registry's own
+    # failure directions are standing synthetic cases in run_self_test().
+    # Every existing --exceptions self-test case proves this gating already:
+    # a registry-less synthetic ledger still gates token findings normally.
+    if arguments.check and arguments.exceptions is None:
+        registry_rows_a, registry_rows_b = parse_registry(
+            exception_path.read_text(encoding="utf-8"))
+        registry_errors = check_registry_consistency(registry_rows_a, registry_rows_b)
+        if registry_errors:
+            for error in registry_errors:
+                print(f"registry inconsistency: {error}", file=sys.stderr)
+            return 1
 
     scanned_files = source_files(search_paths, repository_root)
 

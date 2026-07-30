@@ -68,6 +68,14 @@
   are carried in docs/BUILD.md's "DEVIATION 1" table (37 code lines in 15 `.cpp` files; 43
   including headers, excluding declarations), every one annotated and gate-visible. See
   docs/BUILD.md's "Wave LS-3b" subsection.
+  The same deferred-MINORs follow-up (Task 2, closing review-2 F-5) added a marker-anchored
+  "Location-state registry" (Tables A/B) to `docs/superpowers/location-read-allowlist.md`,
+  declaring the closed world of every room-id store tree-wide, and a `--check`-time
+  `check_registry_consistency` assertion in `tools/location_read_census.py`
+  (`parse_registry`/`check_registry_consistency`) that fails closed on one-sided drift between a
+  Table A TOKEN row and `TOKEN_PATTERNS`. `SELF_TEST_CASES` itself stayed at **58** (the five new
+  registry self-test directions are standalone assertions in `run_self_test()`, not new tuple
+  entries, matching the M10/floor-check precedent already in that function).
 - release-notes/, game design docs/, code documentation/: Docs and release history.
 
 ## Build, Test, and Development Commands

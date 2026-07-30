@@ -78,7 +78,9 @@ That still is not every conceivable form of raw representation access (O-I8,
 `.superpowers/sdd/ls2-wholebranch-review-opus.md`). **One** named exclusion remains untracked by
 construction, since it is not one of the tracked tokens: `char_data::was_in_room`, a second parallel
 location store. **Its disposition is recorded here rather than only in an ignored planning file**
-(LS-3b T9b, review-1 finding m-11): ruling **R-C5** (LS-3b census D §2, row 4) is *LEAVE AS A PLAIN
+(LS-3b T9b, review-1 finding m-11), and its "Location-state registry" Table A row (below) is now
+the authoritative, gate-checked record of WHY it stays untracked, superseding this paragraph as the
+canonical citation: ruling **R-C5** (LS-3b census D §2, row 4) is *LEAVE AS A PLAIN
 `int` rnum sentinel* — it is a linkdead STASH (the character is genuinely in no room while it holds
 a value), its provenance is closed (every write tree-wide is either `NOWHERE` or a live
 `location_of()` read), and it never reaches `char_file_u`, so it costs no save-format decision. The
@@ -203,7 +205,8 @@ so this retirement changed nothing observable anywhere in the tree.
   representation write. Five production sites, all `src/app/shop.cpp`: `shop_data::in_room` holds a **shop VNUM**, a
   fourth `in_room` field in this tree alongside `char_data::in_room` (the subject),
   `obj_data::in_room` (`obj-location`), and `char_data::was_in_room` (a second parallel location
-  store, out of LS-2 scope, an LS-3 input — see `.superpowers/sdd/ls2-census.md` R5).
+  store, out of LS-2 scope, an LS-3 input — see `.superpowers/sdd/ls2-census.md` R5 and, for the
+  now-authoritative disposition, the "Location-state registry" Table A row above).
 - `token-paste` **(LS-3b T9b)** — the annotation path for the `##` preprocessor paste operator,
   which became a tracked token in its own right when review-1's finding m-13 demonstrated a working
   evasion of every identifier pattern (see "What this gate does and does not guarantee" below).
@@ -308,3 +311,53 @@ ctest entry — a reintroduction is a compile failure, caught by every build gat
 already runs, not a new named check to remember to run. See `.superpowers/sdd/ls3b-t8-report.md` for
 the sabotage proof (a decoy member added for each of the three fields in turn, each reddening its own
 `static_assert` with a named, readable error, then restored).
+
+## Location-state registry
+
+The declared closed world of room-id storage (spec:
+`docs/superpowers/specs/2026-07-30-ls3b-deferred-minors-design.md` §1). Any future storage --
+struct member, file-scope global, or persisted field -- that carries a room id (rnum, vnum, or
+handle) MUST be added here in the same commit that introduces it: Table A with a coverage
+disposition if it records an entity's whereabouts, Table B with a class if not. A TOKEN
+disposition additionally requires the matching `TOKEN_PATTERNS` entry in
+`tools/location_read_census.py`; `--check` fails closed if the two drift one-sidedly.
+
+Mechanical detection of an arbitrarily-named new store is impossible (LS-3b review-2 F-5's own
+finding); this registry makes "add a store without registering it" a reviewable process
+violation rather than a silent gap. The check is closed against ONE-SIDED drift only: a commit
+that deletes a token and downgrades the matching row in the same edit passes both directions --
+a coordinated two-sided edit is a review question, not a gate question.
+
+The compile-time absence assertion (`src/entity/placement.cpp`) covers NONE of the rows below:
+it witnesses only the absence of the three retired public spellings
+(`in_room`/`next_in_room`/`people`). The retired-spelling guard tokens (`next_in_room`,
+`people`) are exempt from the reverse check below; their validity condition is that no struct
+anywhere spells those members -- a future struct reusing a retired spelling fires the token
+per-line but must be re-adjudicated against this registry.
+
+### Table A -- entity location stores
+
+<!-- LOCATION-STATE-REGISTRY-TABLE-A -->
+| Store | Declared at | Kind | Repr | Coverage |
+| --- | --- | --- | --- | --- |
+| `char_data::ls_location_id_` | `core/character.h:862` | live (private handle) | rnum | TOKEN `ls_location_id_` |
+| `char_data::ls_next_in_room_` | `core/character.h:898` | live (private chain link) | handle | TOKEN `ls_next_in_room_` |
+| `room_data::ls_first_occupant_` | `core/room.h:126` | live (private chain head) | handle | TOKEN `ls_first_occupant_` |
+| `char_data::specials.ls_load_room_vnum_` | `core/character.h:353` | live (login-window channel; accessor-gated via `stash_load_room_vnum`/`peek_load_room_vnum`) | vnum | TOKEN `ls_load_room_vnum_` |
+| `char_data::specials.was_in_room` | `core/character.h:340` | live (linkdead stash; NOT the representation, per R-C5 above) | rnum | UNTRACKED-BY-DESIGN (tokening it would mint ~15 permanent annotations with no honest reason prefix and no burndown path -- spec review O-3/F-3) |
+| `char_special2_data::load_room` | `core/types.h` | PERSISTED (playerfile; rnum transiently in the equip_lost window) | vnum | UNTRACKED-BY-DESIGN (pervasive; a token needs its own census) |
+| `affected_type::modifier` | `core/types.h:719` | PERSISTED (playerfile; a room rnum under `SPELL_BEACON` only) | rnum | UNTRACKED-BY-DESIGN (generic field name -- `obj_affected_type::modifier` at `:384` is a second member of the same spelling; guarded by the O-7 two-sided load/save guard instead) |
+| `obj_data::in_room` | `core/object.h:165` | deferred (LS-4 campaign) | rnum | TOKEN `->in_room` `.in_room` `::in_room` |
+| `shop_data::in_room` | `app/shop.cpp:63` | not-a-location (shop identity) | vnum | TOKEN `->in_room` `.in_room` `::in_room` |
+
+### Table B -- other room-id carriers
+
+<!-- LOCATION-STATE-REGISTRY-TABLE-B -->
+| Carrier | Declared at | Repr | Class |
+| --- | --- | --- | --- |
+| `room_direction_data::to_room` | `core/types.h:395` | rnum | world topology (exit target; the LS-2 review's dangling-fixture-pointer class) |
+| `shop_data::stock_room` | `app/shop.cpp:64` | vnum | object-parameter room reference (LS-2 T3d resolver trap) |
+| `obj_data::obj_flags.value[0]` | `core/object.h` (meaning under `ITEM_LEVER` only) | vnum | object-parameter room reference (resolved at `act_move.cpp:1829`; included because `SPELL_BEACON` is -- same discriminated-generic-field class) |
+| `target_data::ptr.room` | `core/types.h:248` | handle | transient targeting (queued-command target) |
+| `r_mortal_start_room[]` / `r_mortal_idle_room[]` / `r_immort_start_room` / `r_frozen_start_room` / `r_retirement_home_room` / `mortal_maze_room[][2]` | `core/consts.cpp` (recomputed by `check_start_rooms()`, `world/db_world.cpp`) | rnum | boot/world configuration |
+| `r_bugged_start_room` | `core/consts.cpp:2554` | **vnum, despite the `r_` spelling** (never boot-recomputed; the m-14 root cause -- see this PR's spec §2) | boot/world configuration |

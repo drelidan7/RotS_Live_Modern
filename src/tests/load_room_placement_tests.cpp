@@ -3186,7 +3186,7 @@ TEST(LoadRoomRider, RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn) 
 // RED-FIRST: against the unclamped arm (pre-m-14), the placement assertions
 // below fail first -- location_of(&player) stays NOWHERE against the
 // expected racial start rnum 1.
-TEST(LoadRoomRider, PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheRealLoadCharacter) {
+TEST(LoadRoomRider, PostLoginSaveOfABuggedCharacterPersistsThePlacedRoomThroughTheRealLoadCharacter) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
     ScopedPlayerTable fixture_player_table{nullptr};

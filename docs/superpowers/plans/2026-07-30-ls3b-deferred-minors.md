@@ -549,7 +549,7 @@ git commit -m "ls3b-minors: location-state registry + --check consistency assert
 - Consumes: nothing from Tasks 1-2 (fully independent).
 - Produces: nothing consumed later. Test names:
   `LoadRoomRider.PostLoginSaveLandsABuggedCharacterInTheRacialStartRoom` (flipped ROW-1),
-  `LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheRealLoadCharacter`
+  `LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsThePlacedRoomThroughTheRealLoadCharacter`
   (kept name, flipped placement assertions), `LoadRoomRider.ResolvableBuggedRoomIsStillUsed`
   (new positive control).
 
@@ -660,7 +660,7 @@ TEST(LoadRoomRider, PostLoginSaveLandsABuggedCharacterInTheRacialStartRoom) {
 
 - [ ] **Step 2: Flip the B-1a witness's placement half, red-first**
 
-In `LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheRealLoadCharacter`
+In `LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsThePlacedRoomThroughTheRealLoadCharacter`
 (~line 3175): add the same `kDistinctStartRnum = 1` override right after the fixtures; replace
 the two placement assertions after `load_character(&player)`:
 

@@ -3793,39 +3793,41 @@ void nanny(struct descriptor_data* d, char* arg)
             // endnew
             reset_char(d->character);
             load_character(d->character); // new function in objsave
-            // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 1): NOWHERE,
-            // not location_of(d->character). load_character() has just placed
-            // this character by RNUM (objsave.cpp:502), and save_char()'s
-            // explicit arm persists its argument with NO conversion -- so the
-            // old shape wrote an rnum into a field the on-disk format, and
-            // calc_load_room()'s own real_room() call, both read as a VNUM.
-            // NOWHERE hands the work to save_char()'s first fallback arm,
-            // which runs the room-vnum hook over the same location: identical
-            // for a placed character, and strictly better for one who is not.
-            // calc_load_room()'s bugged-character arm now clamps to the
-            // racial start room instead of returning -1 (m-14) when
-            // real_room(r_bugged_start_room) misses, so char_to_room() always
-            // places this character; NOWHERE still persists so the next login
-            // reaches the same clamp again, whereas room_by_id_total(
-            // location_of(...))->number would resolve through operator[]'s
-            // room-0 fallback and relocate them to whatever room sits at
-            // index 0.
+            // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 1): NOWHERE, not
+            // location_of(d->character). load_character() has just placed this character by RNUM
+            // (objsave.cpp:502), and save_char()'s explicit arm persists its argument with NO
+            // conversion -- so the old shape wrote an rnum into a field the on-disk format, and
+            // calc_load_room()'s own real_room() call, both read as a VNUM. NOWHERE hands the work
+            // to save_char()'s first fallback arm, which runs the room-vnum hook over the same
+            // location: identical for a placed character, and strictly better for one who is not.
+            // calc_load_room()'s bugged-character arm now clamps to the racial start room instead
+            // of returning -1 (m-14) when real_room(r_bugged_start_room) misses, so char_to_room()
+            // always places this character, and save_char()'s first fallback arm -- (load_room ==
+            // NOWHERE) && (location_of(ch) != NOWHERE), db_players.cpp -- always fires here and
+            // persists THAT placement's own vnum, not NOWHERE. Passing location_of(d->character)
+            // directly would resolve identically today, but stays the wrong choice on principle:
+            // room_by_id_total(location_of(...))->number would resolve through operator[]'s room-0
+            // fallback and relocate an unplaced character (a shape this call site cannot reach
+            // post-clamp, but must not start relying on that) to whatever room sits at index 0.
             //
-            // THAT RATIONALE IS LOAD-BEARING ON load_character()'s CHANNEL
-            // RETIREMENT, and was briefly false (LS-3b T9b; review-1 finding
-            // B-1a). The store split left the VNUM channel holding the
-            // persisted login room for the rest of the session, which armed
-            // save_char()'s R23 fail-safe on exactly the shape above
-            // (load_room NOWHERE, location NOWHERE, channel set) and
-            // persisted the stale login VNUM instead of -1 -- routing the
-            // bugged character back to the room they came from rather than to
-            // their racial start room, contradicting the paragraph above
-            // without changing a character of it. load_character() now clears
-            // the channel once it has placed the character (objsave.cpp), so
-            // this call reaches save_char() with both fallback arms dead and
-            // persists -1, exactly as written here. Pinned by
-            // LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsNowhere-
-            // ThroughTheRealLoadCharacter.
+            // THAT RATIONALE IS LOAD-BEARING ON load_character()'s CHANNEL RETIREMENT, and was
+            // briefly false (LS-3b T9b; review-1 finding B-1a) before m-14's clamp landed: the
+            // store split left the VNUM channel holding the persisted login room for the rest of
+            // the session, which armed save_char()'s R23 fail-safe on exactly the shape above
+            // (load_room NOWHERE, location NOWHERE, channel set) and persisted the stale login VNUM
+            // instead of -1 -- routing the bugged character back to the room they came from rather
+            // than to their racial start room. m-14's clamp then removed that
+            // load-room-NOWHERE/location-NOWHERE shape entirely: the character is always placed, so
+            // this call now reaches save_char() with the LOCATION arm live -- it fires ahead of the
+            // channel arm regardless of the channel's own state, per the arm ordering above -- and
+            // persists the placed room's own vnum. Behaviorally equivalent to the pre-clamp -1 on
+            // next login (a persisted racial-start vnum and a persisted NOWHERE both route to the
+            // racial start room), but via a different mechanism now. Pinned by
+            // LoadRoomRider.PostLoginSaveOfABuggedCharacterPersistsThePlacedRoom-
+            // ThroughTheRealLoadCharacter (the flagship, asserting the placed vnum); the channel's
+            // own retirement is pinned separately, on the ordinary non-bugged path where the
+            // location arm doesn't decide the outcome, by
+            // LoadRoomRider.LoadCharacterRetiresTheVnumChannelOnceThePlacementIsDone.
             save_char(d->character, NOWHERE, 0);
             STATE(d) = CON_PLYNG;
             report_news(d->character);

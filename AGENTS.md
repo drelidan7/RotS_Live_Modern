@@ -58,7 +58,10 @@
   reviewer demonstrated a working evasion in which a token paste splits a tracked identifier
   across two macro operands, defeating every identifier pattern while the compiler reassembles
   it — minted `token-paste` as its annotation prefix (nine → **ten**), added six missing C++
-  suffixes to `SOURCE_SUFFIXES`, and took `--self-test` to **56** cases. A compile-time
+  suffixes to `SOURCE_SUFFIXES`, and took `--self-test` to **56** cases; the LS-3b
+  deferred-MINORs follow-up took it to **eleven** (a bare-word `ls_load_room_vnum_` token —
+  the fourth ls_* private store, one annotation) and `--self-test` to **58** cases. A
+  compile-time
   `static_assert` companion in `src/entity/placement.cpp` witnesses criterion (a)'s "no location
   field [observable]" clause independently of the gate itself — for the OLD public spellings; the
   new members are ordinary public members, and the residual production sites that still name them

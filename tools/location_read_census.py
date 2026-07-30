@@ -233,6 +233,16 @@ TOKEN_PATTERNS = (
     ("ls_location_id_", re.compile(r"\bls_location_id_\b")),
     ("ls_next_in_room_", re.compile(r"\bls_next_in_room_\b")),
     ("ls_first_occupant_", re.compile(r"\bls_first_occupant_\b")),
+    # LS-3b deferred-MINORs follow-up (spec review O-3/F-2). The fourth ls_*
+    # private store -- the login-window VNUM channel. Same bare-word design
+    # and same rationale as the three rename tokens above: the spelling is
+    # unique tree-wide, and a bare pattern also catches the declaration.
+    # Promoted instead of `was_in_room` (the original draft's candidate):
+    # this one costs exactly ONE annotation (the declaration; the only two
+    # real access lines live in the whole-file-exempt representation owner,
+    # placement.cpp), fits an existing prefix, and converts the registry's
+    # ACCESSOR-GATED prose claim into a checked invariant.
+    ("ls_load_room_vnum_", re.compile(r"\bls_load_room_vnum_\b")),
     # THE PASTE OPERATOR ITSELF (LS-3b T9b; review-1 finding m-13). The
     # whole-branch review demonstrated a working evasion of every pattern
     # above, and it compiled clean into `ageland`:
@@ -831,6 +841,14 @@ SELF_TEST_CASES = (
     ("hxx-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.hxx"),
     ("tcc-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.tcc"),
     ("cppm-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.cppm"),
+    # LS-3b deferred-MINORs follow-up (spec review O-3/F-2): the fourth ls_*
+    # private store gets the same bare-word token as its three siblings. The
+    # ACCESSOR-GATED claim in the location-state registry is otherwise
+    # enforced by nothing -- a raw write to the channel anywhere outside the
+    # representation owner must be visible to this gate.
+    ("ls-load-room-vnum-unannotated", "ch->specials.ls_load_room_vnum_ = 5;\n", 1),
+    ("ls-load-room-vnum-annotated",
+     "ch->specials.ls_load_room_vnum_ = 5; // LS1-ALLOW: write (probe)\n", 0),
 )
 
 

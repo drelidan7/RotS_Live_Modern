@@ -1166,11 +1166,14 @@ the character before the substring is `_`, not a word boundary) -- a true green 
 longer applying to anything, not a bug. T8 closed it:
 
 - **Tokens: +3, taking `TOKEN_PATTERNS` from six entries to nine** (LS-3b T9b then added a tenth,
-  the `##` paste operator -- see below). The *delta* was always right; the absolutes this section
+  the `##` paste operator -- see below; the LS-3b deferred-MINORs follow-up PR added an eleventh,
+  a bare-word `ls_load_room_vnum_` token for the fourth `ls_*` private store). The *delta* was
+  always right; the absolutes this section
   originally carried ("five -> eight") were not, and review-1's m-7 / review-2's F-2 are both
   correct about it. The only re-derivable metric is the tuple's own length: master @`1c4f2e6`
   carries **six** patterns (`->in_room`, `.in_room`, `::in_room`, `world[`, `next_in_room`,
-  `people`), LS-3b T8 took it to **nine**, and T9b to **ten**. The stale "five" predates
+  `people`), LS-3b T8 took it to **nine**, T9b to **ten**, and the deferred-MINORs follow-up PR
+  to **eleven**. The stale "five" predates
   `::in_room`, which the LS-2 follow-up added on master (`bc3f8362`); the "accessor variants of one
   field count as one" defence offered here originally is self-refuting, since the list it appeals
   to counts `->in_room` and `.in_room` separately. AGENTS.md's LS-3a paragraph carries the same

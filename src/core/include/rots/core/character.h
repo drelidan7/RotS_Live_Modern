@@ -350,7 +350,7 @@ struct char_special_data {
     // lives in char_special_data, the NON-persisted sibling of
     // char_special2_data (census D section 4), so it costs no save-format
     // change and never reaches char_file_u.
-    int ls_load_room_vnum_ = NOWHERE;
+    int ls_load_room_vnum_ = NOWHERE; // LS1-ALLOW: representation-decl (the login-window VNUM channel's field itself -- not a call site; accessor-gated via stash_load_room_vnum/peek_load_room_vnum, placement.cpp)
 
     int ENERGY; /* current energy */
     sh_int current_parry; /*parry currently affected by 'parry split' */

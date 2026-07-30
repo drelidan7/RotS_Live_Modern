@@ -1241,7 +1241,10 @@ that true). Burning the residual down to the placement core is a future wave's w
 this one did; it was never in LS-3b's scope, and saying otherwise is what M-2 objected to.
 
 See `docs/superpowers/location-read-allowlist.md` for the full per-prefix disposition table and
-`.superpowers/sdd/ls3b-t8-report.md` for the byte-level audit.
+`.superpowers/sdd/ls3b-t8-report.md` for the byte-level audit. The ledger also now carries a
+marker-anchored "Location-state registry" (Tables A/B) cross-checked by `--check` against
+`TOKEN_PATTERNS`; any future room-id storage must register there in the same commit that
+introduces it (see `docs/superpowers/specs/2026-07-30-ls3b-deferred-minors-design.md` §1).
 
 **Reconciled chain:** 1801 -> T1 +12 (`dbb165be`+6/`712a0640`+6; T1b `71d70fcc`+0) = **1813** ->
 T2 +13 (`f49fa799`+8/`e23d78e6`+3/`1787c7b9`+0/`c9c01016`+2) = **1826** -> T3 +4 (`445e61a5`+4/

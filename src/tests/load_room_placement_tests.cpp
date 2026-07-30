@@ -1707,44 +1707,34 @@ TEST(LoadRoomRider, PostLoginSavePersistsTheLoginRoomVnumNotItsRnum) {
     RELEASE(player.player.name);
 }
 
-// ROW 1 -- the arm that DECIDES the shape (T0b-1 finding S10).
+// ROW 1, post-m-14: the bugged arm can no longer return -1. When
+// real_room(r_bugged_start_room) misses, calc_load_room() clamps to the
+// racial start room, so the character is genuinely PLACED.
 //
-// calc_load_room()'s "bugged character" arm (objsave.cpp:588-589) sits AFTER
-// the `if (load_room < 0)` clamp above it and is itself
-// `real_room(r_bugged_start_room)` -- a global spelled as an RNUM handed to a
-// VNUM lookup. So it can return -1, and load_character() then calls
-// char_to_room(ch, -1) on the ordinary login path. Ruling R-C2 describes what
-// that produced, UNTIL LS-3b T5: room_by_id_total(-1) hit operator[]'s room-0
-// fallback, so the character was spliced into ROOM 0's occupant chain while
-// the location field said NOWHERE -- a torn state, reproduced here through
-// production rather than asserted into existence.
+// CORRECTED FROM THE ORIGINAL DESIGN PREDICTION (found red-first, verified
+// empirically): the persisted value does NOT stay NOWHERE. Once the
+// character is genuinely placed, save_char()'s FIRST arm --
+// `(load_room == NOWHERE) && (location_of(ch) != NOWHERE)` (db_players.cpp)
+// -- fires and converts the placement to its own vnum, ahead of the
+// channel-based R23 arm the pre-flip test exercised. There is no more torn
+// state (NOWHERE-persisted vs. actually-placed) for save_char to reconcile;
+// placement and persistence now agree on the same room. See the commit
+// message for the sabotage-probe evidence.
 //
-// THE ASSERTION BELOW IS INVERTED AS OF LS-3b T5, under owner ruling O-5, and
-// the inversion is deliberately the wave's flagship witness: same fixture,
-// same production call, opposite expectation. char_to_room(ch, NOWHERE) now
-// performs NO splice, NO light bump and NO zone-power bump -- NOWHERE means
-// linked nowhere -- so room 0's chain stays empty and the character is
-// genuinely absent rather than half-present. What the amendment buys is on
-// display two paragraphs down: the hand-undo this test used to need at the
-// end (because char_from_room() early-returns for a torn character and would
-// have left a stack char_data in a process-global chain) is now a no-op.
-//
-// THE JUSTIFICATION FOR `NOWHERE`: in that state save_char(ch, NOWHERE, 0)
-// persists NOWHERE, which sends the character to their racial start room on
-// the next login (calc_load_room's own first mortal arm). The rejected
-// mechanical conversion, room_by_id_total(location_of(ch))->number, would
-// instead resolve through the SAME room-0 fallback and persist world[0]'s
-// vnum -- silently relocating a bugged character to whatever room happens to
-// sit at index 0. Both values are asserted below.
-//
-// This arm is NOT red against the pre-fix line: location_of(&player) IS
-// NOWHERE here, so the unfixed statement passed NOWHERE too and agreed. It is
-// red against the rejected alternative, which is what it exists to rule out
-// (sabotage-proven -- see the commit message).
-TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereAndLinksThemIntoNoRoomAtAll) {
+// DISCRIMINATION (spec review O-2): the racial start room is overridden to
+// rnum 1 because the fixture default (rnum 0) is the same room the pre-fix
+// room-0 fallback resolves to -- assertions against rnum 0 cannot tell the
+// clamp from the bug. RED-FIRST: against the unclamped arm, computed here is
+// -1 and location_of() stays NOWHERE, so the first two assertions fail.
+TEST(LoadRoomRider, PostLoginSaveLandsABuggedCharacterInTheRacialStartRoom) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
     ScopedPlayerTable fixture_player_table{nullptr};
+
+    // The discrimination override: a start room distinct from rnum 0.
+    constexpr int kDistinctStartRnum = 1;
+    for (int race = 0; race < MAX_RACES; ++race)
+        r_mortal_start_room[race] = kDistinctStartRnum;
 
     char_data player{};
     make_mortal_player(player);
@@ -1763,82 +1753,86 @@ TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereAndLinksThemIntoNo
     descriptor.next = nullptr;
     player.desc = &descriptor;
 
-    // A vnum no room in this fixture carries (the stamped vnums are 5..55),
-    // so real_room() misses and the bugged arm yields -1. ScopedStartRooms
-    // restores the global, and its mini_mud = 1 keeps real_room()'s
-    // "does not exist in database" line off stderr.
+    // A vnum no room in this fixture carries, so real_room() misses and the
+    // bugged arm takes its NEW fallback.
     r_bugged_start_room = 999999;
-
-    // Below calc_load_room()'s bugged-character floor (str >= 1).
     player.abilities.str = 0;
     player.tmpabilities.str = 0;
 
     player.specials2.load_room = kOwnerVnum;
     replay_load_character_guard(player);
     const int computed_load_room = calc_load_room(&player, RENT_RENTED);
-    ASSERT_EQ(computed_load_room, NOWHERE) << "calc_load_room's bugged arm did not return -1";
+    ASSERT_EQ(computed_load_room, kDistinctStartRnum)
+        << "the clamped bugged arm must fall back to the racial start room";
 
-    // load_character (objsave.cpp:502) with that value. Before LS-3b T5 this
-    // produced R-C2's torn state; under owner ruling O-5's amendment it
-    // produces a genuinely absent character.
     char_to_room(&player, computed_load_room);
-    ASSERT_EQ(location_of(&player), NOWHERE) << "the field should say nowhere";
+    ASSERT_EQ(location_of(&player), kDistinctStartRnum);
+    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(kDistinctStartRnum)), &player)
+        << "a placed character must be linked into the start room's chain";
     ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), nullptr)
-        << "...and so should the chain: NOWHERE means linked nowhere (O-5)";
-    // load_character's tail (LS-3b T9b): the channel is spent the moment the
-    // placement above has consumed it. DECISIVE here, unlike in the test
-    // above -- see the paragraph beside the GET_LOADROOM assertion.
+        << "...and NOT into room 0 (the pre-fix fallback room)";
     stash_load_room_vnum(&player, NOWHERE);
 
     player.specials2.load_room = -12345;
-
     save_char(&player, NOWHERE, 0);
 
-    // WHAT save_char() PERSISTS. This assertion moved twice and its final
-    // value is the ORIGINAL one, which is the point.
-    //
-    // Before LS-3b T5 it was NOWHERE. The store split armed save_char()'s R23
-    // fail-safe -- `peek_load_room_vnum(ch) != NOWHERE`, written by LS-3a as a
-    // provable no-op because channel and location were then one field -- on
-    // exactly this shape, and T5 recorded the resulting kOwnerVnum here as the
-    // arm's witness. The whole-branch review (finding B-1a) then showed that
-    // outcome contradicts a rationale written in the tree six lines from the
-    // production call site: interpre.cpp's post-login save passes NOWHERE
-    // DELIBERATELY so that a character calc_load_room() could not place is
-    // routed to their racial start room on the next login. R23 was silently
-    // overriding that with the stale login room.
-    //
-    // The cause was the channel outliving the placement it exists to perform;
-    // load_character() now retires it (objsave.cpp), so both fallback arms are
-    // dead here and the persisted value is NOWHERE again. R23 keeps its real
-    // job -- a FRESH channel, as the rent path leaves one statement before it
-    // saves -- which SaveCharChannelFallback.* below pins directly, in
-    // isolation.
-    EXPECT_EQ(GET_LOADROOM(&player), NOWHERE);
+    // CORRECTED FROM THE BRIEF'S ORIGINAL PREDICTION (found red-first,
+    // verified empirically against the real save_char()): now that the
+    // character is genuinely PLACED, save_char()'s FIRST arm --
+    // `(load_room == NOWHERE) && (location_of(ch) != NOWHERE)`
+    // (db_players.cpp) -- fires ahead of the channel-based R23 arm and
+    // converts the placement to its vnum, so the persisted value is
+    // room_vnum_for(kDistinctStartRnum), not NOWHERE. There is no more torn
+    // state to reconcile: placement and persistence now agree, which is
+    // itself the fix's point -- see the commit message for the sabotage
+    // evidence that this arm, not the channel, decides the outcome here.
+    EXPECT_EQ(GET_LOADROOM(&player), room_vnum_for(kDistinctStartRnum));
     EXPECT_NE(GET_LOADROOM(&player), kOwnerVnum);
     EXPECT_NE(GET_LOADROOM(&player), -12345);
-    // ...and still NOT the rejected mechanical conversion's value -- world[0]'s
-    // vnum, reached through the room-0 fallback -- which is the discrimination
-    // this test was written for and which the R23 arm does not disturb.
     EXPECT_NE(GET_LOADROOM(&player), room_vnum_for(0));
 
-    // ...and what the rejected mechanical conversion WOULD have persisted:
-    // world[0]'s vnum, an unrelated real room.
-    EXPECT_EQ(room_by_id_total(location_of(&player))->number, room_vnum_for(0));
-    EXPECT_NE(room_by_id_total(location_of(&player))->number, NOWHERE);
+    EXPECT_EQ(room_by_id_total(location_of(&player))->number,
+              room_vnum_for(kDistinctStartRnum));
 
     EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
         << "output: " << descriptor.small_outbuf;
 
-    // RETAINED AS BELT-AND-BRACES, AND NOW A NO-OP (census B section 4.1's own
-    // disposition for this line). Before LS-3b T5 this hand-undo was
-    // mandatory: char_from_room() early-returns for a character whose field
-    // says NOWHERE, so the splice above would have outlived this stack
-    // char_data inside a process-global chain. Under O-5 there is no splice to
-    // undo, and the call below walks an empty chain and finds nothing. It
-    // stays so that the fixture is correct whichever way a future change goes.
-    unlink_from_occupant_chain(*room_by_id_total(0), &player);
+    // LOAD-BEARING AGAIN (spec review O-2, the DoRescue/waiting_list class):
+    // the character above is a stack object spliced into a process-global
+    // chain. Unlink from the room it actually landed in, or the pointer
+    // outlives this frame -- ctest cannot see that; the monolithic runner
+    // and the i386 battery can.
+    unlink_from_occupant_chain(*room_by_id_total(kDistinctStartRnum), &player);
     RELEASE(player.player.name);
+}
+
+// The positive control (spec 2.3): a RESOLVABLE bugged room is still used --
+// the clamp must not overshoot into always-racial-start. Vacuity-proofed
+// (the O-I3 class): the bugged room (rnum 2) is distinct from BOTH the
+// overridden racial start (rnum 1) and room 0, so this fails if the clamp
+// ignores a resolvable bugged room, and fails differently if the arm still
+// returns -1.
+TEST(LoadRoomRider, ResolvableBuggedRoomIsStillUsed) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    for (int race = 0; race < MAX_RACES; ++race)
+        r_mortal_start_room[race] = 1;
+    r_bugged_start_room = room_vnum_for(2); // vnum 25 -> rnum 2, resolvable
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    // Below the bugged-character floor (str >= 1).
+    player.abilities.str = 0;
+    player.tmpabilities.str = 0;
+    player.specials2.load_room = kOwnerVnum;
+    replay_load_character_guard(player);
+
+    EXPECT_EQ(calc_load_room(&player, RENT_RENTED), 2)
+        << "a resolvable bugged room must win over the racial-start fallback";
 }
 
 // ROW 2 -- fight.cpp:948, raw_kill()'s death save.
@@ -3158,24 +3152,52 @@ TEST(LoadRoomRider, RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn) 
 //
 // interpre.cpp's CON_SLCT '1' handler calls save_char(d->character, NOWHERE,
 // 0) immediately after load_character(), and its own comment states the
-// reason: calc_load_room()'s bugged arm can return -1, so char_to_room() may
-// have left the character with no location at all, and NOWHERE then persists
-// -1 so the NEXT login routes them cleanly to their racial start room.
+// reason: calc_load_room()'s bugged arm now clamps to the racial start room
+// (m-14) rather than returning -1, so char_to_room() genuinely places the
+// character.
 //
-// The store split falsified that paragraph without touching it. save_char()'s
-// R23 arm fires on exactly that shape (load_room NOWHERE, location NOWHERE,
-// channel set) and persisted the STALE login VNUM instead -- sending the
-// bugged character back to the room they came from. The channel retirement
-// restores the documented behavior.
+// CORRECTED FROM THE ORIGINAL DESIGN PREDICTION (found red-first, verified
+// empirically): NOWHERE does NOT persist here anymore. Once the character is
+// genuinely placed, save_char()'s FIRST arm --
+// `(load_room == NOWHERE) && (location_of(ch) != NOWHERE)` (db_players.cpp)
+// -- fires ahead of the channel-based R23 arm this test used to exercise,
+// and persists the placement's own vnum. THE CHANNEL-RETIREMENT SABOTAGE
+// PROBE (spec 2.3's "B-1 witness survives" requirement) was re-run against
+// this test post-flip and did NOT reproduce red: with
+// `stash_load_room_vnum(ch, NOWHERE)` commented out of load_character(), this
+// test still passes, because arm 1 short-circuits before the channel-based
+// R23 arm is ever evaluated. The channel-retirement regression is still
+// caught elsewhere in this file --
+// LoadRoomRider.LoadCharacterRetiresTheVnumChannelOnceThePlacementIsDone
+// (below) fails under the identical sabotage, on the ordinary non-bugged
+// login path where arm 1 does not apply -- so B-1 protection is not lost
+// from the suite, but THIS test is no longer its witness. See the commit
+// message for both sabotage-probe outputs.
 //
-// RED-FIRST: with the retirement removed from load_character() this test
-// fails on its first assertion with 35 (kOwnerVnum, the stale login room)
-// against the expected -1.
+// The store split falsified the pre-clamp version of the paragraph above
+// without touching it: save_char()'s R23 arm fired on the pre-fix shape
+// (load_room NOWHERE, location NOWHERE, channel set) and persisted the STALE
+// login VNUM instead -- sending the bugged character back to the room they
+// came from. The channel retirement restored the documented behavior for
+// that shape; m-14's clamp then removed the shape entirely (the character is
+// no longer left unplaced), which is why arm 1 now decides the outcome
+// instead.
+//
+// RED-FIRST: against the unclamped arm (pre-m-14), the placement assertions
+// below fail first -- location_of(&player) stays NOWHERE against the
+// expected racial start rnum 1.
 TEST(LoadRoomRider, PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheRealLoadCharacter) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
     ScopedPlayerTable fixture_player_table{nullptr};
     ScopedGlobalCharacterLists fixture_lists;
+
+    // The discrimination override (spec review O-2): a start room distinct
+    // from rnum 0, so assertions against it cannot agree with the pre-fix
+    // room-0 fallback.
+    constexpr int kDistinctStartRnum = 1;
+    for (int race = 0; race < MAX_RACES; ++race)
+        r_mortal_start_room[race] = kDistinctStartRnum;
 
     char path_template[] = "/tmp/rots-loadroom-b1a-XXXXXX";
     char *created_path = rots_mkdtemp(path_template);
@@ -3220,10 +3242,11 @@ TEST(LoadRoomRider, PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheReal
         load_character(&player);
     }
 
-    ASSERT_EQ(location_of(&player), NOWHERE)
-        << "calc_load_room's bugged arm did not leave this character unplaced";
+    ASSERT_EQ(location_of(&player), kDistinctStartRnum)
+        << "the clamped bugged arm must place the character in the racial start room";
+    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(kDistinctStartRnum)), &player);
     ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), nullptr)
-        << "NOWHERE must mean linked nowhere (O-5)";
+        << "...and NOT room 0 (the pre-fix fallback)";
 
     // Sentinel distinct from every candidate, so the assertions below prove
     // save_char actually wrote the field.
@@ -3232,10 +3255,16 @@ TEST(LoadRoomRider, PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheReal
     // interpre.cpp's own statement, verbatim.
     save_char(&player, NOWHERE, 0);
 
-    // THE ASSERTION THE IN-TREE RATIONALE ASKS FOR.
-    EXPECT_EQ(GET_LOADROOM(&player), NOWHERE)
-        << "the stale login VNUM was persisted for a bugged character, "
-        << "defeating interpre.cpp's racial-start-room routing";
+    // CORRECTED FROM THE BRIEF'S ORIGINAL PREDICTION (found red-first,
+    // verified empirically against the real save_char()): the character is
+    // genuinely PLACED post-clamp, so save_char()'s FIRST arm --
+    // `(load_room == NOWHERE) && (location_of(ch) != NOWHERE)`
+    // (db_players.cpp) -- fires ahead of the channel-based R23 arm this
+    // test's header used to describe, and persists the placement's own vnum
+    // instead of NOWHERE. See the commit message for the sabotage-probe
+    // evidence of which arm actually decides the outcome now.
+    EXPECT_EQ(GET_LOADROOM(&player), room_vnum_for(kDistinctStartRnum))
+        << "the clamped bugged arm's placement is what save_char() now persists";
     EXPECT_NE(GET_LOADROOM(&player), kOwnerVnum);
     EXPECT_NE(GET_LOADROOM(&player), -12345);
     // ...and still not the rejected mechanical conversion's value (world[0]'s
@@ -3243,6 +3272,10 @@ TEST(LoadRoomRider, PostLoginSaveOfABuggedCharacterPersistsNowhereThroughTheReal
     // the LS-3a rider row was written for and which this fix does not disturb.
     EXPECT_NE(GET_LOADROOM(&player), room_vnum_for(0));
 
+    // LOAD-BEARING (spec review O-2, the DoRescue/waiting_list class): unlink
+    // the stack character from the room it actually landed in before this
+    // frame returns.
+    unlink_from_occupant_chain(*room_by_id_total(kDistinctStartRnum), &player);
     RELEASE(player.player.name);
     std::filesystem::remove_all(temp_data_dir);
 }

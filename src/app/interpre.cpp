@@ -3802,13 +3802,14 @@ void nanny(struct descriptor_data* d, char* arg)
             // NOWHERE hands the work to save_char()'s first fallback arm,
             // which runs the room-vnum hook over the same location: identical
             // for a placed character, and strictly better for one who is not.
-            // calc_load_room() can return -1 (its bugged-character arm sits
-            // after the clamp above it, objsave.cpp:588-589), so char_to_room()
-            // may have left this character with no location at all; NOWHERE
-            // then persists -1 and the next login routes them cleanly to their
-            // racial start room, whereas room_by_id_total(location_of(...))
-            // ->number would resolve through operator[]'s room-0 fallback and
-            // relocate them to whatever room sits at index 0.
+            // calc_load_room()'s bugged-character arm now clamps to the
+            // racial start room instead of returning -1 (m-14) when
+            // real_room(r_bugged_start_room) misses, so char_to_room() always
+            // places this character; NOWHERE still persists so the next login
+            // reaches the same clamp again, whereas room_by_id_total(
+            // location_of(...))->number would resolve through operator[]'s
+            // room-0 fallback and relocate them to whatever room sits at
+            // index 0.
             //
             // THAT RATIONALE IS LOAD-BEARING ON load_character()'s CHANNEL
             // RETIREMENT, and was briefly false (LS-3b T9b; review-1 finding

@@ -2551,6 +2551,9 @@ int mortal_idle_room[MAX_RACES] = {
 
 int r_mortal_idle_room[MAX_RACES];
 
+// Holds a VNUM despite the r_ prefix (it is never boot-recomputed by
+// check_start_rooms); calc_load_room() resolves it through real_room() and
+// clamps to the racial start room if it does not resolve (m-14).
 int r_bugged_start_room = 1152;
 
 /* Used in do_whois */

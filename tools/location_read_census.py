@@ -530,17 +530,22 @@ REGISTRY_TABLE_A_HEADER = "| Store | Declared at | Kind | Repr | Coverage |"
 REGISTRY_TABLE_B_MARKER = "<!-- LOCATION-STATE-REGISTRY-TABLE-B -->"
 REGISTRY_TABLE_B_HEADER = "| Carrier | Declared at | Repr | Class |"
 #
-# The A floor is pinned at 8, one BELOW the real ledger's current 9 rows --
-# not equal to it. The self-test's sabotage (b) direction drops exactly one
-# non-exempt TOKEN row (`ls_load_room_vnum_`) from a 9-row fixture to prove
-# `check_registry_consistency`'s Direction 2 catches an unregistered token;
-# a floor pinned AT 9 would raise the parser's own fail-closed SystemExit on
-# that 8-row probe before Direction 2 ever runs, masking the very check the
-# probe exists to exercise. One row of headroom is what lets the row-drop
-# probe reach the consistency check instead of the parser's floor -- the
-# below-floor sabotage (c') truncates to a single row and still trips this
-# floor with room to spare, so headroom here costs no real coverage.
-MINIMUM_REGISTRY_ROWS_A = 8
+# The A floor is pinned AT the real ledger's current row count, 9 -- zero
+# headroom, deliberately. Review-1 (round 1) demonstrated concretely that an
+# 8 floor (one row of headroom) lets a real single-row deletion through
+# undetected: dropping `shop_data::in_room` (whose coverage tokens are
+# byte-duplicates of `obj_data::in_room`'s, so Direction 1/2 see nothing
+# missing) or `was_in_room` (UNTRACKED, carries no coverage tokens at all)
+# both parse clean at floor 8 with ZERO consistency errors -- the row-count
+# floor is the ONLY backstop for exactly that class of masked/uncovered row
+# loss, so it must trip on any single-row deletion from the real table
+# (9 -> 8). The self-test's own fixture (`SELF_TEST_REGISTRY_OK`) carries the
+# one row of headroom instead: it has 10 rows, one more than the real
+# ledger's 9, purely so sabotage (b)'s one-row drop lands AT 9 (still >= the
+# floor) and reaches `check_registry_consistency`'s Direction 2 rather than
+# tripping the parser's floor first. Production tightness and self-test
+# reach are two different rows now, not one row serving both jobs.
+MINIMUM_REGISTRY_ROWS_A = 9
 MINIMUM_REGISTRY_ROWS_B = 6
 
 # Tokens that legitimately map to no Table-A row. Structural tokens track
@@ -800,6 +805,19 @@ An example of the format, in a fence -- must NOT be parsed as the table:
 # Used only by --self-test; the real registry lives in the ledger doc and is
 # asserted by --check. If a future wave adds a token, this fixture needs the
 # matching row too -- the self-test failing here is the reminder.
+#
+# This fixture is deliberately 10 Table-A rows, ONE more than the real
+# ledger's 9: the extra `synthetic_self_test_fixture::ls_headroom_only_`
+# row (review-1 round 1) exists purely so sabotage (b) below -- which drops
+# exactly one row -- lands the probe AT 9 rows (still >= the production
+# floor, `MINIMUM_REGISTRY_ROWS_A`) instead of one row BELOW it. Without this
+# extra row, dropping a row from a 9-row fixture would trip the parser's own
+# fail-closed floor check before `check_registry_consistency`'s Direction 2
+# ever ran, masking the very check the probe exists to exercise -- exactly
+# the bug review-1 caught when the floor itself had been lowered to 8
+# instead. It carries UNTRACKED-BY-DESIGN coverage (no coverage tokens), so
+# it participates in neither Direction 1 (nothing to mismatch) nor
+# Direction 2 (it names no token) -- its only job is row-count headroom.
 SELF_TEST_REGISTRY_OK = """
 <!-- LOCATION-STATE-REGISTRY-TABLE-A -->
 | Store | Declared at | Kind | Repr | Coverage |
@@ -813,6 +831,7 @@ SELF_TEST_REGISTRY_OK = """
 | `affected_type::modifier` | `core/types.h:719` | PERSISTED | rnum | UNTRACKED-BY-DESIGN (generic name) |
 | `obj_data::in_room` | `core/object.h:165` | deferred | rnum | TOKEN `->in_room` `.in_room` `::in_room` |
 | `shop_data::in_room` | `app/shop.cpp:63` | not-a-location | vnum | TOKEN `->in_room` `.in_room` `::in_room` |
+| `synthetic_self_test_fixture::ls_headroom_only_` | `self-test fixture only` | synthetic | n/a | UNTRACKED-BY-DESIGN (self-test row-count headroom only, review-1 round 1) |
 
 <!-- LOCATION-STATE-REGISTRY-TABLE-B -->
 | Carrier | Declared at | Repr | Class |

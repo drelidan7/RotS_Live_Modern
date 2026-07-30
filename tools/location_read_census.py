@@ -1252,6 +1252,48 @@ def run_self_test():
         # row is the standing witness -- it is covered by the three accessor
         # patterns, none of which matches the bare member spelling.
 
+        # ------------------------------------------------------------------
+        # Gate-invocation-shape cross-check (final whole-branch review, W-1).
+        # Every direction above proves the PYTHON FUNCTIONS (parse_registry /
+        # check_registry_consistency) fire correctly in isolation; none of
+        # them proves main() actually REACHES them under the real ctest
+        # invocation shape. src/CMakeLists.txt's LocationReadCensus test runs
+        # `--check --exceptions <real-ledger-path>` -- NOT a bare `--check` --
+        # and the reviewer demonstrated live that a sabotaged COPY of the
+        # real ledger passed that exact invocation with exit 0, because the
+        # old gating condition (`arguments.exceptions is None`) treated any
+        # explicit --exceptions as "not the real ledger", ctest's own
+        # explicit-real-path invocation included. This direction builds a
+        # synthetic tree whose ledger sits at the exact default-relative
+        # location a resolved --root would compute
+        # (`<root>/docs/superpowers/location-read-allowlist.md`) and invokes
+        # the real gate the ctest way -- `--check --root <root> --exceptions
+        # <that default path>` -- so the path-equality fix is re-proven end to
+        # end, the ctest shape, on every run rather than resting on a one-off
+        # manual probe.
+        # ------------------------------------------------------------------
+        default_ledger_dir = root / "docs" / "superpowers"
+        default_ledger_dir.mkdir(parents=True)
+        default_ledger = default_ledger_dir / "location-read-allowlist.md"
+
+        sabotaged_registry = SELF_TEST_REGISTRY_OK.replace(
+            "TOKEN `ls_location_id_`", "TOKEN `no_such_token_`")
+        default_ledger.write_text(SELF_TEST_LEDGER + sabotaged_registry, encoding="utf-8")
+        exit_code, output = _run_gate(root, default_ledger, None)
+        if exit_code == 0 or "registry inconsistency" not in output:
+            failures.append(
+                "gate-shape: --check --exceptions <default-path ledger> with a sabotaged "
+                f"registry did not fail with 'registry inconsistency' (exit {exit_code})\n"
+                f"{output}"
+            )
+
+        default_ledger.write_text(SELF_TEST_LEDGER + SELF_TEST_REGISTRY_OK, encoding="utf-8")
+        exit_code, output = _run_gate(root, default_ledger, None)
+        if exit_code != 0:
+            failures.append(
+                f"gate-shape: a clean registry at the default path still failed\n{output}"
+            )
+
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -1279,21 +1321,30 @@ def main():
         return run_self_test()
     repository_root = arguments.root.resolve()
     search_paths = arguments.paths or [repository_root / "src"]
+    default_exception_path = repository_root / "docs/superpowers/location-read-allowlist.md"
     exception_path = (
         arguments.exceptions
         if arguments.exceptions is not None
-        else repository_root / "docs/superpowers/location-read-allowlist.md"
+        else default_exception_path
     )
     allow_listed_files = load_allow_listed_files(exception_path, repository_root)
 
     # The location-state registry consistency assertion (spec 1.3) runs in
-    # --check against the REAL ledger only. A caller supplying --exceptions
-    # (the hermetic self-test's synthetic ledgers, which carry no registry)
-    # is probing the token gate, not the registry -- the registry's own
-    # failure directions are standing synthetic cases in run_self_test().
-    # Every existing --exceptions self-test case proves this gating already:
-    # a registry-less synthetic ledger still gates token findings normally.
-    if arguments.check and arguments.exceptions is None:
+    # --check whenever the RESOLVED --exceptions path IS the repository's real
+    # ledger -- whether --exceptions was omitted (the default already points
+    # there) or was passed explicitly naming that same real ledger, which is
+    # exactly the shape src/CMakeLists.txt's LocationReadCensus ctest test
+    # uses (`--check --exceptions <real-ledger-path>`). A bare
+    # `arguments.exceptions is None` check missed that second shape entirely,
+    # so the assertion never ran under any CMake preset's ctest -- only the
+    # flat src/tests/Makefile's bare `--check` invocation exercised it (final
+    # whole-branch review, W-1). The hermetic self-test's synthetic ledgers
+    # live in temp dirs and can never path-equal the real repository's default
+    # location UNLESS a case deliberately builds its synthetic tree to mirror
+    # that layout -- which is exactly what the standing self-test direction
+    # below (the gate-invocation-shape cross-check) does to re-prove this
+    # assertion end to end, the ctest way, on every run.
+    if arguments.check and exception_path.resolve() == default_exception_path.resolve():
         registry_rows_a, registry_rows_b = parse_registry(
             exception_path.read_text(encoding="utf-8"))
         registry_errors = check_registry_consistency(registry_rows_a, registry_rows_b)

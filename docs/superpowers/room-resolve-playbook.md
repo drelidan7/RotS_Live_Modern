@@ -288,11 +288,14 @@ separately; proving only one leaves the other's validity unaddressed. R2
 landed **zero** rows for either macro — not because the rule doesn't apply
 to this wave's tiers, but because neither macro is called from any of them.
 A tree-wide grep (`grep -rn "IS_SUNLIT_EXIT\|IS_SHADOWY_EXIT" src`) confirms
-every real call site of both macros — six `IS_SUNLIT_EXIT(` sites plus two
-`IS_SHADOWY_EXIT(` sites, matching the ledger's own token-counts table —
-lives inside `src/app/act_info.cpp`'s `do_look`/`do_exits` `ACMD` bodies,
-all still `TODO`; the macros themselves are defined once in `src/utils.h`
-and called from nowhere else in the tree. **Neither R3 (`src/combat/`) nor
+every real call site of both macros — 5 `IS_SUNLIT_EXIT(` call sites
+(act_info.cpp:1546/:1744/:1749/:1758/:1764) plus 1 `IS_SHADOWY_EXIT(` call
+site (act_info.cpp:1555), 6 real call sites total, all inside
+`src/app/act_info.cpp`'s `do_look`/`do_exits` `ACMD` bodies, all still
+`TODO`. The ledger's own token-counts table's 6/2 totals additionally count
+the two `src/utils.h` `#define` lines themselves (:511/:514, DECL rows, not
+call sites) — the macros are defined once there and called from nowhere
+else in the tree. **Neither R3 (`src/combat/`) nor
 R4 (`src/script/`) will hit this pattern** — it is exclusively an app-tier
 (`do_look`/`do_exits`) concern, so the eventual `src/app/` wave, not R3 or
 R4, is where a future implementer must budget the extra per-site work of

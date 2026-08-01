@@ -1,5 +1,5 @@
 // RR Wave R2 Task 2: reset_zone()'s GUARDED conversions (the room-resolve
-// ledger's rr2-census.md finding for src/world/zone.cpp:290/:309/:395).
+// ledger's rr2-census.md finding for src/world/zone.cpp:314/:342/:448).
 //
 // The census flagged 5 of the `reset_zone · room_by_id_total(` row's 11
 // sites as relying on load-time real_room() normalization ALONE, with no
@@ -9,7 +9,7 @@
 // full citation) found the true picture split differently than the
 // census's 5-site list:
 //
-//   - zone.cpp:290/:309 ('L' sub-commands 0/1): genuinely unguarded. Their
+//   - zone.cpp:314/:342 ('L' sub-commands 0/1): genuinely unguarded. Their
 //     local `if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0)` gate is an OR across two
 //     DIFFERENT args, so it does not exclude ZCMD.arg2 == NOWHERE when
 //     ZCMD.arg3 happens to be >= 0 -- and ZCMD.arg2 is the room id used
@@ -23,7 +23,7 @@
 //     mudlog + BASE_WORLD fallback) and search THAT room instead of
 //     skipping the command -- exactly the class of silent-wrong-room defect
 //     this wave's GUARDED conversions close.
-//   - zone.cpp:395 ('L' sub-command 6): a DIFFERENT root cause the census
+//   - zone.cpp:448 ('L' sub-command 6): a DIFFERENT root cause the census
 //     did not identify -- ZCMD.arg1 here is this switch's own selector
 //     value, so it is provably == 6 whenever this branch runs (not a
 //     zone-file-driven room id at all; zone_load.cpp never routes 'L'
@@ -32,10 +32,10 @@
 //     EXTENSION_SIZE(=50) dummy rooms whenever the world has fewer than 7
 //     rooms (top_of_world < 6) -- never true for any real production world,
 //     but not formally guaranteed, so this task adds the same defensive
-//     upper-bound guard the 'D' command already carries (zone.cpp:635).
-//   - zone.cpp:528/:548 ('O'/'P'): this task's re-audit found these were
-//     ALREADY correctly guarded (`if (ZCMD.arg2 >= 0)` at zone.cpp:527,
-//     and the `if (ZCMD.arg1 == NOWHERE || ...) ... else` at zone.cpp:545
+//     upper-bound guard the 'D' command already carries (zone.cpp:697).
+//   - zone.cpp:580/:602 ('O'/'P'): this task's re-audit found these were
+//     ALREADY correctly guarded (`if (ZCMD.arg2 >= 0)` at zone.cpp:583,
+//     and the `if (ZCMD.arg1 == NOWHERE || ...) ... else` at zone.cpp:603
 //     whose else-branch requires arg1 != NOWHERE by De Morgan) -- the
 //     census over-flagged these two; they land PROVEN entry-guard in the
 //     ledger with no code change, correcting that premise (the same kind
@@ -98,7 +98,7 @@ class ScopedSingleZoneTable {
 } // namespace
 
 // ---------------------------------------------------------------------------
-// zone.cpp:290 -- 'L' sub-command 0 ("Sets last_mob") GUARDED conversion
+// zone.cpp:314 -- 'L' sub-command 0 ("Sets last_mob") GUARDED conversion
 // ---------------------------------------------------------------------------
 //
 // candidate is a real, matching occupant of room 0 (IS_NPC, nr == the
@@ -106,7 +106,7 @@ class ScopedSingleZoneTable {
 // room_by_id_total(NOWHERE) -> world[0] (this fixture's own room 0) and
 // WOULD find candidate a match; with the guard, the 'L' command is skipped
 // entirely, mob/last_mob stay unset, and the follow-up 'A' "Set gold"
-// command's `!mob` check (zone.cpp:415) no-ops instead of touching
+// command's `!mob` check (zone.cpp:468) no-ops instead of touching
 // candidate's gold.
 TEST(ResetZoneTest, SkipsTheLCommandSettingLastMobWhenItsRoomArgFailedToResolveAtLoadTime) {
     ScopedTestWorld test_world;
@@ -142,7 +142,7 @@ TEST(ResetZoneTest, SkipsTheLCommandSettingLastMobWhenItsRoomArgFailedToResolveA
 }
 
 // ---------------------------------------------------------------------------
-// zone.cpp:309 -- 'L' sub-command 1 ("Sets last_obj from the room") GUARDED
+// zone.cpp:342 -- 'L' sub-command 1 ("Sets last_obj from the room") GUARDED
 // conversion
 // ---------------------------------------------------------------------------
 //
@@ -152,7 +152,7 @@ TEST(ResetZoneTest, SkipsTheLCommandSettingLastMobWhenItsRoomArgFailedToResolveA
 // world[0] and WOULD find candidate_item a match, letting the follow-up 'A'
 // "Set obj value" command mutate it; with the guard, the search is skipped
 // and obj/last_obj stay unset, so the 'A' command's `last_obj && obj` check
-// (zone.cpp:456) no-ops instead.
+// (zone.cpp:468) no-ops instead.
 TEST(ResetZoneTest, SkipsTheLCommandSettingLastObjWhenItsRoomArgFailedToResolveAtLoadTime) {
     ScopedTestWorld test_world;
     ScopedSingleZoneTable zone_fixture;
@@ -188,7 +188,7 @@ TEST(ResetZoneTest, SkipsTheLCommandSettingLastObjWhenItsRoomArgFailedToResolveA
 }
 
 // ---------------------------------------------------------------------------
-// zone.cpp:395 -- 'L' sub-command 6 ("Sets last_mob from the zone") GUARDED
+// zone.cpp:448 -- 'L' sub-command 6 ("Sets last_mob from the zone") GUARDED
 // conversion
 // ---------------------------------------------------------------------------
 //
@@ -204,7 +204,7 @@ TEST(ResetZoneTest, SkipsTheLCommandSettingLastObjWhenItsRoomArgFailedToResolveA
 // a correct zone-scoped read would if room_by_id_total(ZCMD.arg1) had
 // legitimately meant "the room 1 is in". With the guard
 // (`ZCMD.arg1 > top_of_world`, mirroring the 'D' command's own idiom at
-// zone.cpp:635), the whole command is skipped before that read happens.
+// zone.cpp:697), the whole command is skipped before that read happens.
 TEST(ResetZoneTest, SkipsTheLCommandSettingLastMobFromZoneWhenTheWorldHasFewerThanSevenRooms) {
     ScopedTestWorld test_world{2}; // top_of_world == 1 -- fewer than 7 rooms
     ScopedSingleZoneTable zone_fixture;

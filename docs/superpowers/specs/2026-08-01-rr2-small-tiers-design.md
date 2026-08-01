@@ -77,3 +77,38 @@ fully PROVEN-able). Ledger: 38 TODO rows → 0 in scope; class counts and the to
 table updated; ceiling 788 → measured remainder. Zero behavior change outside the enumerated
 GUARDED set. No new tokens, no scanner changes, no self-test changes expected — any of those
 is a STOP back to the controller.
+
+## As-built (2026-08-01, added by the whole-branch review fix wave)
+
+This section's own session `progress.md` is gitignored and not part of the tracked history, so
+the rulings that shaped the actual result are recorded here inline rather than by pointer —
+the fp-interiors wave's `docs/superpowers/specs/2026-07-22-fp-interiors-design.md` "As-built"
+section is the precedent this follows.
+
+The §1/§4 "38 TODO rows → 0 in scope" promise landed as **29 of the 38 rows fully drained**
+(72 of 83 sites: 69 `PROVEN` + 3 `GUARDED`), not a literal 38 → 0. The remaining **9 rows / 11
+sites** stayed `TODO`, each under a recorded ruling rather than an oversight:
+
+- **8 sites across 6 rows** — 5 OLC sites across 4 rows plus 3 `weather_to_char` sites across
+  2 rows — are the ACMD-argument-`ch` dispatch-pattern class. T0's mini-census flagged this
+  class and the owner ruled it out of this wave's remit: it is not one of `PROVEN`'s five
+  closed proof kinds, and its resolution is deferred to R3+'s own policy design rather than
+  improvised here.
+- **1 `char_to_room` site** (1 row) stayed `TODO` under the controller's RR-O-1 hold, by
+  design — closing it would remove `operator[]`'s negative-room mudlog, a behavior the
+  controller chose to preserve rather than trade away inside this wave.
+- **1 `CAN_GO` site** (1 row) is scale-flagged (42 tree-wide call sites) and stayed `TODO`
+  rather than force a proof at that scale within this wave.
+- **1 `obj_to_room` site** (1 row) is a medium-confidence refusal (20 callers across 3
+  provenance patterns) — the wave's own "no medium-confidence proofs land" rule applied, and
+  it stayed `TODO` rather than ship a proof this wave itself would not trust.
+
+Measured deltas: `MAXIMUM_TODO_COUNT` **788 → 716** (788 − 72, `--check`-derived, not the
+705 this section's own §1 estimated from the full 83-site drain); ctest **1862 → 1865** (+3
+`ResetZoneTest.*`, one red-first test per `GUARDED` site, exactly as §4 anticipated). The
+**3 `GUARDED` sites are flagged, real behavior changes** — `zone.cpp::reset_zone`'s malformed-
+zone-file gap (2 sites) and its case-6-selector/dummy-room gap (1 site), all three red-first
+tested in `src/tests/zone_reset_guard_tests.cpp` with the native boot golden confirmed
+byte-identical both before and after. See AGENTS.md's RR Wave R2 chain entry for the full
+reconciled numbers and `docs/superpowers/room-resolve-playbook.md` for the reusable proof-kind
+recipes this wave's actuals seeded for R3/R4.

@@ -35,10 +35,19 @@ This is Task 1 of Wave R1: the scanner core only (tokens, masking, macro-
 family derivation, and per-line function attribution). Task 2 (this
 revision) builds the ledger parser, reconciliation, the ``MAXIMUM_TODO_COUNT``
 ratchet, and the ``--check``/``--self-test`` gate on top of those exact
-interfaces. Task 3 generates the real ledger this gate reads; until that
-lands, ``--check`` against the real tree fails closed with a missing-ledger
-``SystemExit`` (see ``main()``) -- that is the CORRECT, expected state at
-this commit, not a bug.
+interfaces. Task 3 implements ``--generate-ledger``/``--advise`` and generates
+``docs/superpowers/room-resolve-ledger.md`` against the real tree. That ledger
+is currently a deliberately PARTIAL, honest baseline, not yet fully green:
+nine keys (75 sites, three files -- see the ledger's own "Known gap: BLOCKED"
+section and ``.superpowers/sdd/2026-07-31-rr1-census/task-3-report.md``) are
+real production call sites two Task 1 scanner attribution gaps mis-key to
+file-scope (an unrecognized third function-definer macro, ``ASPELL``; a
+function-pointer-parameter header that defeats the generic name-extraction
+heuristic). Per the task-3 brief's explicit instruction, those nine keys are
+left OUT of the ledger rather than misclassified, so ``--check`` against the
+real tree currently fails with exactly those nine ``unclassified site``
+errors -- that is the CORRECT, deliberately isolated state at this commit,
+not a silent gap and not yet fixed.
 
 Token shape note (Task 2, self-test direction 16; Task 3: carry this into
 the ledger prose). Every ``STATIC_TOKEN_PATTERNS``/``MACRO_FAMILY`` pattern
@@ -1698,11 +1707,445 @@ def run_self_test():
                 f"{derive_macros_completed.stdout}{derive_macros_completed.stderr}"
             )
 
+        # 18. generate-ledger-round-trip (Task 3): --generate-ledger against a
+        # fresh synthetic tree must produce a file parse_ledger() accepts,
+        # AND that same file must make --check pass end to end (the
+        # generator's mechanical TODO/TEST-FIXTURE/DECL classification is
+        # exactly what the real scan's key set needs -- no hand-pinning is
+        # needed for a freshly generated, entirely-mechanical ledger).
+        generate_root = root / "generate_root"
+        generate_app_dir = generate_root / "src" / "app"
+        generate_app_dir.mkdir(parents=True)
+        (generate_app_dir / "probe.cpp").write_text(PROBE_SOURCE_OK, encoding="utf-8")
+        generate_pad_dir = generate_root / "src" / "pad"
+        generate_pad_dir.mkdir(parents=True)
+        for index in range(3):
+            (generate_pad_dir / f"pad{index}.cpp").write_text("int clean = 0;\n", encoding="utf-8")
+        generated_ledger = generate_root / "generated_ledger.md"
+        generate_completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--generate-ledger",
+             "--root", str(generate_root), "--ledger", str(generated_ledger),
+             "--minimum-files-override", "4"],
+            capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
+        )
+        if generate_completed.returncode != 0:
+            failures.append(
+                "generate-ledger-round-trip: --generate-ledger itself failed\n"
+                f"{generate_completed.stdout}{generate_completed.stderr}"
+            )
+        else:
+            try:
+                parse_ledger(generated_ledger.read_text(encoding="utf-8"))
+            except SystemExit as exc:
+                failures.append(
+                    f"generate-ledger-round-trip: parse_ledger() rejected the generated file: {exc}"
+                )
+            check_completed = subprocess.run(
+                [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
+                 "--root", str(generate_root), "--ledger", str(generated_ledger),
+                 "--minimum-files-override", "4"],
+                capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
+            )
+            if check_completed.returncode != 0:
+                failures.append(
+                    "generate-ledger-round-trip: --check against the freshly generated ledger "
+                    f"did not pass\n{check_completed.stdout}{check_completed.stderr}"
+                )
+
+        # 19. generate-ledger-refuses-without-force: a second --generate-ledger
+        # against the same (now-existing) ledger path must refuse; the SAME
+        # invocation with --force-regenerate must succeed (and overwrite).
+        refuse_completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--generate-ledger",
+             "--root", str(generate_root), "--ledger", str(generated_ledger),
+             "--minimum-files-override", "4"],
+            capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
+        )
+        if refuse_completed.returncode == 0 or "--force-regenerate" not in (
+                refuse_completed.stdout + refuse_completed.stderr):
+            failures.append(
+                "generate-ledger-refuses-without-force: expected a refusal naming "
+                f"--force-regenerate, got exit {refuse_completed.returncode}\n"
+                f"{refuse_completed.stdout}{refuse_completed.stderr}"
+            )
+        force_completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--generate-ledger",
+             "--force-regenerate",
+             "--root", str(generate_root), "--ledger", str(generated_ledger),
+             "--minimum-files-override", "4"],
+            capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
+        )
+        if force_completed.returncode != 0:
+            failures.append(
+                "generate-ledger-refuses-without-force: --force-regenerate did not succeed\n"
+                f"{force_completed.stdout}{force_completed.stderr}"
+            )
+
+        # 20. advise-emits-suggestions-writes-nothing: a synthetic function
+        # guarded by a `location_of(ch) != NOWHERE` entry check, immediately
+        # followed by a resolver-token call, must produce an entry-guard?
+        # suggestion on stdout -- and --advise must create/modify NOTHING
+        # (no ledger involved at all; the probe directory's own file listing
+        # must be byte-for-byte unchanged).
+        advise_root = root / "advise_root"
+        advise_app_dir = advise_root / "src" / "app"
+        advise_app_dir.mkdir(parents=True)
+        advise_probe = advise_app_dir / "advise_probe.cpp"
+        advise_probe.write_text(
+            "void guarded_fn(char_data* ch)\n{\n"
+            "    if (location_of(ch) != NOWHERE)\n    {\n"
+            "        room_data* r = room_of(ch);\n    }\n}\n",
+            encoding="utf-8",
+        )
+        before_listing = sorted(p.name for p in advise_app_dir.iterdir())
+        before_bytes = advise_probe.read_bytes()
+        advise_completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--advise",
+             "--root", str(advise_root), "src/app"],
+            capture_output=True, text=True,
+        )
+        if advise_completed.returncode != 0 or "entry-guard?" not in advise_completed.stdout:
+            failures.append(
+                "advise-emits-suggestions-writes-nothing: expected exit 0 with an entry-guard? "
+                f"suggestion, got exit {advise_completed.returncode}\n"
+                f"{advise_completed.stdout}{advise_completed.stderr}"
+            )
+        after_listing = sorted(p.name for p in advise_app_dir.iterdir())
+        after_bytes = advise_probe.read_bytes()
+        if before_listing != after_listing or before_bytes != after_bytes:
+            failures.append(
+                "advise-emits-suggestions-writes-nothing: --advise modified the filesystem "
+                f"(listing {before_listing} -> {after_listing})"
+            )
+
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
     print("room_resolve_census self-test: all directions pass (gate invoked end to end)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Task 3: --generate-ledger and --advise.
+#
+# --generate-ledger performs ONLY the mechanical classification a scan can
+# derive without judgment: every src/tests/ key -> TEST-FIXTURE, every
+# #decl/#NAME (macro-body or file-scope) key -> DECL, everything else ->
+# TODO. The task-3 brief's hand-pinning step (RESOLVER-IMPL rows, the two
+# PROVEN rows, the closed DECL set) is applied BY HAND afterward, directly
+# editing the generated file -- this generator never emits PROVEN/GUARDED/
+# RESOLVER-IMPL itself (spec section 4/F-12: "advisory only; no machine-
+# minted PROVEN rows").
+# ---------------------------------------------------------------------------
+
+LEDGER_PROSE = """\
+# Room-resolve retirement ledger
+
+Generated by `tools/room_resolve_census.py --generate-ledger`, then hand-refined
+per Wave R1's task-3 brief (`.superpowers/sdd/2026-07-31-rr1-census/task-3-brief.md`).
+Program design: `docs/superpowers/specs/2026-07-31-room-resolve-retirement-design.md`
+(section numbers cited below refer to that document).
+
+## Program contract
+
+This ledger is the proof-obligation table for the room-resolve retirement
+program ("RR"): every resolver-reaching site in production code (`room_of(`,
+`room_by_id_total(`, `world[`/`::world[`, the `world_room_vnum(`/
+`dispatch_room_vnum(` hook-dispatch alias pair, and the eleven-member
+resolver-expanding macro family) must carry a row classifying whether its
+input id can be proven in-range before `room_data::operator[]` degrades it
+(design doc section 1). A row's key is `` `file · function · token` `` (the
+middle dot is U+00B7, illegal in a path or C identifier, so the split is
+unambiguous); its count must equal the scanner's own count for that exact key
+(the anti-inheritance rule, section 3/O-5) -- adding a new site to an
+already-classified function fails the gate as a count mismatch rather than
+silently inheriting the existing proof.
+
+## The standing rule
+
+`--check` fails closed on: an unclassified scanned site, a stale ledger row
+matching nothing in the scan, a per-key count mismatch (either direction), a
+per-token total mismatch against the token-counts table below, a `TODO` total
+over the checked-in `MAXIMUM_TODO_COUNT` ceiling, and a resolver-reaching
+macro whose name is not in the pinned `MACRO_FAMILY` literal. Each drain wave
+lowers `MAXIMUM_TODO_COUNT` in the same commit that adds its proofs --
+**a new resolver site anywhere in production is therefore a new `TODO` row,
+which exceeds the ceiling: unclassified new code is a build failure from R1
+onward** (design doc section 4/O-10).
+
+## The gate verifies shape, reviews verify semantics
+
+The gate is line-based and performs no reachability analysis of its own: it
+checks that every `Class`/`Kind` is a recognized vocabulary word, that
+`Kind`-bearing rows carry a `Proof` of at least `MINIMUM_PROOF_TEXT_LENGTH`
+characters, and that `entry-guard`/`dominating-resolve`/`caller-contract` rows
+cite a `file:line`. Those checks close the *trivially gameable* one-word-row
+class -- they cannot tell a semantically correct proof from a
+plausible-sounding wrong one. A `PROVEN` row with wrong reasoning is a
+**review** finding, not a gate finding (design doc section 3/section 8): the
+dual adversarial whole-branch reviews audit the `PROVEN` set by sampling, with
+`caller-contract` rows (the hardest kind) checked citation-by-citation.
+
+## Occupant-chain proof caveats
+
+A row proved by the `occupant-chain` kind must state, in its own proof text,
+which half of the occupant-chain invariant it relies on (design doc section 3):
+the invariant's **contrapositive gives `!= NOWHERE` only** -- it does not by
+itself prove the id is *in range*, only that it is not the sentinel. In-range-
+ness instead follows from placement's M-1 precondition
+(`src/entity/placement.cpp:369-395`) plus append-only room allocation (a room
+id, once valid, stays valid for the process lifetime). The invariant's second
+half -- that the occupant-chain-derived id still equals the character's own
+stored location field -- does **not** hold inside a `ScopedRenderLocation`
+window (the render cursor temporarily diverges from the stored field by
+design); an `occupant-chain` proof taken from inside such a window must say so
+explicitly, or it is incomplete.
+
+## The two-room-macro rule
+
+`IS_SUNLIT_EXIT`/`IS_SHADOWY_EXIT` each take **two** room-id arguments (the
+current room and the adjacent room across a door). A row classifying either
+macro's call site must state a proof covering **both** room-id arguments
+separately -- proving only one leaves the other's validity unaddressed
+(design doc section 6/O-13). (The macros' own unchecked `dir_option[door]`
+dereference is a distinct, explicitly out-of-scope defect class -- design doc
+section 6 -- these rows prove the room-id arguments only, and say so.)
+
+## The line-split-call note
+
+Every token pattern anchors on the callee name immediately followed by `(`,
+matched per physical line: a call whose *arguments* wrap to a following line
+(`` room_of(\\n    ch) ``) still hits, but a genuinely split spelling (the
+callee name and its `(` on two different physical lines, e.g.
+`` room_of\\n    (ch) ``) cannot, by this line-based design (carried from Task
+2's docstring note in this file). A one-time real-tree grep for that second
+shape (`grep -rnE "room_of\\s*$" src --include="*.cpp"`) found **zero
+matches** at this commit -- the shape does not exist in production today.
+
+## An `LS1-ALLOW` annotation is NOT a proof
+
+`tools/location_read_census.py`'s `LS1-ALLOW` annotation licenses
+*representation access* -- whether a raw `->in_room`/`world[`/etc. spelling is
+allowed to exist outside the Stage-1 Placement API at all. This ledger asks a
+**different** question: *input validity* -- whether the id handed to a
+resolver-reaching spelling can be proven in-range before it is dereferenced. A
+site can be simultaneously `LS1-ALLOW`'d (representation access is fine) and
+an unclassified `TODO` here (its input validity is still unproven) -- the two
+gates ask two different questions and keep two different ledgers (design doc
+section 1, the `world[` bullet -- review O-1/F-1, both spec reviews' top
+finding).
+"""
+
+
+def _generated_key_class(key_file, key_function):
+    """The three mechanical classes --generate-ledger can derive without
+    judgment (RESOLVER-IMPL/PROVEN/GUARDED are hand-applied afterward)."""
+    if key_file == "src/tests" or key_file.startswith("src/tests/"):
+        return "TEST-FIXTURE"
+    if key_function.startswith("#"):
+        return "DECL"
+    return "TODO"
+
+
+def build_generated_rows(sites):
+    """Aggregate scanned sites into ledger rows, mechanically classified.
+    Deterministic (file, function, token) order (the brief's Step 1
+    requirement)."""
+    counts = {}
+    for site in sites:
+        kind, name = site["attribution"], site["function"]
+        if kind == "macro":
+            function_key = f"#{name}"
+        elif kind == "file-scope":
+            function_key = "#decl"
+        else:
+            function_key = name
+        key = (site["file"], function_key, site["token"])
+        counts[key] = counts.get(key, 0) + 1
+
+    rows = []
+    for key in sorted(counts):
+        key_file, key_function, key_token = key
+        rows.append({
+            "key_file": key_file, "key_function": key_function, "key_token": key_token,
+            "count": counts[key], "cls": _generated_key_class(key_file, key_function),
+            "kind": LEDGER_EMPTY_MARKER, "proof": LEDGER_EMPTY_MARKER,
+        })
+    return rows
+
+
+def build_token_counts(sites):
+    """Per-token total counts across every scanned site (all tokens, not
+    just the ones that happened to hit -- a 0-site token still gets a row,
+    matching the O-10 pinned-floor discipline)."""
+    counts = {}
+    for site in sites:
+        counts[site["token"]] = counts.get(site["token"], 0) + 1
+    return counts
+
+
+def render_ledger(rows, token_counts):
+    """The inverse of parse_ledger: rows/token_counts -> ledger markdown
+    text. Must produce output parse_ledger accepts -- proven by the
+    generate-ledger-round-trip self-test direction."""
+    lines = [LEDGER_PROSE.rstrip("\n"), "", LEDGER_CLASSIFICATION_MARKER,
+             LEDGER_CLASSIFICATION_HEADER, "| --- | --- | --- | --- | --- |"]
+    for row in rows:
+        key_text = KEY_SEPARATOR.join((row["key_file"], row["key_function"], row["key_token"]))
+        proof_escaped = row["proof"].replace("|", "\\|")
+        lines.append(
+            f"| `{key_text}` | {row['count']} | {row['cls']} | {row['kind']} | {proof_escaped} |"
+        )
+    lines += ["", LEDGER_TOKEN_COUNTS_MARKER, LEDGER_TOKEN_COUNTS_HEADER, "| --- | --- |"]
+    for token_name, _ in token_patterns():
+        lines.append(f"| `{token_name}` | {token_counts.get(token_name, 0)} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _generate_ledger(args):
+    """--generate-ledger: fresh scan -> mechanically classified ledger file.
+    Refuses to overwrite an existing ledger without --force-regenerate.
+    Returns a process exit code."""
+    repository_root = args.root.resolve()
+    ledger_path = (
+        args.ledger.resolve() if args.ledger is not None
+        else repository_root / "docs" / "superpowers" / "room-resolve-ledger.md"
+    )
+    scanned_files = _resolve_scan_targets(args.paths, repository_root)
+    minimum_files = (
+        args.minimum_files_override if args.minimum_files_override is not None
+        else MINIMUM_SCANNED_FILE_COUNT
+    )
+    if len(scanned_files) < minimum_files:
+        print(
+            f"error: only {len(scanned_files)} file(s) scanned under {repository_root} -- "
+            f"expected at least {minimum_files}. This almost always means a broken --root or "
+            "a typo'd path argument, not a genuine shrink of production src/.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"[scanned] {len(scanned_files)} file(s) under {repository_root} -- no directory "
+          "is excluded (R-B8).")
+
+    if ledger_path.exists() and not args.force_regenerate:
+        print(
+            f"error: ledger already exists at {ledger_path} -- pass --force-regenerate to "
+            "overwrite it deliberately (this refusal is the direct guard against an accidental "
+            "silent overwrite of hand-refined classification work).",
+            file=sys.stderr,
+        )
+        return 1
+
+    header_texts = {
+        str(path): path.read_text(encoding="utf-8", errors="replace") for path in scanned_files
+    }
+    derived_family = derive_macro_family(header_texts)
+    unknown_macros = sorted(derived_family - set(MACRO_FAMILY))
+    if unknown_macros:
+        print(
+            f"error: macro family closed-world violation: {unknown_macros} not in MACRO_FAMILY -- "
+            "refusing to generate a ledger against an open macro world (review and pin the new "
+            "macro name first)",
+            file=sys.stderr,
+        )
+        return 1
+
+    sites = []
+    for path in scanned_files:
+        sites.extend(scan_file(path, repository_root))
+
+    rows = build_generated_rows(sites)
+    token_counts = build_token_counts(sites)
+
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(render_ledger(rows, token_counts), encoding="utf-8")
+
+    todo_count = sum(row["count"] for row in rows if row["cls"] == "TODO")
+    test_fixture_count = sum(row["count"] for row in rows if row["cls"] == "TEST-FIXTURE")
+    decl_count = sum(row["count"] for row in rows if row["cls"] == "DECL")
+    print(
+        f"[generated] {ledger_path} -- {len(rows)} row(s): {todo_count} TODO site(s), "
+        f"{decl_count} DECL site(s), {test_fixture_count} TEST-FIXTURE site(s)"
+    )
+    return 0
+
+
+# Advisory-only pattern regexes (spec section 4/F-12). None of these feed
+# the gate; they only drive --advise's stdout suggestions.
+ADVISE_ENTRY_GUARD_RE = re.compile(r"\blocation_of\s*\([^()]*\)\s*(?:==|!=)\s*NOWHERE\b")
+ADVISE_OCCUPANT_LOOP_RE = re.compile(
+    r"\boccupants\s*\(|\boccupant_range\s*\(|\bsunlight\b", re.IGNORECASE)
+ADVISE_LOOP_BOUND_RE = re.compile(r"\btop_of_world\b")
+
+
+def build_advisories(scanned_files, repository_root):
+    """For every production, non-macro/non-decl (i.e. TODO-candidate) site,
+    suggest entry-guard?/occupant-loop?/loop-bound? per the brief's Step 2
+    patterns. Returns a list of human-readable advisory strings, sorted for
+    determinism. Advisory only -- no gate effect, reads nothing but source
+    text, and never writes anything (self-test direction 3)."""
+    advisories = []
+    for path in scanned_files:
+        rel = path.relative_to(repository_root).as_posix()
+        if rel == "src/tests" or rel.startswith("src/tests/"):
+            continue  # TEST-FIXTURE candidates never need advice
+        text = path.read_text(encoding="utf-8", errors="replace")
+        masked = mask_comments_and_string_literals(text).splitlines()
+        attributions = attribute_lines(masked)
+
+        function_lines = {}
+        for i, (kind, name) in enumerate(attributions):
+            if kind == "function":
+                function_lines.setdefault(name, []).append(i)
+
+        site_lines_by_key = {}
+        for i, line in enumerate(masked):
+            kind, name = attributions[i]
+            if kind != "function":
+                continue  # advise only makes TODO-candidate (function) sites
+            for token_name, pattern in token_patterns():
+                if pattern.search(line):
+                    site_lines_by_key.setdefault((name, token_name), []).append(i)
+
+        for (function_name, token_name), site_lines in sorted(site_lines_by_key.items()):
+            func_lines = function_lines.get(function_name, [])
+            entry_guard_line = next(
+                (i for i in func_lines if ADVISE_ENTRY_GUARD_RE.search(masked[i])), None)
+            occupant_line = next(
+                (i for i in func_lines if ADVISE_OCCUPANT_LOOP_RE.search(masked[i])), None)
+            loop_bound_candidates = list(site_lines)
+            if entry_guard_line is not None:
+                loop_bound_candidates.append(entry_guard_line)
+            if occupant_line is not None:
+                loop_bound_candidates.append(occupant_line)
+            loop_bound_hit = any(
+                ADVISE_LOOP_BOUND_RE.search(masked[i]) for i in loop_bound_candidates)
+
+            flags = []
+            if entry_guard_line is not None:
+                flags.append(f"entry-guard? (line {entry_guard_line + 1})")
+            if occupant_line is not None:
+                flags.append(f"occupant-loop? (line {occupant_line + 1})")
+            if loop_bound_hit:
+                flags.append("loop-bound?")
+            if flags:
+                key_text = KEY_SEPARATOR.join((rel, function_name, token_name))
+                advisories.append(f"{key_text}: {', '.join(flags)}")
+    return sorted(advisories)
+
+
+def _advise(args):
+    """--advise: advisory-only stdout suggestions; no gate effect, no ledger
+    reads or writes. Returns a process exit code (always 0 -- advisory)."""
+    repository_root = args.root.resolve()
+    scanned_files = _resolve_scan_targets(args.paths, repository_root)
+    advisories = build_advisories(scanned_files, repository_root)
+    if not advisories:
+        print("advise: no advisory patterns matched any TODO-candidate site")
+    for line in advisories:
+        print(line)
     return 0
 
 
@@ -1724,9 +2167,15 @@ def build_argument_parser():
     parser.add_argument("--minimum-files-override", type=int, default=None,
                         help="self-test only -- requires RR_SELF_TEST=1")
     parser.add_argument("--generate-ledger", action="store_true",
-                        help="not implemented yet -- Task 3")
+                        help="write docs/superpowers/room-resolve-ledger.md (or --ledger) from "
+                             "a fresh scan: every production key TODO, every src/tests/ key "
+                             "TEST-FIXTURE, every #decl/#NAME key DECL (Task 3 Step 1)")
+    parser.add_argument("--force-regenerate", action="store_true",
+                        help="allow --generate-ledger to overwrite an existing ledger file")
     parser.add_argument("--advise", action="store_true",
-                        help="not implemented yet -- Task 3")
+                        help="advisory-only stdout suggestions (entry-guard?/occupant-loop?/"
+                             "loop-bound?) for TODO-candidate sites; no gate effect, no writes "
+                             "(Task 3 Step 2)")
     return parser
 
 
@@ -1744,8 +2193,14 @@ def main(argv=None):
             "set RR_SELF_TEST=1 to use them (see run_self_test())"
         )
 
-    if args.generate_ledger or args.advise:
-        parser.error("--generate-ledger/--advise are not implemented yet -- Task 3 builds them")
+    if args.generate_ledger and args.advise:
+        parser.error("--generate-ledger and --advise are mutually exclusive")
+
+    if args.generate_ledger:
+        return _generate_ledger(args)
+
+    if args.advise:
+        return _advise(args)
 
     if args.derive_macros and args.paths:
         parser.error(

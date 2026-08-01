@@ -36,18 +36,23 @@ family derivation, and per-line function attribution). Task 2 (this
 revision) builds the ledger parser, reconciliation, the ``MAXIMUM_TODO_COUNT``
 ratchet, and the ``--check``/``--self-test`` gate on top of those exact
 interfaces. Task 3 implements ``--generate-ledger``/``--advise`` and generates
-``docs/superpowers/room-resolve-ledger.md`` against the real tree. That ledger
-is currently a deliberately PARTIAL, honest baseline, not yet fully green:
-nine keys (75 sites, three files -- see the ledger's own "Known gap: BLOCKED"
-section and ``.superpowers/sdd/2026-07-31-rr1-census/task-3-report.md``) are
-real production call sites two Task 1 scanner attribution gaps mis-key to
-file-scope (an unrecognized third function-definer macro, ``ASPELL``; a
-function-pointer-parameter header that defeats the generic name-extraction
-heuristic). Per the task-3 brief's explicit instruction, those nine keys are
-left OUT of the ledger rather than misclassified, so ``--check`` against the
-real tree currently fails with exactly those nine ``unclassified site``
-errors -- that is the CORRECT, deliberately isolated state at this commit,
-not a silent gap and not yet fixed.
+``docs/superpowers/room-resolve-ledger.md`` against the real tree.
+
+Task 3's first pass hit a real blocker (see
+``.superpowers/sdd/2026-07-31-rr1-census/task-3-report.md`` for the full
+account): nine keys (75 sites, three files) were real production call sites
+that two Task 1 scanner attribution gaps mis-keyed to file-scope -- an
+unrecognized third function-definer macro, ``ASPELL`` (``src/spells.h:401``,
+alongside ``ACMD``/``SPECIAL``), and a function-pointer-parameter header that
+defeated the generic name-extraction heuristic's ``rfind("(")`` logic. Both
+were fixed and re-review-verified (commits ``20b41fa7``/``98babc93``): the
+recognized function-definer set is now proven exactly
+``{ACMD, SPECIAL, ASPELL}`` tree-wide, and name extraction uses the FIRST
+top-level ``(`` rather than the last. With the fix landed, Task 3 resumed:
+the real ledger reconciles completely (zero unclassified sites),
+``MAXIMUM_TODO_COUNT``/``MINIMUM_LEDGER_ROW_COUNT`` are seeded from the
+measured real-tree totals, the ceiling-pin self-test direction is active, and
+``--check`` against the real tree exits 0.
 
 Token shape note (Task 2, self-test direction 16; Task 3: carry this into
 the ledger prose). Every ``STATIC_TOKEN_PATTERNS``/``MACRO_FAMILY`` pattern
@@ -632,13 +637,17 @@ CITATION_REQUIRED_KINDS = frozenset({"entry-guard", "dominating-resolve", "calle
 CITATION_RE = re.compile(r"\b[\w./-]+\.(?:cpp|h|hpp|cc|inl)\s*:\s*\d+")
 MINIMUM_PROOF_TEXT_LENGTH = 20
 
-# Task 3 seeds this from a real measured TODO-row count; while it is None the
-# ceiling check in reconcile() is a no-op and main() prints a loud stderr
-# notice instead of silently skipping it. Both `--todo-ceiling-override`
-# (self-test only) and the ceiling-pin direction in run_self_test() key off
-# this same literal -- the brief's F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's
-# own pin below.
-MAXIMUM_TODO_COUNT = None
+# Seeded (Task 3) from the real ledger's measured TODO total: the SUM of
+# every TODO row's Count cell -- 300 TODO rows, 788 TODO sites -- since
+# reconcile()'s own ceiling check sums `row["count"]` (site occurrences), not
+# the number of TODO-classified rows; a value of 300 here would immediately
+# fail the real tree (788 > 300), confirmed by probe before picking this
+# literal. Both `--todo-ceiling-override` (self-test only) and the
+# ceiling-pin direction in run_self_test() key off this same literal -- the
+# brief's F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's own pin below. Each
+# drain wave lowers this in the same commit that adds its proofs (design doc
+# section 4/O-10).
+MAXIMUM_TODO_COUNT = 788
 
 # Same floor tools/location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT
 # uses, at the same value: measured at 315 files under src/ at this commit
@@ -647,14 +656,15 @@ MAXIMUM_TODO_COUNT = None
 # ever lowered below 300 rather than silently tracking a weakened floor.
 MINIMUM_SCANNED_FILE_COUNT = 300
 
-# Task 3 raises this to (the real ledger's measured row count - 10) once that
-# ledger exists; 4 is a placeholder floor, sized so the self-test's own
-# four-row synthetic fixture sits AT it rather than resting inside slack of
-# its own choosing. The self-test's floor direction spends this constant
-# SYMBOLICALLY (MINIMUM_LEDGER_ROW_COUNT - 1 / + 0), the same discipline
-# MINIMUM_SCANNED_FILE_COUNT's own boundary probe uses, so a future edit that
-# raises the literal keeps exercising the real edge rather than a stale one.
-MINIMUM_LEDGER_ROW_COUNT = 4
+# Seeded (Task 3) to the real ledger's measured row count (461) minus 10 --
+# small headroom for legitimate future row merges (e.g. two TODO rows for the
+# same key-shape later proven together under one PROVEN row), not a floor an
+# ordinary edit should ever need to touch. The self-test's floor direction
+# spends this constant SYMBOLICALLY (MINIMUM_LEDGER_ROW_COUNT - 1 / + 0), the
+# same discipline MINIMUM_SCANNED_FILE_COUNT's own boundary probe uses, so a
+# future edit that raises the literal keeps exercising the real edge rather
+# than a stale one.
+MINIMUM_LEDGER_ROW_COUNT = 451
 
 # Key = backticked `file · function · token`, KEY_SEPARATOR-joined (spec
 # format). U+00B7 MIDDLE DOT, space-padded on both sides, is illegal in a
@@ -815,27 +825,42 @@ def _parse_token_count_row(cells):
     return token_name, count
 
 
-def parse_ledger(text):
+_UNSET = object()  # sentinel: "no override was passed" (see reconcile()/parse_ledger())
+
+
+def parse_ledger(text, *, minimum_rows=_UNSET):
     """Parse the ledger's two marker-anchored tables.
 
     Returns (rows, token_counts): `rows` is a list of dicts with keys
     key_file/key_function/key_token/count/cls/kind/proof; `token_counts` maps
     token name -> declared site count. Fails closed (SystemExit) on any
     marker/header/row-shape/vocabulary/proof-shape violation -- see the
-    per-row parsers above for the exact conditions."""
+    per-row parsers above for the exact conditions.
+
+    `minimum_rows` (the classification table's row floor) defaults to the
+    LIVE module-level `MINIMUM_LEDGER_ROW_COUNT`, resolved at CALL time via
+    the same `_UNSET`-sentinel, late-bound-default idiom `reconcile()`'s
+    `todo_ceiling` parameter uses below (the review-1 IMPORTANT fix for
+    exactly this early-bound-default footgun) -- a plain
+    `minimum_rows=MINIMUM_LEDGER_ROW_COUNT` default would freeze whatever the
+    constant held at `def` time. Ordinary callers (`main()`'s real `--check`
+    path) never pass this kwarg and transparently see the real, seeded
+    floor (451, Task 3); `--self-test`'s own tiny synthetic ledgers (4 rows)
+    pass a small override (`--minimum-ledger-rows-override`, gated the same
+    way as `--todo-ceiling-override`/`--minimum-files-override`) so the real
+    floor's scale never swamps the hermetic fixtures."""
+    if minimum_rows is _UNSET:
+        minimum_rows = MINIMUM_LEDGER_ROW_COUNT
     live_lines = _strip_fences(text)
     classification_cells = _parse_marked_table(
         live_lines, LEDGER_CLASSIFICATION_MARKER, LEDGER_CLASSIFICATION_HEADER,
-        MINIMUM_LEDGER_ROW_COUNT, "classification table")
+        minimum_rows, "classification table")
     token_count_cells = _parse_marked_table(
         live_lines, LEDGER_TOKEN_COUNTS_MARKER, LEDGER_TOKEN_COUNTS_HEADER,
         0, "token-counts table")
     rows = [_parse_classification_row(cells) for cells in classification_cells]
     token_counts = dict(_parse_token_count_row(cells) for cells in token_count_cells)
     return rows, token_counts
-
-
-_UNSET = object()  # sentinel: "no todo_ceiling override was passed" (see reconcile())
 
 
 def reconcile(sites, rows, token_counts, *, todo_ceiling=_UNSET):
@@ -1292,6 +1317,16 @@ SELF_TEST_LEDGER_OK = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | `dispatch_room_vnum(` | 1 |
 """
 
+# Task 3 raised MINIMUM_LEDGER_ROW_COUNT (above) to the real ledger's scale
+# (451) -- far larger than any hermetic self-test fixture in this file should
+# ever need to be. This is the small, fixed floor the self-test's own tiny
+# synthetic ledgers (SELF_TEST_LEDGER_OK and its variants, all 4 rows) are
+# built against; `_run_gate`'s `minimum_ledger_rows_override` parameter
+# defaults to this constant so every EXISTING self-test call site keeps
+# working unchanged (only the directions that deliberately probe the REAL
+# floor -- 13, below -- opt out of the override).
+SELF_TEST_LEDGER_ROW_FLOOR = 4
+
 # M10 sabotage fixture (marker sabotage, direction 12): a decoy classification
 # table sitting inside a FENCE, above the one real marker, carrying the exact
 # same header -- must be inert (parse_ledger must still find and use only the
@@ -1363,12 +1398,21 @@ ATTRIBUTION_LEDGER = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 
 
 def _run_gate(root, ledger=None, scan_path=None, *,
-              todo_ceiling_override=None, minimum_files_override=None):
+              todo_ceiling_override=None, minimum_files_override=None,
+              minimum_ledger_rows_override=SELF_TEST_LEDGER_ROW_FLOOR):
     """Invoke the REAL gate (subprocess, full main()) against a synthetic
     tree. `ledger=None` omits --ledger entirely, exercising main()'s own
     default-path computation (self-test direction 17). `scan_path=None`
     scans <root>/src (main()'s own default when no positional path is
-    given)."""
+    given).
+
+    `minimum_ledger_rows_override` defaults to `SELF_TEST_LEDGER_ROW_FLOOR`
+    (4) -- every `_run_gate` call in this file targets a small, hand-built
+    synthetic ledger, never the real repo's, so applying the small floor
+    HERE (rather than at each of the ~20 call sites) is what lets Task 3's
+    real MINIMUM_LEDGER_ROW_COUNT (451) coexist with the hermetic fixtures
+    unchanged. Pass `None` explicitly to test the REAL floor instead
+    (direction 13's boundary probes)."""
     import subprocess
 
     command = [sys.executable, str(pathlib.Path(__file__).resolve()),
@@ -1383,6 +1427,9 @@ def _run_gate(root, ledger=None, scan_path=None, *,
         env["RR_SELF_TEST"] = "1"
     if minimum_files_override is not None:
         command += ["--minimum-files-override", str(minimum_files_override)]
+        env["RR_SELF_TEST"] = "1"
+    if minimum_ledger_rows_override is not None:
+        command += ["--minimum-ledger-rows-override", str(minimum_ledger_rows_override)]
         env["RR_SELF_TEST"] = "1"
     completed = subprocess.run(command, capture_output=True, text=True, env=env)
     return completed.returncode, completed.stdout + completed.stderr
@@ -1411,14 +1458,19 @@ def run_self_test():
         )
 
     # Ceiling pin (F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's pin, T2 brief
-    # direction 5). MAXIMUM_TODO_COUNT is None until Task 3 seeds the real
-    # ceiling from a measured TODO count; while it is None this direction is
-    # a deliberate no-op -- Task 3 replaces the `pass` below with the real
-    # `if MAXIMUM_TODO_COUNT > <literal>: failures.append(...)` comparison
-    # the moment the constant stops being None.
-    if MAXIMUM_TODO_COUNT is not None:
-        # Task 3: replace this stub with the real ceiling-pin comparison.
-        pass
+    # direction 5), ACTIVATED (Task 3, the tracked review obligation): pinned
+    # at 788 -- the exact MAXIMUM_TODO_COUNT this commit seeds, measured
+    # against the real ledger's TODO total. An accidental RAISE (an edit that
+    # loosens the ratchet without a deliberate, reviewed drain-wave decision)
+    # fails `--self-test`, not just review; a LOWER value (a real drain wave)
+    # keeps passing `<=`, and that wave updates this literal in the same
+    # commit that lowers MAXIMUM_TODO_COUNT itself (the two literals are set
+    # together, never independently).
+    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 788:
+        failures.append(
+            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 788 -- "
+            "an accidental raise must not silently loosen the ratchet."
+        )
 
     # Review-1 IMPORTANT finding 1: reconcile()'s todo_ceiling default must
     # be resolved at CALL time (the LIVE MAXIMUM_TODO_COUNT), not baked in as
@@ -1553,15 +1605,24 @@ def run_self_test():
         # 6. bad-class / bad-kind / kind-prefix-extension: pure ledger-format
         # violations, checked directly against parse_ledger() (no real sites
         # needed -- these never reach reconcile()).
-        def expect_parse_ledger_systemexit(name, ledger_text):
+        def expect_parse_ledger_systemexit(name, ledger_text, minimum_rows=SELF_TEST_LEDGER_ROW_FLOOR):
+            # minimum_rows=None probes the REAL (live MINIMUM_LEDGER_ROW_COUNT)
+            # floor instead of the small synthetic-fixture one (direction 13's
+            # boundary probes, below) -- every other caller keeps the small
+            # default so these small (4-row) fixtures are judged on the
+            # violation each direction actually targets, not incidentally
+            # tripping the real, much larger real-ledger floor.
             try:
-                parse_ledger(ledger_text)
+                if minimum_rows is None:
+                    parse_ledger(ledger_text)
+                else:
+                    parse_ledger(ledger_text, minimum_rows=minimum_rows)
                 failures.append(f"{name}: parse_ledger() did NOT raise SystemExit")
             except SystemExit:
                 pass
 
         try:
-            parse_ledger(SELF_TEST_LEDGER_OK)
+            parse_ledger(SELF_TEST_LEDGER_OK, minimum_rows=SELF_TEST_LEDGER_ROW_FLOOR)
         except SystemExit as exc:
             failures.append(f"baseline-ledger-parses: SELF_TEST_LEDGER_OK raised SystemExit: {exc}")
 
@@ -1646,7 +1707,8 @@ def run_self_test():
         # A marker+table INSIDE a fence is inert -- the real table (unfenced)
         # still parses correctly, and the fenced decoy row is never seen.
         try:
-            fenced_rows, _ = parse_ledger(SELF_TEST_LEDGER_FENCED_DECOY)
+            fenced_rows, _ = parse_ledger(
+                SELF_TEST_LEDGER_FENCED_DECOY, minimum_rows=SELF_TEST_LEDGER_ROW_FLOOR)
             if any(row["key_file"] == "src/decoy.cpp" for row in fenced_rows):
                 failures.append("marker-inside-fence: the fenced decoy row was NOT inert")
             if len(fenced_rows) != 4:
@@ -1676,7 +1738,8 @@ def run_self_test():
 
         expect_parse_ledger_systemexit(
             "ledger-row-floor-below",
-            _synthetic_classification_ledger(MINIMUM_LEDGER_ROW_COUNT - 1))
+            _synthetic_classification_ledger(MINIMUM_LEDGER_ROW_COUNT - 1),
+            minimum_rows=None)  # probe the REAL floor, not the small fixture default
         try:
             parse_ledger(_synthetic_classification_ledger(MINIMUM_LEDGER_ROW_COUNT))
         except SystemExit as exc:
@@ -1810,8 +1873,10 @@ def run_self_test():
         import subprocess
         multi_path_completed = subprocess.run(
             [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
-             "--root", str(root), "--ledger", str(ledger), "src/app", "src/pad"],
+             "--root", str(root), "--ledger", str(ledger), "src/app", "src/pad",
+             "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR)],
             capture_output=True, text=True,
+            env={**os.environ, "RR_SELF_TEST": "1"},
         )
         if multi_path_completed.returncode != 0:
             failures.append(
@@ -1864,7 +1929,8 @@ def run_self_test():
             )
         else:
             try:
-                parse_ledger(generated_ledger.read_text(encoding="utf-8"))
+                parse_ledger(generated_ledger.read_text(encoding="utf-8"),
+                             minimum_rows=SELF_TEST_LEDGER_ROW_FLOOR)
             except SystemExit as exc:
                 failures.append(
                     f"generate-ledger-round-trip: parse_ledger() rejected the generated file: {exc}"
@@ -1872,7 +1938,8 @@ def run_self_test():
             check_completed = subprocess.run(
                 [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
                  "--root", str(generate_root), "--ledger", str(generated_ledger),
-                 "--minimum-files-override", "4"],
+                 "--minimum-files-override", "4",
+                 "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR)],
                 capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
             )
             if check_completed.returncode != 0:
@@ -2295,6 +2362,8 @@ def build_argument_parser():
                         help="self-test only -- requires RR_SELF_TEST=1")
     parser.add_argument("--minimum-files-override", type=int, default=None,
                         help="self-test only -- requires RR_SELF_TEST=1")
+    parser.add_argument("--minimum-ledger-rows-override", type=int, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1")
     parser.add_argument("--generate-ledger", action="store_true",
                         help="write docs/superpowers/room-resolve-ledger.md (or --ledger) from "
                              "a fresh scan: every production key TODO, every src/tests/ key "
@@ -2315,11 +2384,12 @@ def main(argv=None):
     if args.self_test:
         return run_self_test()
 
-    if (args.todo_ceiling_override is not None or args.minimum_files_override is not None) \
+    if (args.todo_ceiling_override is not None or args.minimum_files_override is not None
+            or args.minimum_ledger_rows_override is not None) \
             and os.environ.get("RR_SELF_TEST") != "1":
         parser.error(
-            "--todo-ceiling-override/--minimum-files-override are self-test-only hooks -- "
-            "set RR_SELF_TEST=1 to use them (see run_self_test())"
+            "--todo-ceiling-override/--minimum-files-override/--minimum-ledger-rows-override "
+            "are self-test-only hooks -- set RR_SELF_TEST=1 to use them (see run_self_test())"
         )
 
     if args.generate_ledger and args.advise:
@@ -2386,7 +2456,12 @@ def main(argv=None):
     for path in scanned_files:
         sites.extend(scan_file(path, repository_root))
 
-    rows, token_counts = parse_ledger(ledger_path.read_text(encoding="utf-8"))
+    minimum_ledger_rows = (
+        args.minimum_ledger_rows_override if args.minimum_ledger_rows_override is not None
+        else MINIMUM_LEDGER_ROW_COUNT
+    )
+    rows, token_counts = parse_ledger(
+        ledger_path.read_text(encoding="utf-8"), minimum_rows=minimum_ledger_rows)
 
     if MAXIMUM_TODO_COUNT is None and args.todo_ceiling_override is None:
         print("notice: MAXIMUM_TODO_COUNT is unset -- ceiling check skipped (Task 3 seeds it)",

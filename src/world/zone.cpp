@@ -6,18 +6,17 @@
 #include <string.h> /* memmove */
 
 #include "comm.h" /* For TO_ROOM */
-#include "db.h" /* For buf2 and struct reset_com */
+#include "db.h"   /* For buf2 and struct reset_com */
 #include "entity_hooks.h"
 #include "handler.h" /* For FOLLOW_MOVE */
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
-#include "rots/core/descriptor.h"
 #include "rots/core/types.h"
 #include "utils.h" /* For CREATE */
 #include "world_hooks.h"
 #include "zone.h"
-
 
 /*
  * XXX: These structures have been moved here from zone.h since
@@ -29,15 +28,14 @@
 /* for queueing zones for update */
 struct reset_q_element {
     int zone_to_reset; /* ref to zone_data */
-    struct reset_q_element* next;
+    struct reset_q_element *next;
 };
 
 /* structure for the update queue */
 struct reset_q_type {
-    struct reset_q_element* head;
-    struct reset_q_element* tail;
+    struct reset_q_element *head;
+    struct reset_q_element *tail;
 };
-
 
 /*
  * Update zone ages, queue for reset if necessary, and dequeue
@@ -47,14 +45,13 @@ struct reset_q_type {
 #define ZO_DEAD 999
 #define ZO_QUED 888
 
-void zone_update(void)
-{
+void zone_update(void) {
     int i, should_reset;
     static int timer;
     struct reset_q_element *update_u, *temp;
     static struct reset_q_type reset_q;
-    void put_to_reset_q_pool(struct reset_q_element*);
-    struct reset_q_element* get_from_reset_q_pool(void);
+    void put_to_reset_q_pool(struct reset_q_element *);
+    struct reset_q_element *get_from_reset_q_pool(void);
     /*
      * The 4 constant comes from 4 passes per second.  This apparently
      * means that one minute has passed and is not accurate unless
@@ -78,18 +75,21 @@ void zone_update(void)
                 should_reset = 0;
                 break;
             case 1:
-                should_reset = !rots::world::dispatch_is_zone_populated(i) && zone_table[i].age >= zone_table[i].lifespan;
+                should_reset = !rots::world::dispatch_is_zone_populated(i) &&
+                               zone_table[i].age >= zone_table[i].lifespan;
                 break;
             case 2:
                 should_reset = zone_table[i].age >= zone_table[i].lifespan;
                 break;
             case 3:
-                should_reset = (!rots::world::dispatch_is_zone_populated(i) && zone_table[i].age >= zone_table[i].lifespan) || zone_table[i].age >= zone_table[i].lifespan * 3;
+                should_reset = (!rots::world::dispatch_is_zone_populated(i) &&
+                                zone_table[i].age >= zone_table[i].lifespan) ||
+                               zone_table[i].age >= zone_table[i].lifespan * 3;
                 break;
             default:
                 should_reset = 0;
-                vmudlog(CMP, "Unknown reset mode %d for zone #%d.",
-                    zone_table[i].reset_mode, zone_table[i].number);
+                vmudlog(CMP, "Unknown reset mode %d for zone #%d.", zone_table[i].reset_mode,
+                        zone_table[i].number);
                 break;
             }
 
@@ -120,8 +120,8 @@ void zone_update(void)
     for (update_u = reset_q.head; update_u; update_u = update_u->next) {
         reset_zone(update_u->zone_to_reset);
         vmudlog(CMP, "Automatic zone reset: zone #%d, %s.",
-            zone_table[update_u->zone_to_reset].number,
-            zone_table[update_u->zone_to_reset].name);
+                zone_table[update_u->zone_to_reset].number,
+                zone_table[update_u->zone_to_reset].name);
 
         /* dequeue */
         if (update_u == reset_q.head)
@@ -166,8 +166,7 @@ void zone_update(void)
  * all requirements.  We'd need an anti-requirement bit for
  * each event if we wanted to allow that sort of control.
  */
-int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zone)
-{
+int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zone) {
     int require_last_cmd;
     int require_last_mob;
     int require_last_obj;
@@ -196,13 +195,16 @@ int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zon
         if (require_last_obj && last_obj == 1) {
             return 0;
         }
-        if (require_good_fame_lead && rots::world::dispatch_pkill_get_good_fame() > rots::world::dispatch_pkill_get_evil_fame()) {
+        if (require_good_fame_lead && rots::world::dispatch_pkill_get_good_fame() >
+                                          rots::world::dispatch_pkill_get_evil_fame()) {
             return 0;
         }
-        if (require_evil_fame_lead && rots::world::dispatch_pkill_get_evil_fame() > rots::world::dispatch_pkill_get_good_fame()) {
+        if (require_evil_fame_lead && rots::world::dispatch_pkill_get_evil_fame() >
+                                          rots::world::dispatch_pkill_get_good_fame()) {
             return 0;
         }
-        if (require_sun_up && (weather_info.sunlight == SUN_LIGHT || weather_info.sunlight == SUN_RISE)) {
+        if (require_sun_up &&
+            (weather_info.sunlight == SUN_LIGHT || weather_info.sunlight == SUN_RISE)) {
             return 0;
         }
         if (require_players_in_zone && rots::world::dispatch_is_zone_populated(zone)) {
@@ -218,13 +220,16 @@ int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zon
         if (require_last_obj && last_obj == 0) {
             return 0;
         }
-        if (require_good_fame_lead && rots::world::dispatch_pkill_get_good_fame() <= rots::world::dispatch_pkill_get_evil_fame()) {
+        if (require_good_fame_lead && rots::world::dispatch_pkill_get_good_fame() <=
+                                          rots::world::dispatch_pkill_get_evil_fame()) {
             return 0;
         }
-        if (require_evil_fame_lead && rots::world::dispatch_pkill_get_evil_fame() <= rots::world::dispatch_pkill_get_good_fame()) {
+        if (require_evil_fame_lead && rots::world::dispatch_pkill_get_evil_fame() <=
+                                          rots::world::dispatch_pkill_get_good_fame()) {
             return 0;
         }
-        if (require_sun_up && (weather_info.sunlight == SUN_DARK || weather_info.sunlight == SUN_SET)) {
+        if (require_sun_up &&
+            (weather_info.sunlight == SUN_DARK || weather_info.sunlight == SUN_SET)) {
             return 0;
         }
         if (require_players_in_zone && !rots::world::dispatch_is_zone_populated(zone)) {
@@ -241,8 +246,7 @@ int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zon
  * defined on a command-by-command basis, and is generally
  * highly influenced by the if flag.
  */
-void reset_zone(int zone)
-{
+void reset_zone(int zone) {
 /* XXX: ZCMD needs to be removed */
 #define ZCMD zone_table[zone].cmd[cmd_no]
     int cmd_no, last_cmd, last_mob, last_obj;
@@ -252,14 +256,14 @@ void reset_zone(int zone)
     struct obj_data *obj, *obj_to, *tmpobj;
     extern int rev_dir[];
     extern int top_of_world;
-    extern struct index_data* mob_index;
-    extern struct index_data* obj_index;
-    extern struct char_data* character_list;
-    int set_exit_state(struct room_data*, int, int);
-    void add_follower(struct char_data*, struct char_data*, int mode);
-    void extract_obj(struct obj_data*);
+    extern struct index_data *mob_index;
+    extern struct index_data *obj_index;
+    extern struct char_data *character_list;
+    int set_exit_state(struct room_data *, int, int);
+    void add_follower(struct char_data *, struct char_data *, int mode);
+    void extract_obj(struct obj_data *);
     /* XXX: int used for room virtual number */
-    void char_to_room(struct char_data*, int);
+    void char_to_room(struct char_data *, int);
 
     last_cmd = last_mob = last_obj = 0;
     mob = tmpmob = tmpch = NULL;
@@ -276,6 +280,26 @@ void reset_zone(int zone)
             case 'L': /* sets the last_mob or last_obj */
                 switch (ZCMD.arg1) {
                 case 0: /* Sets last_mob */
+                    // RR Wave R2 Task 2 GUARDED conversion (room-resolve
+                    // ledger, zone.cpp:290 finding): ZCMD.arg2 is used
+                    // UNCONDITIONALLY as the room id below regardless of
+                    // which half of the `||` just below fires, so a
+                    // malformed zone file whose room reference failed to
+                    // resolve at load time (zone_load.cpp's 'L'-command
+                    // handling never routes arg2's real_room() result
+                    // through the a/b full-command-disable check the way
+                    // 'D'/'M'/'O' do) leaves ZCMD.arg2 == NOWHERE here.
+                    // Without this guard, room_by_id_total(NOWHERE) would
+                    // silently degrade to world[0] (room_data::operator[]'s
+                    // negative-room mudlog + BASE_WORLD fallback,
+                    // db_world.cpp:2082-2086) and search THAT room instead
+                    // of skipping the command -- red-first tested in
+                    // zone_reset_guard_tests.cpp.
+                    if (ZCMD.arg2 == NOWHERE) {
+                        last_cmd = last_mob = 0;
+                        mob = 0;
+                        break;
+                    }
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
                         // LS1 T1b: occupants() now has a public header
                         // declaration (handler.h) -- retrofitting this
@@ -287,7 +311,7 @@ void reset_zone(int zone)
                         // walked-off-the-end-leaves-null semantics.
                         tmp = 0;
                         tmpmob = nullptr;
-                        for (auto* occ : rots::entity::occupants(room_by_id_total(ZCMD.arg2))) {
+                        for (auto *occ : rots::entity::occupants(room_by_id_total(ZCMD.arg2))) {
                             if (IS_NPC(occ) && occ->nr == ZCMD.arg3)
                                 tmp++;
                             if (tmp >= ZCMD.arg4) {
@@ -305,9 +329,18 @@ void reset_zone(int zone)
                     mob = 0;
                     break;
                 case 1: /* Sets last_obj from the room */
+                    // RR Wave R2 Task 2 GUARDED conversion (room-resolve
+                    // ledger, zone.cpp:309 finding) -- same shape as case 0
+                    // above: ZCMD.arg2 is used unconditionally as the room
+                    // id below. See case 0's comment for the full account.
+                    if (ZCMD.arg2 == NOWHERE) {
+                        last_cmd = last_obj = 0;
+                        obj = 0;
+                        break;
+                    }
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
-                        for (tmp = 0, tmpobj = room_by_id_total(ZCMD.arg2)->contents;
-                             tmpobj; tmpobj = tmpobj->next_content) {
+                        for (tmp = 0, tmpobj = room_by_id_total(ZCMD.arg2)->contents; tmpobj;
+                             tmpobj = tmpobj->next_content) {
                             if (tmpobj->item_number == ZCMD.arg3)
                                 tmp++;
                             if (tmp >= ZCMD.arg4)
@@ -324,8 +357,8 @@ void reset_zone(int zone)
                     break;
                 case 2: /* last_obj from the contents of last_obj */
                     if (ZCMD.arg3 >= 0 && last_obj && obj) {
-                        for (tmp = 0, tmpobj = obj->contains;
-                             tmpobj; tmpobj = tmpobj->next_content) {
+                        for (tmp = 0, tmpobj = obj->contains; tmpobj;
+                             tmpobj = tmpobj->next_content) {
                             if (tmpobj->item_number == ZCMD.arg3)
                                 tmp++;
                             if (tmp >= ZCMD.arg4)
@@ -342,8 +375,8 @@ void reset_zone(int zone)
                     break;
                 case 3: /* last_obj from the inventory of last_mob */
                     if (ZCMD.arg3 >= 0 && last_mob && mob) {
-                        for (tmp = 0, tmpobj = mob->carrying;
-                             tmpobj; tmpobj = tmpobj->next_content) {
+                        for (tmp = 0, tmpobj = mob->carrying; tmpobj;
+                             tmpobj = tmpobj->next_content) {
                             if (tmpobj->item_number == ZCMD.arg3)
                                 tmp++;
                             if (tmp >= ZCMD.arg4)
@@ -374,8 +407,7 @@ void reset_zone(int zone)
                     break;
                 case 5: /* Sets last_mob from the world */
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
-                        for (tmp = 0, tmpmob = character_list;
-                             tmpmob; tmpmob = tmpmob->next) {
+                        for (tmp = 0, tmpmob = character_list; tmpmob; tmpmob = tmpmob->next) {
                             if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3)
                                 tmp++;
                             if (tmp >= ZCMD.arg4)
@@ -391,11 +423,32 @@ void reset_zone(int zone)
                     mob = 0;
                     break;
                 case 6: /* Sets last_mob from the zone */
+                    // RR Wave R2 Task 2 GUARDED conversion (room-resolve
+                    // ledger, zone.cpp:395 finding) -- a DIFFERENT root
+                    // cause than cases 0/1 above: ZCMD.arg1 is this
+                    // switch's own case-6 selector, so it is provably == 6
+                    // whenever this branch runs (zone_load.cpp never routes
+                    // 'L' commands' arg1 through real_room() -- only arg2
+                    // is, so this is not a zone-file-driven room id at
+                    // all). The residual risk is instead that
+                    // room_by_id_total(6) would silently read one of
+                    // create_bulk()'s trailing EXTENSION_SIZE(=50) dummy
+                    // rooms whenever the world has fewer than 7 rooms
+                    // (top_of_world < 6) -- never true for any real
+                    // production world, but not formally guaranteed.
+                    // Mirrors the 'D' command's own upper-bound idiom
+                    // (below, "set state of door") for defense in depth;
+                    // red-first tested in zone_reset_guard_tests.cpp.
+                    if (ZCMD.arg1 > top_of_world) {
+                        last_cmd = last_mob = 0;
+                        mob = 0;
+                        break;
+                    }
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
                         tmp2 = room_by_id_total(ZCMD.arg1)->zone;
-                        for (tmp = 0, tmpmob = character_list;
-                             tmpmob; tmpmob = tmpmob->next) {
-                            if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3 && location_of(tmpmob) >= 0 && room_of(tmpmob)->zone == tmp2)
+                        for (tmp = 0, tmpmob = character_list; tmpmob; tmpmob = tmpmob->next) {
+                            if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3 &&
+                                location_of(tmpmob) >= 0 && room_of(tmpmob)->zone == tmp2)
                                 tmp++;
                             if (tmp >= ZCMD.arg4)
                                 break;
@@ -439,7 +492,7 @@ void reset_zone(int zone)
                     // walked-off-the-end-leaves-null semantics.
                     tmp = 0;
                     tmpch = nullptr;
-                    for (auto* occ : rots::entity::occupants(room_of(mob))) {
+                    for (auto *occ : rots::entity::occupants(room_of(mob))) {
                         if (IS_NPC(occ) && (occ->nr < 0 || occ->nr == ZCMD.arg3))
                             tmp++;
                         if (tmp == ZCMD.arg2) {
@@ -501,13 +554,15 @@ void reset_zone(int zone)
                     mob->specials.script_info = 0; /* Probably unnecessary */
                     break;
                 default:
-                    vmudlog(CMP, "Unrecognized 'A' command: %d %d %d in zone #%d.",
-                        ZCMD.arg1, ZCMD.arg2, ZCMD.arg3, zone_table[zone].number);
+                    vmudlog(CMP, "Unrecognized 'A' command: %d %d %d in zone #%d.", ZCMD.arg1,
+                            ZCMD.arg2, ZCMD.arg3, zone_table[zone].number);
                     last_cmd = 0;
                 }
                 break;
             case 'M': /* read a mobile */
-                if ((!ZCMD.arg3 || mob_index[ZCMD.arg1].number < ZCMD.arg3) && (!ZCMD.arg6 || ZCMD.existing < ZCMD.arg6) && (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
+                if ((!ZCMD.arg3 || mob_index[ZCMD.arg1].number < ZCMD.arg3) &&
+                    (!ZCMD.arg6 || ZCMD.existing < ZCMD.arg6) &&
+                    (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
                     mob = read_mobile(ZCMD.arg1, REAL);
                     ZCMD.existing++;
                     GET_DIFFICULTY(mob) = ZCMD.arg5;
@@ -523,9 +578,12 @@ void reset_zone(int zone)
                 }
                 break;
             case 'O': /* read an object */
-                if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) && (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
+                if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) &&
+                    (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
                     if (ZCMD.arg2 >= 0) {
-                        if (!ZCMD.arg5 || (count_obj_in_list(ZCMD.arg1, room_by_id_total(ZCMD.arg2)->contents) < ZCMD.arg5)) {
+                        if (!ZCMD.arg5 ||
+                            (count_obj_in_list(ZCMD.arg1, room_by_id_total(ZCMD.arg2)->contents) <
+                             ZCMD.arg5)) {
                             obj = read_object(ZCMD.arg1, REAL);
                             obj_to_room(obj, ZCMD.arg2);
                             last_cmd = last_obj = 1;
@@ -552,7 +610,9 @@ void reset_zone(int zone)
                 }
 
                 tmp = count_obj_in_list(ZCMD.arg2, obj_to->contains);
-                if ((!ZCMD.arg4 || obj_index[ZCMD.arg2].number < ZCMD.arg4) && (ZCMD.arg5 == 100 || ZCMD.arg5 > number(0, 99)) && (!ZCMD.arg6 || tmp < ZCMD.arg6)) {
+                if ((!ZCMD.arg4 || obj_index[ZCMD.arg2].number < ZCMD.arg4) &&
+                    (ZCMD.arg5 == 100 || ZCMD.arg5 > number(0, 99)) &&
+                    (!ZCMD.arg6 || tmp < ZCMD.arg6)) {
                     obj = read_object(ZCMD.arg2, REAL);
                     obj_to_obj(obj, obj_to);
                     last_cmd = 1;
@@ -565,7 +625,8 @@ void reset_zone(int zone)
                     break;
                 }
 
-                if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) && (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
+                if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) &&
+                    (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
                     obj = read_object(ZCMD.arg1, REAL);
                     obj_to_char(obj, mob);
                     last_cmd = 1;
@@ -620,7 +681,8 @@ void reset_zone(int zone)
                     last_cmd = 0;
                     break;
                 }
-                if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) && (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
+                if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) &&
+                    (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
                     if (ZCMD.arg2 < 0 || ZCMD.arg2 >= MAX_WEAR) {
                         last_cmd = 0;
                     } else {
@@ -662,7 +724,7 @@ void reset_zone(int zone)
     zone_table[zone].age = 0;
 }
 
-static struct reset_q_element* reset_q_pool;
+static struct reset_q_element *reset_q_pool;
 
 /*
  * Return the head of the current pool if it exists.
@@ -673,10 +735,8 @@ static struct reset_q_element* reset_q_pool;
  * makes use of any of these reset_q_pool functions, and
  * usually they're only called at one place.
  */
-struct reset_q_element*
-get_from_reset_q_pool(void)
-{
-    struct reset_q_element* resnew;
+struct reset_q_element *get_from_reset_q_pool(void) {
+    struct reset_q_element *resnew;
 
     if (reset_q_pool) {
         resnew = reset_q_pool;
@@ -690,8 +750,7 @@ get_from_reset_q_pool(void)
 /*
  * This used to just free(oldres).
  */
-void put_to_reset_q_pool(struct reset_q_element* oldres)
-{
+void put_to_reset_q_pool(struct reset_q_element *oldres) {
     oldres->next = reset_q_pool;
     reset_q_pool = oldres;
 }

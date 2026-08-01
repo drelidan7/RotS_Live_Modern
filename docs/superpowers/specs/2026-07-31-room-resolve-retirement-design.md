@@ -50,13 +50,20 @@ F-1/F-2/F-3 — and this list is the corrected result):
    the only alias path at HEAD (verified: no `&room_by_id_total`/`&room_of` references
    exist), pinned as tokens now precisely because it is currently unique (F-2).
 4. **The resolver-expanding macro family**, re-derived by R1 from the `#define` bodies of
-   **all scanned headers** — not `utils.h` alone (F-3): at HEAD, `EXIT` (:721), `OUTSIDE`
-   (:719), `SUN_PENALTY` (:517) over `room_of`; `IS_DARK` (:328), `IS_LIGHT` (:332, via
-   `IS_DARK`), `IS_SUNLIT` (:334), `IS_SUNLIT_EXIT` (:511), `IS_SHADOWY_EXIT` (:514),
-   `IS_WATER` (:796) over `room_by_id_total`; **plus `ASSIGNROOM` (`interpre.h:86-90`)**,
-   which reaches `operator[]` through `world[real_room(room)]` (4 call sites; internally
-   guarded, so it classifies as one PROVEN row — but it must be *enumerated*). A macro call
-   site is a resolver site even though no resolver token appears on the line.
+   **all scanned source files — headers AND `.cpp`s** (F-3, widened again by R1 T1's own
+   STOP-gate discovery, below): at HEAD, `EXIT` (:721), `OUTSIDE` (:719), `SUN_PENALTY`
+   (:517) over `room_of`; `IS_DARK` (:328), `IS_LIGHT` (:332, via `IS_DARK`), `IS_SUNLIT`
+   (:334), `IS_SUNLIT_EXIT` (:511), `IS_SHADOWY_EXIT` (:514), `IS_WATER` (:796) over
+   `room_by_id_total`; `ASSIGNROOM` (`interpre.h:86-90`), which reaches `operator[]`
+   through `world[real_room(room)]` (4 call sites; internally guarded); **and
+   `VALID_EDGE` (`pathfind/graph.cpp:70`, a `.cpp`-LOCAL macro over `room_by_id_total`,
+   2 call sites, internally guarded by its own `TOROOM != NOWHERE` term)** — **eleven**
+   names. `VALID_EDGE` was found by the R1 tool's first real-tree derivation sweep (the
+   plan's STOP gate firing as designed, 2026-07-31): the spec's original ten-name family
+   and the review's own "all headers" hardening were BOTH too narrow — a macro defined in
+   a `.cpp` reaches the resolver just as invisibly. Derivation therefore runs over every
+   scanned file, any suffix. A macro call site is a resolver site even though no resolver
+   token appears on the line.
 
 ## 2. End-state semantics (the ruling, made precise)
 

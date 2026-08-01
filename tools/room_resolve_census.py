@@ -169,19 +169,36 @@ def mask_comments_and_string_literals(source_text, mask_comments=True):
     return "".join(masked)
 
 
-# The five non-macro resolver-reaching spellings (spec section 1). world[ is
+# The six non-macro resolver-reaching spellings (spec section 1). world[ is
 # the operator[] invocation itself -- ~30 live production sites survive the
 # LS waves under LS1-ALLOW annotations, which license REPRESENTATION access,
 # not input validity; they classify here like every other site (review
 # O-1/F-1, the dual spec review's convergent blocker). world_room_vnum/
 # dispatch_room_vnum are the one hook-dispatch alias pair at HEAD (F-2),
 # pinned while the set is closed.
+#
+# review-1 W-3/F-4 (the m-13 paste-evasion class, LS-3b's own gate-hardening
+# precedent -- AGENTS.md's "token-paste" prefix): the ## preprocessor paste
+# operator can assemble a tracked identifier (`room##_of(` -> `room_of(`
+# after expansion) across two macro operands, defeating every intact-token
+# pattern above AND derive_macro_family's own seeding (which only matches
+# STATIC token patterns against a macro BODY's literal text, never simulated
+# expansion). Tracking the bare `##` token itself, unconditionally, closes
+# this the same way LS-3b's location gate closed it: any physical line
+# containing a paste operator becomes a site needing its own ledger row,
+# whatever it assembles. Verified at this commit: a real-tree grep
+# (`grep -rn '##' src --include='*.h' --include='*.cpp'`) finds exactly two
+# hits tree-wide, both inside string literals (`act_wiz.cpp:4207`'s
+# `"Usage: top ## ..."` and its test's expectation string) and therefore
+# masked before the scan ever sees them -- zero real production sites, hence
+# the token-counts table's `| \`##\` | 0 |` row.
 STATIC_TOKEN_PATTERNS = (
     ("room_of(", re.compile(r"\broom_of\s*\(")),
     ("room_by_id_total(", re.compile(r"\broom_by_id_total\s*\(")),
     ("world[", re.compile(r"(?:\b|::)world\s*\[")),
     ("world_room_vnum(", re.compile(r"\bworld_room_vnum\s*\(")),
     ("dispatch_room_vnum(", re.compile(r"\bdispatch_room_vnum\s*\(")),
+    ("##", re.compile(r"##")),
 )
 
 # The resolver-expanding macro family, PINNED as a literal (spec section
@@ -231,15 +248,26 @@ def collect_define_bodies(header_text):
     return bodies
 
 
-def derive_macro_family(header_texts):
+def derive_macro_family(source_texts):
     """Transitive closure: macros whose bodies reach a resolver spelling.
 
     Seeds: any body matching a STATIC token pattern (this includes world[,
     which is how ASSIGNROOM joins -- review F-3/O-1). Closure: any body
     invoking an already-in-family macro name.
+
+    `source_texts` (review-1 W-7 rename, from `header_texts`): maps path ->
+    full file text for every SCANNED SOURCE file, headers AND .cpp files --
+    never headers alone. VALID_EDGE (`src/pathfind/graph.cpp:70`) is the
+    proof this matters: it is a .cpp-LOCAL macro, never exported via a
+    header, so a header_texts-only sweep would silently miss it and its two
+    call sites (graph.cpp:133/:146) would stay invisible to the token scan
+    (see the CLI wiring below, and the module docstring's whole-tree-sweep
+    note). The OLD parameter name (`header_texts`) said the opposite of
+    what every caller actually passes; renamed here rather than left as a
+    misleading label a future reader could take literally.
     """
     bodies = {}
-    for text in header_texts.values():
+    for text in source_texts.values():
         bodies.update(collect_define_bodies(text))
     family = {name for name, body in bodies.items()
               if any(p.search(body) for _, p in STATIC_TOKEN_PATTERNS)}
@@ -318,12 +346,6 @@ RECOGNIZED_DEFINER_NAMES = frozenset({"ACMD", "SPECIAL", "ASPELL", "TEST", "TEST
 # keying on the macro's own name (which silently invents a wrong function
 # key, exactly like the TEST/TEST_F/TEST_P case above).
 ALL_CAPS_MACRO_INVOCATION_RE = re.compile(r"^([A-Z_][A-Z0-9_]*)\s*\(")
-# An ordinary definition header's name: the last identifier-ish path
-# (possibly class-qualified, possibly operator[]) before the argument
-# list's opening parenthesis. Rejects control flow and declarations.
-HEADER_NAME_RE = re.compile(
-    r"([A-Za-z_]\w*(?:::[A-Za-z_~]\w*|::operator\s*(?:\[\]|\(\)|[-+*/<>=!]+))?"
-    r"|operator\s*(?:\[\]|\(\)|[-+*/<>=!]+))\s*\($")
 CONTROL_KEYWORDS = frozenset({"if", "while", "for", "switch", "return", "sizeof", "catch"})
 # Fix round 1, IMPORTANT (struct-return-type false rejection): the ORIGINAL
 # guard blanket-rejected any header starting with struct/class/enum/union/
@@ -445,10 +467,35 @@ def attribute_lines(masked_lines):
             # produced the accumulated head "} ACMD(do_look)", which the
             # generic heuristic then misread as a function literally named
             # "ACMD" with argument list "(do_look)").
-            is_bare_scope_close = bool(re.fullmatch(r"\}+;?", stripped))
-            if is_bare_scope_close:
+            #
+            # review-1 W-9 (cheap/riding fix): the SAME bug shape recurs when
+            # the stray close and the FOLLOWING header share one PHYSICAL
+            # line (`} ACMD(do_x) {`) rather than sitting on separate lines
+            # -- the leading '}' still glues into header_accum and mis-keys
+            # the site as literally "ACMD". Stripping a leading run of
+            # '}'/';' (mirroring the discipline this file already applies to
+            # a bare '}'/';' LINE, just now generalized to a leading RUN
+            # within the line) before computing `stripped` for the rest of
+            # this block closes it: the run is consumed as a scope-close (so
+            # any stale accumulation is discarded exactly as a bare-close
+            # line already discards it) and the REMAINDER of the line is
+            # what header recognition actually sees. Zero live occurrences
+            # at this commit -- a fresh whole-tree grep
+            # (`grep -rnE '\}\s*while\s*\(\s*0\s*\)' src`) finds 36 `}
+            # while(0)` hits (not the 96 this wave's own gitignored
+            # progress notes carried -- corrected here since progress.md
+            # itself cannot carry a reviewable fix), and every one of the 36
+            # lives inside a `#define` body (the do-while(0) macro idiom),
+            # which pass 1's `macro_lines` skip (above) already routes
+            # around before this loop ever reaches this block for that
+            # line -- so this is a hardening against a shape this tree does
+            # not currently produce, not an active production mis-key.
+            leading_close_match = re.match(r"^[\}\;]+", stripped)
+            if leading_close_match:
                 header_accum = ""
                 pending_header = None
+                stripped = stripped[leading_close_match.end():].lstrip()
+            is_bare_scope_close = (stripped == "")
             ns = None if is_bare_scope_close else re.match(r"^\s*namespace\s+([\w:]+)?\s*\{", line)
             if ns:
                 raw_name = ns.group(1)
@@ -666,6 +713,53 @@ MINIMUM_SCANNED_FILE_COUNT = 300
 # than a stale one.
 MINIMUM_LEDGER_ROW_COUNT = 451
 
+# review-1 W-1(b): the RESOLVER-IMPL class is pinned by (file, function) --
+# same discipline as MACRO_FAMILY's own pinned literal -- so extending it is
+# a review-visible SCRIPT edit, not a ledger-only one (a ledger-only "class"
+# flip could otherwise launder ANY site into the no-proof-required
+# RESOLVER-IMPL bucket, review-1's demonstrated blocker: a TODO row flipped
+# straight to RESOLVER-IMPL passed --check with zero other changes). This
+# set is enumerated directly from the real ledger's RESOLVER-IMPL rows as
+# they stand AFTER this commit's own W-5 reclassification (below) --
+# `renum_world`/`setup_dir` left the RESOLVER-IMPL class in the SAME commit
+# that introduced this pin, so the pin reflects the post-W-5 state, not a
+# transient 8/10-pair snapshot that would need a second edit immediately
+# after.
+RESOLVER_IMPL_KEYS = frozenset({
+    ("src/entity/placement.cpp", "room_of"),
+    ("src/world/db_world.cpp", "load_rooms"),
+    ("src/world/db_world.cpp", "room_data::create_room"),
+    ("src/world/db_world.cpp", "room_data::operator[]"),
+    ("src/world/db_world.cpp", "rots::world::room_by_id_impl"),
+    ("src/world/db_world.cpp", "rots::world::room_by_id_total_impl"),
+})
+
+# review-1 W-1(c): restores spec section 4's fail-closed rule for the DECL
+# class's "#decl" (file-scope, unattributable) bucket in `.cpp` files only --
+# a header's `#decl` key and any `#NAME` macro-body key (in a header OR a
+# `.cpp` file) stay open/legal, since those are structurally derived from a
+# real, named macro definition the scanner can always re-derive; a `.cpp`
+# `#decl` key, in contrast, means the scanner's attribute_lines() could NOT
+# attach the site to any real function or macro at all, which must not
+# silently auto-launder into a no-proof-required class as production code
+# changes shape around it. Enumerated directly from the real ledger's four
+# such rows (entity/placement.cpp x2 -- room_of/room_by_id_total, two
+# resolver-impl DECLs -- persist/db_players.cpp, world/db_world.cpp), plus
+# one self-test fixture entry (`src/app/probe.cpp`, this file's own
+# PROBE_SOURCE_OK/DECL_ROW forward declaration, reused across ~15 --self-test
+# directions) -- a real "src/app/probe.cpp" never exists in production, so
+# the fixture entry is inert against the real tree and needs no per-call-site
+# override threaded through parse_ledger()/`_run_gate()` (see run_self_test's
+# "new-cpp-decl-key" direction, which uses a STANDALONE fixture file outside
+# this set to prove the check still fires).
+PINNED_DECL_KEYS = frozenset({
+    ("src/entity/placement.cpp", "room_by_id_total("),
+    ("src/entity/placement.cpp", "room_of("),
+    ("src/persist/db_players.cpp", "dispatch_room_vnum("),
+    ("src/world/db_world.cpp", "world_room_vnum("),
+    ("src/app/probe.cpp", "room_of("),  # self-test fixture only, see above
+})
+
 # Key = backticked `file · function · token`, KEY_SEPARATOR-joined (spec
 # format). U+00B7 MIDDLE DOT, space-padded on both sides, is illegal in a
 # path or a C identifier, so splitting on it is unambiguous and pipe-free by
@@ -751,8 +845,10 @@ def _parse_marked_table(live_lines, marker, header, minimum_rows, label):
 
 def _parse_classification_row(cells):
     """One `| Key | Count | Class | Kind | Proof |` row -> a row dict, or a
-    fail-closed SystemExit (malformed key, non-integer count, unknown class/
-    kind, proof-shape violations, TEST-FIXTURE path illegality)."""
+    fail-closed SystemExit (malformed key, non-positive count, unknown
+    class/kind, proof-shape violations, TEST-FIXTURE path illegality, a
+    non-'#'-prefixed DECL key, a RESOLVER-IMPL/pinned-DECL key outside its
+    closed set)."""
     if len(cells) != 5:
         raise SystemExit(
             f"error: ledger: classification row has {len(cells)} cell(s), expected 5: {cells!r}"
@@ -776,10 +872,83 @@ def _parse_classification_row(cells):
     except ValueError:
         raise SystemExit(f"error: ledger: non-integer count {count_cell!r} for key {key_text!r}")
 
+    # review-1 W-2: a zero or negative Count can mask real sites while
+    # keeping a per-key SUM exact against some OTHER row -- demonstrated
+    # live: a -500 TODO row paired with a +500 DECL row leaves every
+    # cross-check reconcile() runs untouched while collapsing the TODO
+    # ceiling's real total. A ledger row always describes one-or-more real
+    # scanned occurrences; it can never legitimately claim zero or fewer.
+    if count < 1:
+        raise SystemExit(
+            f"error: ledger: row count {count} for key {key_text!r} must be >= 1 -- a "
+            "zero or negative count can mask real sites while leaving a per-key sum "
+            "exact (review-1 W-2)"
+        )
+
     if cls not in CLASSES:
         raise SystemExit(f"error: ledger: unknown class {cls!r} for key {key_text!r}")
 
-    if kind != LEDGER_EMPTY_MARKER and kind not in PROOF_KINDS:
+    # review-1 W-1(a): a DECL row must key on a '#'-prefixed macro-body or
+    # file-scope-decl name -- never an ordinary function name, which can
+    # never start with '#' in real C++. Verified 0 violations in the real
+    # ledger at this commit; this closes the class off from ever silently
+    # keying a DECL row onto a real function going forward.
+    if cls == "DECL" and not key_function.startswith("#"):
+        raise SystemExit(
+            f"error: ledger: DECL row for key {key_text!r} has key_function "
+            f"{key_function!r}, which does not start with '#' -- a DECL row must key "
+            "on a macro-body ('#NAME') or file-scope-decl ('#decl') name, never an "
+            "ordinary function name (review-1 W-1(a))"
+        )
+
+    # review-1 W-1(b): RESOLVER-IMPL is pinned by (file, function) -- see
+    # RESOLVER_IMPL_KEYS above for the full rationale and enumeration.
+    if cls == "RESOLVER-IMPL" and (key_file, key_function) not in RESOLVER_IMPL_KEYS:
+        raise SystemExit(
+            f"error: ledger: RESOLVER-IMPL row for key {key_text!r} is outside the "
+            "pinned RESOLVER_IMPL_KEYS set -- extending the resolver-impl set is a "
+            "review-visible script edit (review-1 W-1(b)), not a ledger-only one"
+        )
+
+    # review-1 W-1(c): a '.cpp' file's "#decl" (unattributable, file-scope)
+    # key is pinned closed -- see PINNED_DECL_KEYS above. A header's "#decl"
+    # key and any "#NAME" macro-body key (header or .cpp) stay legal and
+    # open, since both are re-derivable from a real, named construct.
+    if cls == "DECL" and key_function == "#decl" and key_file.endswith(".cpp"):
+        if (key_file, key_token) not in PINNED_DECL_KEYS:
+            raise SystemExit(
+                f"error: ledger: new '.cpp' '#decl' key {key_text!r} is outside the "
+                "pinned PINNED_DECL_KEYS set -- an unattributable production .cpp site "
+                "must not auto-launder into DECL (review-1 W-1(c), restoring spec "
+                "section 4's fail-closed rule); review and either fix the scanner's "
+                "attribution or give the site a real proof row"
+            )
+
+    # review-1 F-1: PROVEN/GUARDED rows must carry BOTH a real Kind and a
+    # real Proof -- the empty marker on EITHER previously bypassed every
+    # shape check below wholesale (kind == LEDGER_EMPTY_MARKER short-
+    # circuited the whole `if kind != LEDGER_EMPTY_MARKER:` block).
+    # Demonstrated live: a real TODO row hand-edited to `| PROVEN | — | — |`
+    # passed --check unchanged.
+    if cls in ("PROVEN", "GUARDED"):
+        if kind == LEDGER_EMPTY_MARKER:
+            raise SystemExit(
+                f"error: ledger: {cls} row for key {key_text!r} must carry a non-empty "
+                f"Kind -- the empty marker {LEDGER_EMPTY_MARKER!r} bypasses every "
+                "proof-shape check (review-1 F-1)"
+            )
+        if proof == LEDGER_EMPTY_MARKER:
+            raise SystemExit(
+                f"error: ledger: {cls} row for key {key_text!r} must carry a non-empty "
+                f"Proof -- the empty marker {LEDGER_EMPTY_MARKER!r} bypasses every "
+                "proof-shape check (review-1 F-1)"
+            )
+
+    # PROVEN's Kind is the closed PROOF_KINDS vocabulary; GUARDED's Kind is
+    # free text citing its wave/test (spec section 3) and is NOT held to
+    # that vocabulary -- every other class's Kind, if non-empty, still is
+    # (unchanged from the original design: only GUARDED gets the carve-out).
+    if kind != LEDGER_EMPTY_MARKER and kind not in PROOF_KINDS and cls != "GUARDED":
         raise SystemExit(f"error: ledger: unknown proof kind {kind!r} for key {key_text!r}")
 
     if kind != LEDGER_EMPTY_MARKER:
@@ -1221,6 +1390,27 @@ def dev_selftest():
                 f"fnptr-returning {case_text.splitlines()[0]!r} line {check_line}: "
                 f"got {case_attributions[check_line]}, want ('file-scope', '')")
 
+    # review-1 W-9: a stray leading run of '}'/';' -- closing an enclosing
+    # scope -- sharing a PHYSICAL LINE with the very next header
+    # (`} ACMD(do_x) {`) must not glue into the header text and mis-key the
+    # site as literally "ACMD" (the macro-definer's own name). An empty
+    # namespace whose OWN closing brace shares this line with the new
+    # header is the smallest reproducible shape: `depth == base_depth`
+    # already holds at the top of this line (nothing happened between the
+    # namespace's opening and this line, so depth never moved away from
+    # "just inside namespace"), so header recognition actually runs on it --
+    # unlike a FUNCTION body's own close sharing a line with the next
+    # header, which this architecture's per-line lumped brace-delta cannot
+    # detect within one iteration (a known, separate limitation, matching
+    # case5's already-documented inline-body gap above).
+    w9_text = "namespace rots {\n} ACMD(do_x) {\n    room_of(ch);\n}\n"
+    w9_attributions = attribute_lines(w9_text.splitlines())
+    if w9_attributions[1] != ("function", "rots::do_x"):
+        failures.append(
+            f"w9 (stray-close-then-header) line 1: got {w9_attributions[1]}, want "
+            "('function', 'rots::do_x') -- the leading '}' must not glue into the "
+            "header text and mis-key this as literally 'ACMD'")
+
     for failure in failures:
         print(f"dev-selftest FAILED: {failure}", file=sys.stderr)
     return 1 if failures else 0
@@ -1472,6 +1662,20 @@ def run_self_test():
             "an accidental raise must not silently loosen the ratchet."
         )
 
+    # review-1 W-6: the row-count floor's own VALUE, pinned the same way as
+    # the two literals immediately above -- without this pin, the docs'
+    # "both floors self-test-pinned" claim was false (only the file-count
+    # and TODO-ceiling floors actually were). W-5's reclassification of
+    # renum_world/setup_dir moves rows BETWEEN classes, not into or out of
+    # the ledger, so it does not change the real row count and this pin
+    # stays at 451 unchanged by this same commit.
+    if MINIMUM_LEDGER_ROW_COUNT < 451:
+        failures.append(
+            f"MINIMUM_LEDGER_ROW_COUNT is {MINIMUM_LEDGER_ROW_COUNT}, below the 451 seeded "
+            "from the real ledger's measured row count -- a lowered floor lets a "
+            "truncated ledger pass as clean."
+        )
+
     # Review-1 IMPORTANT finding 1: reconcile()'s todo_ceiling default must
     # be resolved at CALL time (the LIVE MAXIMUM_TODO_COUNT), not baked in as
     # an ordinary keyword default evaluated once at `def` time -- a plain
@@ -1648,6 +1852,72 @@ def run_self_test():
         expect_parse_ledger_systemexit(
             "citation-missing", SELF_TEST_LEDGER_OK.replace(PROVEN_ROW, no_citation_row))
 
+        # review-1 F-1: PROVEN/GUARDED rows must carry a non-empty Kind AND
+        # a non-empty Proof -- demonstrated exploit: a real TODO row
+        # hand-edited to class PROVEN with BOTH Kind and Proof left at the
+        # empty marker previously passed unchanged.
+        proven_empty_kind_row = (
+            f"| `src/app/probe.cpp · recalc_zone · room_of(` | 1 | PROVEN | "
+            f"{LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |"
+        )
+        expect_parse_ledger_systemexit(
+            "proven-empty-kind",
+            SELF_TEST_LEDGER_OK.replace(TODO_ROW_RECALC_ZONE, proven_empty_kind_row))
+        guarded_empty_proof_row = (
+            f"| `src/app/probe.cpp · recalc_zone · room_of(` | 1 | GUARDED | "
+            f"landed in wave rr1, red-first test RecalcZoneGuardTest | {LEDGER_EMPTY_MARKER} |"
+        )
+        expect_parse_ledger_systemexit(
+            "guarded-empty-proof",
+            SELF_TEST_LEDGER_OK.replace(TODO_ROW_RECALC_ZONE, guarded_empty_proof_row))
+
+        # review-1 W-2: a ledger row's Count must be >= 1 -- a zero or
+        # negative count can mask real sites while some OTHER row's count
+        # keeps the per-key SUM exact (Opus's demonstrated evasion: a -500
+        # TODO row paired with a +500 DECL row).
+        negative_count_row = TODO_ROW_RECALC_ZONE.replace("` | 1 | TODO", "` | -1 | TODO")
+        expect_parse_ledger_systemexit(
+            "negative-count",
+            SELF_TEST_LEDGER_OK.replace(TODO_ROW_RECALC_ZONE, negative_count_row))
+        zero_count_row = TODO_ROW_RECALC_ZONE.replace("` | 1 | TODO", "` | 0 | TODO")
+        expect_parse_ledger_systemexit(
+            "zero-count",
+            SELF_TEST_LEDGER_OK.replace(TODO_ROW_RECALC_ZONE, zero_count_row))
+
+        # review-1 W-1(a): a DECL row's key_function must start with '#' --
+        # a plain function name (no '#') keyed as DECL must fail even before
+        # reconcile() ever compares it against a scanned site.
+        expect_parse_ledger_systemexit(
+            "decl-class-on-a-function-key",
+            SELF_TEST_LEDGER_OK.replace(DECL_ROW, DECL_ROW.replace("#decl", "declared_thing")))
+
+        # review-1 W-1(b): a RESOLVER-IMPL row outside the pinned
+        # RESOLVER_IMPL_KEYS set must fail -- "src/app/probe.cpp"/"do_light"
+        # is not, and never will be, a resolver-implementation function.
+        resolver_impl_outside_pinned_row = TODO_ROW_DO_LIGHT.replace("TODO", "RESOLVER-IMPL")
+        expect_parse_ledger_systemexit(
+            "resolver-impl-outside-pinned-set",
+            SELF_TEST_LEDGER_OK.replace(TODO_ROW_DO_LIGHT, resolver_impl_outside_pinned_row))
+
+        # review-1 W-1(c): a NEW '.cpp' file's "#decl" key outside
+        # PINNED_DECL_KEYS must fail -- a standalone 1-row fixture (not
+        # SELF_TEST_LEDGER_OK, whose own probe.cpp/#decl/room_of( entry IS
+        # one of the pinned self-test keys, see PINNED_DECL_KEYS's own
+        # comment) so this direction actually exercises an UNPINNED file.
+        new_cpp_decl_key_ledger = (
+            f"{LEDGER_CLASSIFICATION_MARKER}\n"
+            f"{LEDGER_CLASSIFICATION_HEADER}\n"
+            "| --- | --- | --- | --- | --- |\n"
+            f"| `src/app/notpinned.cpp · #decl · room_of(` | 1 | DECL | "
+            f"{LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |\n"
+            "\n"
+            f"{LEDGER_TOKEN_COUNTS_MARKER}\n"
+            f"{LEDGER_TOKEN_COUNTS_HEADER}\n"
+            "| --- | --- |\n"
+        )
+        expect_parse_ledger_systemexit(
+            "new-cpp-decl-key", new_cpp_decl_key_ledger, minimum_rows=1)
+
         # 9. test-fixture-outside-tests: a TEST-FIXTURE row for a src/app/ key.
         expect_parse_ledger_systemexit(
             "test-fixture-outside-tests",
@@ -1676,18 +1946,67 @@ def run_self_test():
 
         # 11. macro-family-closed-world: a new header defines a resolver-
         # reaching macro with no MACRO_FAMILY entry.
+        #
+        # review-1 F-3 FIX: the macro's own #define BODY line is ITSELF a
+        # room_of( site (attributed to macro "SNEAKY", keying "#SNEAKY") --
+        # with no ledger row for that key, the ORIGINAL fixture ALWAYS also
+        # produced an unclassified-site error whose OWN text happens to
+        # contain the substring "SNEAKY" (the key itself), so the original
+        # assertion (`"SNEAKY" not in output`) passed for the WRONG reason:
+        # deleting the closed-world check entirely left this direction
+        # passing unchanged (verified below by scratch-copy sabotage). Fixed
+        # by giving the fixture ledger a `#SNEAKY` DECL row (closing the
+        # unclassified-site path) and bumping the `room_of(` token-counts
+        # row by 1 (closing the token-total cross-check path too) -- the
+        # closed-world violation becomes the ONLY possible error, and the
+        # assertion checks for ITS OWN text ("MACRO_FAMILY"/"closed-world"),
+        # never the macro's name.
         sneaky_header = app_dir / "sneaky.h"
         sneaky_header.write_text(
             "#define SNEAKY(ch) (room_of(ch)->number)\n", encoding="utf-8")
+        sneaky_decl_row = (
+            f"| `src/app/sneaky.h · #SNEAKY · room_of(` | 1 | DECL | "
+            f"{LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |"
+        )
+        sneaky_ledger_text = SELF_TEST_LEDGER_OK.replace(
+            TODO_ROW_RECALC_ZONE, TODO_ROW_RECALC_ZONE + "\n" + sneaky_decl_row
+        ).replace("| `room_of(` | 2 |", "| `room_of(` | 3 |")
+        ledger.write_text(sneaky_ledger_text, encoding="utf-8")
         try:
             exit_code, output = _run_gate(root, ledger)
-            if exit_code == 0 or "SNEAKY" not in output:
+            if exit_code == 0 or not any(marker in output for marker in ("MACRO_FAMILY", "closed-world")):
                 failures.append(
-                    f"macro-family-closed-world: expected a failure naming SNEAKY, got "
-                    f"exit {exit_code}\n{output}"
+                    "macro-family-closed-world: expected a closed-world failure naming "
+                    f"MACRO_FAMILY/closed-world, got exit {exit_code}\n{output}"
+                )
+            if "unclassified site" in output:
+                failures.append(
+                    "macro-family-closed-world: the #SNEAKY DECL row did not neutralize "
+                    f"the unclassified-site path -- the fixture is not isolating the "
+                    f"closed-world check\n{output}"
                 )
         finally:
             sneaky_header.unlink()
+            ledger.write_text(SELF_TEST_LEDGER_OK, encoding="utf-8")
+
+        # review-1 W-3/F-4: the ## preprocessor paste operator is now a
+        # tracked (17th) static token -- a paste-assembled identifier in a
+        # PRODUCTION file (not masked by a comment/string, and not inside a
+        # #define body the macro_lines pass already skips) must surface as
+        # an ordinary unclassified site, exactly like any other untracked
+        # room_of(/world[ call would.
+        paste_probe = app_dir / "paste_probe.cpp"
+        paste_probe.write_text(
+            "void paste_fn(char_data* ch)\n{\n    int a##b = 0;\n}\n", encoding="utf-8")
+        try:
+            exit_code, output = _run_gate(root, ledger)
+            if exit_code == 0 or "##" not in output or "unclassified site" not in output:
+                failures.append(
+                    "token-paste-evasion: expected an unclassified-site failure naming "
+                    f"'##', got exit {exit_code}\n{output}"
+                )
+        finally:
+            paste_probe.unlink()
 
         # 12. marker sabotage (both markers; the M10 copies).
         expect_parse_ledger_systemexit(
@@ -2068,7 +2387,42 @@ macro whose name is not in the pinned `MACRO_FAMILY` literal. Each drain wave
 lowers `MAXIMUM_TODO_COUNT` in the same commit that adds its proofs --
 **a new resolver site anywhere in production is therefore a new `TODO` row,
 which exceeds the ceiling: unclassified new code is a build failure from R1
-onward** (design doc section 4/O-10).
+onward** (design doc section 4/O-10). A row `Count` must be at least 1 -- a
+zero or negative count can mask real sites while some other row's count
+keeps a per-key SUM exact (review-1 W-2).
+
+## The closed, pinned classes
+
+Three classes are pinned closed, in addition to `MACRO_FAMILY`'s own pinned
+literal (review-1 W-1, closing the dual whole-branch review's BLOCKER):
+
+- **`DECL`** rows must key on a `#`-prefixed name -- either a macro-body key
+  (`#NAME`, matching a real `#define`) or the file-scope-unattributable key
+  `#decl`. A plain function name can never start with `#`; a `DECL` row
+  keyed on one is rejected outright, closing off the demonstrated exploit of
+  auto-laundering an unattributable site into the no-proof-required `DECL`
+  class by naming it like a real function.
+- **`RESOLVER-IMPL`** is closed by a `RESOLVER_IMPL_KEYS` frozenset of
+  `(file, function)` pairs (the tool's own module-level constant) -- any
+  `RESOLVER-IMPL` row outside that set is a gate error. Extending the
+  resolver-impl set is therefore a review-visible SCRIPT edit, never a
+  ledger-only one.
+- **`.cpp`-file `#decl` keys** are additionally closed by a
+  `PINNED_DECL_KEYS` frozenset -- a header's `#decl` key and any `#NAME`
+  macro-body key (header OR `.cpp`) stay legal and open, since both are
+  re-derivable from a real, named construct; only the `.cpp`-file
+  "unattributable, file-scope" bucket is pinned, restoring design doc
+  section 4's fail-closed rule that an unattributable production site must
+  not silently auto-launder into `DECL` as the tree changes shape around it.
+
+`PROVEN` and `GUARDED` rows must carry a genuinely non-empty `Kind` AND a
+genuinely non-empty `Proof` -- the empty marker on either previously
+short-circuited every shape check below wholesale (review-1 F-1,
+demonstrated live: a real `TODO` row hand-flipped to
+`` | PROVEN | — | — | `` passed `--check` unchanged). `PROVEN`'s `Kind` is
+held to the closed `PROOF_KINDS` vocabulary above; `GUARDED`'s `Kind` is free
+text citing its wave and red-first test (design doc section 3) and is
+**not** held to that vocabulary.
 
 ## The gate verifies shape, reviews verify semantics
 
@@ -2097,6 +2451,19 @@ stored location field -- does **not** hold inside a `ScopedRenderLocation`
 window (the render cursor temporarily diverges from the stored field by
 design); an `occupant-chain` proof taken from inside such a window must say so
 explicitly, or it is incomplete.
+
+## The location_of() guard proves only the sentinel half
+
+The SAME two-half distinction applies to an `entry-guard` or `caller-contract`
+proof built on a `location_of(ch) != NOWHERE` test, not only to
+`occupant-chain` proofs (review-1 W-4): the guard establishes only that the
+id is not the `NOWHERE` sentinel -- it does not, by itself, establish that the
+id is *in range*. In-range-ness follows the same way it does for the
+occupant-chain invariant's second half: from placement's M-1 precondition
+(`src/entity/placement.cpp:369-395`) plus append-only room allocation. A row
+proved by `entry-guard`/`caller-contract` over a `location_of()` test must
+therefore state BOTH halves in its own proof text -- the sentinel exclusion
+AND the in-range justification -- not the sentinel half alone.
 
 ## The two-room-macro rule
 
@@ -2131,6 +2498,52 @@ an unclassified `TODO` here (its input validity is still unproven) -- the two
 gates ask two different questions and keep two different ledgers (design doc
 section 1, the `world[` bullet -- review O-1/F-1, both spec reviews' top
 finding).
+
+## Known reconciliation blind spots
+
+The gate's cross-checks are count-based, not identity-based, which leaves a
+few structural blind spots recorded here rather than silently discovered
+later (review-1 F-5/F-6/F-7/W-12):
+
+- **The same-function site-swap limit.** Deleting one already-`GUARDED` site
+  from a function and adding a new, unguarded site to the SAME function in
+  the SAME edit needs no ledger edit at all if the function's per-key site
+  count for that token does not change -- sharper than ordinary two-sided
+  drift, since nothing here even changes a row's `Count`. This is a review
+  concern, not a gate one: the gate can only ever see aggregate counts per
+  `(file, function, token)` key, never individual call-site identity.
+- **Cross-class count-shuffling between rows sharing a key is review
+  territory.** Two rows for the same `(file, function, token)` key but
+  different classes (e.g. one `PROVEN` site and one `TODO` site inside the
+  same function, same token) can trade sites between themselves while their
+  COMBINED total stays fixed, and the gate cannot tell which physical site
+  moved where. A mixed-class key's rows should disambiguate which sites each
+  row actually covers in their own proof text (R2 rule) -- the reviews check
+  this by reading the source, not by rerunning the gate.
+- **`#decl` conflates three different things**: a genuine forward
+  declaration, a definition HEADER line the scanner's attribution missed
+  (not yet inside the body), and a truly unattributable site. A reader must
+  not assume every `#decl` row is a pure declaration -- see `PINNED_DECL_KEYS`
+  above for why the `.cpp`-file case is pinned shut rather than left open to
+  silently reclassify.
+- **The caller-contract token-pinning policy.** A `caller-contract` proof
+  for an id-TAKING function (one whose room-id argument comes from a caller,
+  not a loop/table it owns itself) is only as strong as the claim that every
+  caller is accounted for. Such a proof must either have the function's own
+  name pinned as a token this gate scans for directly (so a NEW caller
+  anywhere would itself need a ledger row), or enumerate every existing
+  caller explicitly in the proof text -- the `world_room_vnum`/
+  `dispatch_room_vnum` hook-dispatch pair (`STATIC_TOKEN_PATTERNS` above) is
+  the precedent: pinning the dispatch alias itself as a token is what lets a
+  future SECOND registered target surface as its own new site instead of
+  silently inheriting the first target's proof.
+- **Recorded scan-scope limits.** The scan is `<root>/src` only (via
+  `_resolve_scan_targets`'s default) -- nothing outside `src/` is ever
+  scanned or can carry a ledger row. `collect_define_bodies` keeps
+  LAST-WINS on a duplicate macro name across scanned files (a later
+  `#define NAME(...)` silently overwrites an earlier one in the body map
+  `derive_macro_family` closes over) -- two files defining the same macro
+  name differently is a latent blind spot this gate does not detect.
 """
 
 
@@ -2234,10 +2647,10 @@ def _generate_ledger(args):
         )
         return 1
 
-    header_texts = {
+    source_texts = {
         str(path): path.read_text(encoding="utf-8", errors="replace") for path in scanned_files
     }
-    derived_family = derive_macro_family(header_texts)
+    derived_family = derive_macro_family(source_texts)
     unknown_macros = sorted(derived_family - set(MACRO_FAMILY))
     if unknown_macros:
         print(
@@ -2356,8 +2769,9 @@ def build_argument_parser():
                         help="defaults to <root>/docs/superpowers/room-resolve-ledger.md")
     parser.add_argument(
         "--derive-macros", action="store_true",
-        help="Print the macro family derived from all scanned headers' "
-             "#define bodies, one name per line, sorted (debug/maintenance).")
+        help="Print the macro family derived from all scanned files' "
+             "#define bodies (headers AND .cpp files), one name per line, "
+             "sorted (debug/maintenance).")
     parser.add_argument("--todo-ceiling-override", type=int, default=None,
                         help="self-test only -- requires RR_SELF_TEST=1")
     parser.add_argument("--minimum-files-override", type=int, default=None,
@@ -2410,11 +2824,11 @@ def main(argv=None):
 
     if args.derive_macros:
         scanned_for_derive = source_files(repository_root / "src")
-        header_texts = {
+        source_texts = {
             str(path): path.read_text(encoding="utf-8", errors="replace")
             for path in scanned_for_derive
         }
-        for name in sorted(derive_macro_family(header_texts)):
+        for name in sorted(derive_macro_family(source_texts)):
             print(name)
         return 0
 
@@ -2446,10 +2860,10 @@ def main(argv=None):
             "docs/superpowers/room-resolve-ledger.md; nothing to reconcile against until then."
         )
 
-    header_texts = {
+    source_texts = {
         str(path): path.read_text(encoding="utf-8", errors="replace") for path in scanned_files
     }
-    derived_family = derive_macro_family(header_texts)
+    derived_family = derive_macro_family(source_texts)
     unknown_macros = sorted(derived_family - set(MACRO_FAMILY))
 
     sites = []

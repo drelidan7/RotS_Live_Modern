@@ -84,20 +84,49 @@
   in-range before dereference, classifying every resolver-reaching site into one of **six**
   classes (`TODO`/`PROVEN`/`GUARDED`/`TEST-FIXTURE`/`RESOLVER-IMPL`/`DECL`) recorded in
   `docs/superpowers/room-resolve-ledger.md` rather than as inline per-line annotations. Its
-  token surface is **16**: 5 static tokens plus an **eleven**-macro family (derived from every
-  scanned header's `#define` body, including `VALID_EDGE`, a `.cpp`-local macro the tool's own
-  derivation sweep still finds). `MAXIMUM_TODO_COUNT` is **788** and `MINIMUM_LEDGER_ROW_COUNT`
-  is **451**, both floors self-test-pinned; the initial real-tree inventory measured at
-  `a7aac434` is 461 rows / 1273 sites. The ratchet compares a **SITE-SUM**, not a row count — a
-  new resolver call site added inside a function whose key is already `TODO` still raises that
-  row's site count and trips `MAXIMUM_TODO_COUNT` exactly as a brand-new `TODO` key would, so
-  there is no free-riding inside an already-deferred function. `--check`/`--self-test` land as
-  two new `ctest` tests, `RoomResolveCensus`/`RoomResolveCensusSelfTest` (1860 → **1862**). An
-  `LS1-ALLOW` annotation is **not** a proof here: the two gates ask two different questions and
-  keep two different ledgers, so a site can be simultaneously `LS1-ALLOW`'d (representation
-  access is fine) and an unclassified `TODO` in the room-resolve ledger (its input validity is
-  still unproven) — see the tool's own module and self-test-block docstrings for the full
-  account, and docs/BUILD.md's "Room-resolve retirement (RR program)" subsection.
+  token surface is **17** (raised from 16 by the T5 findings-closure task below): 6 static
+  tokens (the room_of/room_by_id_total/world[/world_room_vnum/dispatch_room_vnum quintet, plus
+  the bare `##` preprocessor paste operator itself) plus an **eleven**-macro family (derived from
+  every scanned FILE's `#define` body — headers AND `.cpp` files, not headers alone — including
+  `VALID_EDGE`, a `.cpp`-local macro the tool's own derivation sweep still finds). `MAXIMUM_TODO_COUNT`
+  is **788** and `MINIMUM_LEDGER_ROW_COUNT` is **451**, both floors self-test-pinned; the initial
+  real-tree inventory measured at `a7aac434` is 461 rows / 1273 sites (unchanged in TOTAL by the
+  T5 task's reclassification below, which moves rows between classes, not into or out of the
+  ledger). The ratchet compares a **SITE-SUM**, not a row count — a new resolver call site added
+  inside a function whose key is already `TODO` still raises that row's site count and trips
+  `MAXIMUM_TODO_COUNT` exactly as a brand-new `TODO` key would, so there is no free-riding inside
+  an already-deferred function. `--check`/`--self-test` land as two new `ctest` tests,
+  `RoomResolveCensus`/`RoomResolveCensusSelfTest` (1860 → **1862**). An `LS1-ALLOW` annotation is
+  **not** a proof here: the two gates ask two different questions and keep two different ledgers,
+  so a site can be simultaneously `LS1-ALLOW`'d (representation access is fine) and an
+  unclassified `TODO` in the room-resolve ledger (its input validity is still unproven) — see the
+  tool's own module and self-test-block docstrings for the full account, and docs/BUILD.md's
+  "Room-resolve retirement (RR program)" subsection. **A findings-closure task (T5, this same
+  wave) closed the dual whole-branch review's convergent W-1..9/F-1..7 findings in one commit**:
+  the BLOCKER (W-1/F-2) pins three previously proof-free classes shut — `DECL` rows must key on a
+  `#`-prefixed name (a plain function name auto-laundering into DECL was the demonstrated
+  exploit), `RESOLVER-IMPL` is now closed by a `RESOLVER_IMPL_KEYS` frozenset of (file, function)
+  pairs, and a NEW `.cpp` file's file-scope `#decl` key is closed by `PINNED_DECL_KEYS` (a
+  header's `#decl` and any `#NAME` macro key stay open); W-2 rejects a row `Count` below 1 (a
+  demonstrated −500/+500 TODO/DECL pair evasion that kept every per-key sum exact while
+  collapsing the ceiling); F-1 makes `PROVEN`/`GUARDED` rows require a genuinely non-empty
+  Kind/Proof (a real TODO row hand-flipped to `PROVEN` with both cells left at the empty marker
+  previously passed unchanged); F-3 fixed a vacuous self-test direction (the macro-family-closed-
+  world fixture's own assertion passed for the wrong reason — an unclassified-site error that
+  happened to mention the macro's name — even with the closed-world check deleted). W-5
+  reclassified `db_world.cpp`'s `renum_world`/`setup_dir` `RESOLVER-IMPL` rows to `PROVEN`
+  (loop-bound/caller-contract respectively, both citing `db_world.cpp` call sites), moving
+  `RESOLVER-IMPL` **10/45 → 7/33** rows/sites and `PROVEN` **2/2 → 5/14** (recomputed exactly from
+  the resulting ledger via `parse_ledger()` — these are NOT the review's own approximate 8/34 and
+  4/13 estimates, a stale-arithmetic class this repository's history recurringly corrects) and
+  narrowing `RESOLVER_IMPL_KEYS` to 6 pinned pairs. W-4 extended both shipped `PROVEN` rows' proof
+  text with the in-range half (a `location_of() != NOWHERE` guard alone proves only the sentinel
+  half; in-range follows from placement's M-1 precondition plus append-only allocation). W-9
+  hardened `attribute_lines()` against a stray leading `}`/`;` run sharing a physical line with the
+  next header (`} ACMD(do_x) {`), which previously mis-keyed the site as literally `"ACMD"` — zero
+  live occurrences (a fresh whole-tree `} while(0)` grep counts 36, not 96, correcting a stale
+  count this wave's own gitignored progress notes carried). See docs/BUILD.md's "Room-resolve
+  retirement (RR program)" subsection for the full findings-closure account.
 - release-notes/, game design docs/, code documentation/: Docs and release history.
 
 ## Build, Test, and Development Commands

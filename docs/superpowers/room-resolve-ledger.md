@@ -30,7 +30,42 @@ macro whose name is not in the pinned `MACRO_FAMILY` literal. Each drain wave
 lowers `MAXIMUM_TODO_COUNT` in the same commit that adds its proofs --
 **a new resolver site anywhere in production is therefore a new `TODO` row,
 which exceeds the ceiling: unclassified new code is a build failure from R1
-onward** (design doc section 4/O-10).
+onward** (design doc section 4/O-10). A row `Count` must be at least 1 -- a
+zero or negative count can mask real sites while some other row's count
+keeps a per-key SUM exact (review-1 W-2).
+
+## The closed, pinned classes
+
+Three classes are pinned closed, in addition to `MACRO_FAMILY`'s own pinned
+literal (review-1 W-1, closing the dual whole-branch review's BLOCKER):
+
+- **`DECL`** rows must key on a `#`-prefixed name -- either a macro-body key
+  (`#NAME`, matching a real `#define`) or the file-scope-unattributable key
+  `#decl`. A plain function name can never start with `#`; a `DECL` row
+  keyed on one is rejected outright, closing off the demonstrated exploit of
+  auto-laundering an unattributable site into the no-proof-required `DECL`
+  class by naming it like a real function.
+- **`RESOLVER-IMPL`** is closed by a `RESOLVER_IMPL_KEYS` frozenset of
+  `(file, function)` pairs (the tool's own module-level constant) -- any
+  `RESOLVER-IMPL` row outside that set is a gate error. Extending the
+  resolver-impl set is therefore a review-visible SCRIPT edit, never a
+  ledger-only one.
+- **`.cpp`-file `#decl` keys** are additionally closed by a
+  `PINNED_DECL_KEYS` frozenset -- a header's `#decl` key and any `#NAME`
+  macro-body key (header OR `.cpp`) stay legal and open, since both are
+  re-derivable from a real, named construct; only the `.cpp`-file
+  "unattributable, file-scope" bucket is pinned, restoring design doc
+  section 4's fail-closed rule that an unattributable production site must
+  not silently auto-launder into `DECL` as the tree changes shape around it.
+
+`PROVEN` and `GUARDED` rows must carry a genuinely non-empty `Kind` AND a
+genuinely non-empty `Proof` -- the empty marker on either previously
+short-circuited every shape check below wholesale (review-1 F-1,
+demonstrated live: a real `TODO` row hand-flipped to
+`` | PROVEN | — | — | `` passed `--check` unchanged). `PROVEN`'s `Kind` is
+held to the closed `PROOF_KINDS` vocabulary above; `GUARDED`'s `Kind` is free
+text citing its wave and red-first test (design doc section 3) and is
+**not** held to that vocabulary.
 
 ## The gate verifies shape, reviews verify semantics
 
@@ -59,6 +94,19 @@ stored location field -- does **not** hold inside a `ScopedRenderLocation`
 window (the render cursor temporarily diverges from the stored field by
 design); an `occupant-chain` proof taken from inside such a window must say so
 explicitly, or it is incomplete.
+
+## The location_of() guard proves only the sentinel half
+
+The SAME two-half distinction applies to an `entry-guard` or `caller-contract`
+proof built on a `location_of(ch) != NOWHERE` test, not only to
+`occupant-chain` proofs (review-1 W-4): the guard establishes only that the
+id is not the `NOWHERE` sentinel -- it does not, by itself, establish that the
+id is *in range*. In-range-ness follows the same way it does for the
+occupant-chain invariant's second half: from placement's M-1 precondition
+(`src/entity/placement.cpp:369-395`) plus append-only room allocation. A row
+proved by `entry-guard`/`caller-contract` over a `location_of()` test must
+therefore state BOTH halves in its own proof text -- the sentinel exclusion
+AND the in-range justification -- not the sentinel half alone.
 
 ## The two-room-macro rule
 
@@ -93,6 +141,52 @@ an unclassified `TODO` here (its input validity is still unproven) -- the two
 gates ask two different questions and keep two different ledgers (design doc
 section 1, the `world[` bullet -- review O-1/F-1, both spec reviews' top
 finding).
+
+## Known reconciliation blind spots
+
+The gate's cross-checks are count-based, not identity-based, which leaves a
+few structural blind spots recorded here rather than silently discovered
+later (review-1 F-5/F-6/F-7/W-12):
+
+- **The same-function site-swap limit.** Deleting one already-`GUARDED` site
+  from a function and adding a new, unguarded site to the SAME function in
+  the SAME edit needs no ledger edit at all if the function's per-key site
+  count for that token does not change -- sharper than ordinary two-sided
+  drift, since nothing here even changes a row's `Count`. This is a review
+  concern, not a gate one: the gate can only ever see aggregate counts per
+  `(file, function, token)` key, never individual call-site identity.
+- **Cross-class count-shuffling between rows sharing a key is review
+  territory.** Two rows for the same `(file, function, token)` key but
+  different classes (e.g. one `PROVEN` site and one `TODO` site inside the
+  same function, same token) can trade sites between themselves while their
+  COMBINED total stays fixed, and the gate cannot tell which physical site
+  moved where. A mixed-class key's rows should disambiguate which sites each
+  row actually covers in their own proof text (R2 rule) -- the reviews check
+  this by reading the source, not by rerunning the gate.
+- **`#decl` conflates three different things**: a genuine forward
+  declaration, a definition HEADER line the scanner's attribution missed
+  (not yet inside the body), and a truly unattributable site. A reader must
+  not assume every `#decl` row is a pure declaration -- see `PINNED_DECL_KEYS`
+  above for why the `.cpp`-file case is pinned shut rather than left open to
+  silently reclassify.
+- **The caller-contract token-pinning policy.** A `caller-contract` proof
+  for an id-TAKING function (one whose room-id argument comes from a caller,
+  not a loop/table it owns itself) is only as strong as the claim that every
+  caller is accounted for. Such a proof must either have the function's own
+  name pinned as a token this gate scans for directly (so a NEW caller
+  anywhere would itself need a ledger row), or enumerate every existing
+  caller explicitly in the proof text -- the `world_room_vnum`/
+  `dispatch_room_vnum` hook-dispatch pair (`STATIC_TOKEN_PATTERNS` above) is
+  the precedent: pinning the dispatch alias itself as a token is what lets a
+  future SECOND registered target surface as its own new site instead of
+  silently inheriting the first target's proof.
+- **Recorded scan-scope limits.** The scan is `<root>/src` only (via
+  `_resolve_scan_targets`'s default) -- nothing outside `src/` is ever
+  scanned or can carry a ledger row. `collect_define_bodies` keeps
+  LAST-WINS on a duplicate macro name across scanned files (a later
+  `#define NAME(...)` silently overwrites an earlier one in the body map
+  `derive_macro_family` closes over) -- two files defining the same macro
+  name differently is a latent blind spot this gate does not detect.
 
 <!-- ROOM-RESOLVE-CLASSIFICATION -->
 | Key | Count | Class | Kind | Proof |
@@ -351,7 +445,7 @@ finding).
 | `src/pathfind/graph.cpp · show_blood_trail · IS_WATER(` | 1 | TODO | — | — |
 | `src/pathfind/graph.cpp · show_blood_trail · room_of(` | 1 | TODO | — | — |
 | `src/persist/db_players.cpp · #decl · dispatch_room_vnum(` | 1 | DECL | — | — |
-| `src/persist/db_players.cpp · save_char · dispatch_room_vnum(` | 1 | PROVEN | entry-guard | guarded one line above by `location_of(ch) != NOWHERE` — src/persist/db_players.cpp:1951 |
+| `src/persist/db_players.cpp · save_char · dispatch_room_vnum(` | 1 | PROVEN | entry-guard | guarded one line above by `location_of(ch) != NOWHERE` — src/persist/db_players.cpp:1951; in-range follows from the M-1 placement precondition (placement.cpp:369-395) plus appends-only allocation — a `location_of() != NOWHERE` guard alone proves only the sentinel half |
 | `src/script/mobact.cpp · one_mobile_activity · EXIT(` | 4 | TODO | — | — |
 | `src/script/mobact.cpp · one_mobile_activity · room_by_id_total(` | 4 | TODO | — | — |
 | `src/script/mobact.cpp · one_mobile_activity · room_of(` | 8 | TODO | — | — |
@@ -539,15 +633,15 @@ finding).
 | `src/world/db_world.cpp · load_rooms · world[` | 17 | RESOLVER-IMPL | — | — |
 | `src/world/db_world.cpp · real_room · room_by_id_total(` | 2 | TODO | — | — |
 | `src/world/db_world.cpp · recalc_zone_power · room_of(` | 3 | TODO | — | — |
-| `src/world/db_world.cpp · renum_world · room_by_id_total(` | 4 | RESOLVER-IMPL | — | — |
+| `src/world/db_world.cpp · renum_world · room_by_id_total(` | 4 | PROVEN | loop-bound | bounded by `for (room = 0; room <= top_of_world; room++)` — src/world/db_world.cpp:844; room never exceeds the resolver's own valid domain |
 | `src/world/db_world.cpp · report_zone_power · room_of(` | 1 | TODO | — | — |
 | `src/world/db_world.cpp · room_data::create_exit · room_by_id_total(` | 2 | TODO | — | — |
 | `src/world/db_world.cpp · room_data::create_room · room_by_id_total(` | 3 | RESOLVER-IMPL | — | — |
 | `src/world/db_world.cpp · room_data::operator[] · world[` | 1 | RESOLVER-IMPL | — | — |
 | `src/world/db_world.cpp · rots::world::room_by_id_impl · world[` | 1 | RESOLVER-IMPL | — | — |
 | `src/world/db_world.cpp · rots::world::room_by_id_total_impl · world[` | 1 | RESOLVER-IMPL | — | — |
-| `src/world/db_world.cpp · setup_dir · room_by_id_total(` | 7 | RESOLVER-IMPL | — | — |
-| `src/world/db_world.cpp · setup_dir · world[` | 1 | RESOLVER-IMPL | — | — |
+| `src/world/db_world.cpp · setup_dir · room_by_id_total(` | 7 | PROVEN | caller-contract | `room` is `load_rooms`'s own loop counter `room_nr`, passed unmodified at its sole call site — src/world/db_world.cpp:726; `load_rooms` holds `room_nr` in [0, top_of_world) by construction |
+| `src/world/db_world.cpp · setup_dir · world[` | 1 | PROVEN | caller-contract | `room` is `load_rooms`'s own loop counter `room_nr`, passed unmodified at its sole call site — src/world/db_world.cpp:726; `load_rooms` holds `room_nr` in [0, top_of_world) by construction |
 | `src/world/db_world.cpp · show_tracks · IS_WATER(` | 1 | TODO | — | — |
 | `src/world/db_world.cpp · show_tracks · room_of(` | 1 | TODO | — | — |
 | `src/world/db_world.cpp · world_room_vnum · room_by_id_total(` | 1 | PROVEN | caller-contract | sole registered dispatch target of dispatch_room_vnum; its only caller guards location_of(ch) != NOWHERE at db_players.cpp:1951 |
@@ -567,6 +661,7 @@ finding).
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |
+| `##` | 0 |
 | `EXIT(` | 251 |
 | `OUTSIDE(` | 14 |
 | `SUN_PENALTY(` | 10 |

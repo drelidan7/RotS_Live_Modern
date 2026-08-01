@@ -1291,6 +1291,65 @@ the full program design and degrade-path enumeration. Owner ruling **RR-O-1 (spe
 pending** and blocks only the program's final flip wave (the point at which `operator[]`'s
 degrade paths themselves change) — it does not block R1 or any classification wave before it.
 
+**Task 5 (findings closure, same wave)** closed the dual whole-branch review's convergent
+findings in one commit, all in `tools/room_resolve_census.py`/`docs/superpowers/room-resolve-ledger.md`
+— zero production C++. The BLOCKER (W-1, review-1's F-2 restatement) pins three previously
+proof-free classes shut: a `DECL` row must key on a `#`-prefixed name (`_parse_classification_row`
+now rejects a plain function name under class `DECL` — the demonstrated exploit auto-laundered an
+unattributable site into DECL by naming it like a real function); `RESOLVER-IMPL` is now closed by
+a module-level `RESOLVER_IMPL_KEYS` frozenset of (file, function) pairs, mirroring `MACRO_FAMILY`'s
+own pinned-literal discipline — extending the resolver-impl set is now a review-visible script
+edit, never a ledger-only one; and a NEW `.cpp` file's file-scope `#decl` key is closed by a
+`PINNED_DECL_KEYS` frozenset (a header's `#decl` key and any `#NAME` macro-body key, in a header OR
+a `.cpp` file, stay legal and open — only the `.cpp`-file "unattributable" bucket is pinned).
+W-2 rejects any row `Count` below 1 in `_parse_classification_row` (the demonstrated evasion: a
+−500 TODO row paired with a +500 DECL row kept every per-key sum exact while collapsing the TODO
+ceiling). F-1 makes `PROVEN`/`GUARDED` rows require a genuinely non-empty Kind AND Proof — the
+empty marker on either previously short-circuited every shape check wholesale (a real TODO row
+hand-flipped to `| PROVEN | — | — |` passed `--check` unchanged before this fix). F-3 fixed a
+vacuous self-test direction: the macro-family-closed-world fixture's own `SNEAKY` macro-body line
+is itself an untracked `room_of(` site, so the ORIGINAL assertion passed via an unrelated
+unclassified-site error that happened to mention the macro's name, not the closed-world check it
+claimed to prove — fixed by giving the fixture ledger a `#SNEAKY` DECL row (closing that path) and
+asserting on the closed-world error's own text instead.
+
+W-5 reclassified `db_world.cpp`'s `renum_world`/`setup_dir` `RESOLVER-IMPL` rows to `PROVEN`:
+`renum_world`'s `room_by_id_total(` sites are `loop-bound` (`for (room = 0; room <=
+top_of_world; room++)` at `db_world.cpp:844`); `setup_dir`'s `room_by_id_total(`/`world[` sites
+are `caller-contract` (its `room` parameter is `load_rooms`'s own loop counter `room_nr`, passed
+unmodified at the sole call site `db_world.cpp:726`). This moves `RESOLVER-IMPL` from
+**10 rows/45 sites to 7 rows/33 sites** and `PROVEN` from **2 rows/2 sites to 5 rows/14 sites**
+(recomputed exactly via `parse_ledger()` against the resulting ledger — NOT the review's own
+approximate 8/34 and 4/13 figures, superseded here rather than silently reused), and narrows
+`RESOLVER_IMPL_KEYS` to 6 pinned pairs. W-4 extended both of the wave's originally-shipped `PROVEN`
+rows' proof text with the in-range half the occupant-chain caveat already stated for its own kind:
+a `location_of() != NOWHERE` entry-guard/caller-contract proof establishes only the sentinel half
+(`!= NOWHERE`) on its own; in-range-ness follows separately from placement's M-1 precondition
+(`placement.cpp:369-395`) plus append-only room allocation.
+
+Two riding fixes: W-8 deletes the dead, never-referenced `HEADER_NAME_RE`. W-9 hardens
+`attribute_lines()` against a stray leading run of `}`/`;` sharing a physical line with the very
+next header (`} ACMD(do_x) {`), which previously glued the leading `}` into the accumulated header
+text and mis-keyed the site as literally `"ACMD"` (the macro-definer's own name) rather than the
+real function name — zero live occurrences at this commit (a fresh whole-tree
+`grep -rnE '\}\s*while\s*\(\s*0\s*\)' src` count is 36, not the 96 this wave's own gitignored
+progress notes carried; all 36 live inside `#define` bodies the macro-line skip already routes
+around). W-3/F-4 adds the bare `##` preprocessor paste operator as a 17th tracked token (up from
+16), closing the same token-paste evasion class LS-3b's location gate closed at its own m-13
+finding — a paste-assembled identifier defeats every intact-token pattern and macro-family
+derivation alike; the real tree has exactly two `##` occurrences, both inside string literals and
+therefore masked (zero real production sites, hence the token-counts table's `` `##` `` row
+reading 0). W-7 fixes three stale headers-only claims (the `--derive-macros` help string,
+`derive_macro_family`'s `header_texts` parameter renamed to `source_texts`, and AGENTS.md's own
+self-contradicting "every scanned header's `#define` body, including `VALID_EDGE`, a `.cpp`-local
+macro" clause). W-6 adds the `MINIMUM_LEDGER_ROW_COUNT` self-test pin the other two floors already
+had. LEDGER_PROSE (the single source the committed ledger doc's own prose is kept byte-identical
+to) gained: the closed/pinned-class vocabulary rules (W-1); the location_of()-guard-proves-only-
+the-sentinel-half rule (W-4); and a "known reconciliation blind spots" section (F-5/F-6/F-7/W-12)
+recording the same-function site-swap limit, cross-class count-shuffling being review-territory,
+`#decl`'s three-way conflation, the caller-contract token-pinning policy, and the `<root>/src`-only
+scan scope plus `collect_define_bodies`'s last-wins duplicate-macro-name behavior.
+
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
 Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling

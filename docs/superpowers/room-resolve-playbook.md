@@ -278,6 +278,30 @@ location_of() guard proves only the sentinel half" section), and a proof
 that states only the sentinel half is incomplete even if its guard citation
 is otherwise perfectly accurate.
 
+### The two-room-macro rule
+
+`IS_SUNLIT_EXIT`/`IS_SHADOWY_EXIT` each take **two** room-id arguments (the
+current room and the adjacent room across a door) — the ledger's own
+standing rule (design doc section 6/O-13) requires a row classifying either
+macro's call site to state a proof covering **both** room-id arguments
+separately; proving only one leaves the other's validity unaddressed. R2
+landed **zero** rows for either macro — not because the rule doesn't apply
+to this wave's tiers, but because neither macro is called from any of them.
+A tree-wide grep (`grep -rn "IS_SUNLIT_EXIT\|IS_SHADOWY_EXIT" src`) confirms
+every real call site of both macros — six `IS_SUNLIT_EXIT(` sites plus two
+`IS_SHADOWY_EXIT(` sites, matching the ledger's own token-counts table —
+lives inside `src/app/act_info.cpp`'s `do_look`/`do_exits` `ACMD` bodies,
+all still `TODO`; the macros themselves are defined once in `src/utils.h`
+and called from nowhere else in the tree. **Neither R3 (`src/combat/`) nor
+R4 (`src/script/`) will hit this pattern** — it is exclusively an app-tier
+(`do_look`/`do_exits`) concern, so the eventual `src/app/` wave, not R3 or
+R4, is where a future implementer must budget the extra per-site work of
+proving two room arguments instead of one per call site. Recorded here so a
+future task doesn't have to rediscover the macros' call-site distribution
+from scratch, and so nobody assumes R3/R4 need this recipe in their own
+planning just because the vocabulary and the rule are already pinned in the
+ledger doc.
+
 ### Caller-contract enumeration discipline
 
 A `caller-contract` proof's enumerated caller count is a *claim*, and this
@@ -511,8 +535,8 @@ re-diagnose "was this row skipped by accident or on purpose."
 
 ### Reconciling the exact stayed-TODO total
 
-The wave brief's own draft text asked for "9 sites stayed TODO" bracketed as
-`[1 char_to_room + 5 OLC/dispatch + 3 weather_to_char]` — summing that
+An early draft of this wave's stayed-TODO accounting undercounted, bracketed
+as `[1 char_to_room + 5 OLC/dispatch + 3 weather_to_char]` — summing that
 bracket gives 9, but it omits `CAN_GO` and `obj_to_room` (1 site each). The
 precise, re-derived total (matching the task reports' own per-tier tallies:
 Task 1 "8 sites stayed TODO," Task 2 "3 sites stayed TODO," 8 + 3 = 11) is:
@@ -529,10 +553,10 @@ The ceiling arithmetic uses the site count, not the row count (the ledger's
 drained = 11 stayed `TODO`, matching 788 (pre-wave ceiling) − 72 (drained
 this wave) = **716** (the ceiling `--check` itself reported after Task 2,
 confirmed programmatically, never hand-computed). **This is exactly the
-kind of miscount this playbook's own pitfalls section warns about — even a
-wave-planning brief's own arithmetic should be re-derived from the reports
-and the tool's own `--check` output before being repeated forward**, not
-copied at face value into a later doc.
+kind of miscount this playbook's own pitfalls section warns about — even an
+early planning tally should be re-derived from the task reports and the
+tool's own `--check` output before being repeated forward**, not copied at
+face value into a later doc without independently re-summing it.
 
 ## Per-row cost table
 

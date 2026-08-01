@@ -333,6 +333,17 @@ CONTROL_KEYWORDS = frozenset({"if", "while", "for", "switch", "return", "sizeof"
 # '(' for its argument list) does not match this pattern and is accepted by
 # the ordinary name-extraction path below.
 TYPE_DEFINITION_HEAD_RE = re.compile(r"^(?:struct|class|enum|union)\s+\w+\s*(?::\s*[\w,\s:<>]*)?$")
+# FIX ROUND 3 HARDENING (re-review IMPORTANT): a real function/method name
+# can never BE a C/C++ type or storage keyword -- if the generic extractor
+# ever produces one, that is proof it grabbed a return-type/storage-
+# specifier word rather than a name (the fn-ptr-returning shape, `int
+# (*get_fn())(int)`, is the confirmed way this happens; the check here is
+# belt-and-braces against any OTHER shape reaching the same wrong result).
+TYPE_OR_STORAGE_KEYWORDS = frozenset({
+    "int", "void", "char", "bool", "short", "long", "unsigned", "signed",
+    "float", "double", "const", "static", "inline", "struct", "class",
+    "enum", "union", "extern", "register", "volatile",
+})
 
 
 def attribute_lines(masked_lines):
@@ -489,18 +500,48 @@ def attribute_lines(masked_lines):
                             # for every live shape in this tree (ACMD/SPECIAL/
                             # ASPELL bypass this generic path entirely, so
                             # their own "(name)(...)" idiom never reaches
-                            # here). KNOWN LIMITATION, verified not live: a
-                            # function whose RETURN TYPE itself contains an
-                            # earlier '(' -- e.g. a returned function pointer,
-                            # `int (*get_fn())(int)` -- would have its first
-                            # '(' land in the return type, before the real
-                            # name, and this rule would then fail closed
-                            # (file-scope) rather than extract "get_fn"; no
-                            # such shape exists anywhere in this tree today.
-                            name_part = head[: head.find("(")] if "(" in head else ""
+                            # here).
+                            first_paren_index = head.find("(")
+                            # FIX ROUND 3 HARDENING (re-review IMPORTANT): a
+                            # function RETURNING a function pointer -- `int
+                            # (*get_fn())(int)` -- has its first '(' open the
+                            # RETURN TYPE's own declarator, immediately
+                            # followed by '*' (modulo whitespace); slicing
+                            # there put the return type's leading word
+                            # ("int"/"void"/...) into name_part's tail, and
+                            # the original round-3 fix SILENTLY MIS-KEYED to
+                            # that word instead of failing closed (measured:
+                            # ('function', 'int') for `int (*get_fn())(int)`,
+                            # and likewise 'void'/'special_function_t' for
+                            # the other two reviewer-supplied variants) --
+                            # the exact silent-wrong-key failure mode this
+                            # scanner's own stated principle forbids, a
+                            # regression from the PRE-round-3 code (which
+                            # gave file-scope for this shape, since rfind
+                            # landed even deeper and found no identifier at
+                            # all). Detect the shape directly and refuse to
+                            # extract from it.
+                            is_fn_ptr_returning = (
+                                first_paren_index != -1
+                                and re.match(r"\s*\*", head[first_paren_index + 1:]) is not None
+                            )
+                            name_part = (
+                                head[:first_paren_index]
+                                if first_paren_index != -1 and not is_fn_ptr_returning
+                                else ""
+                            )
                             nm = re.search(r"([A-Za-z_][\w:~]*(?:::operator\s*\S+|)|operator\s*\S+)\s*$",
                                            name_part)
-                            if (nm and "(" in head
+                            # Belt-and-braces (re-review IMPORTANT): a real
+                            # function name can NEVER be a C/C++ type or
+                            # storage keyword. If extraction ever produces
+                            # one anyway (a shape the shape-check above
+                            # didn't anticipate), that is proof the
+                            # candidate is a return-type/storage-specifier
+                            # word, not a name -- reject and fail closed
+                            # rather than key on it.
+                            if (nm and "(" in head and not is_fn_ptr_returning
+                                    and nm.group(1) not in TYPE_OR_STORAGE_KEYWORDS
                                     and (first_word is None or first_word.group(1)
                                          not in CONTROL_KEYWORDS)
                                     and not TYPE_DEFINITION_HEAD_RE.match(head)):
@@ -1133,6 +1174,27 @@ def dev_selftest():
     if fnptr_param_attributions[2] != ("function", "room_target"):
         failures.append(f"fnptr-param line 2: got {fnptr_param_attributions[2]}, "
                          "want ('function', 'room_target')")
+
+    # Fix round 3 HARDENING (re-review IMPORTANT): a function RETURNING a
+    # function pointer must fail closed to file-scope, not silently key on
+    # its return type's leading word. The original round-3 fix (slice at
+    # the FIRST '(') introduced exactly this regression -- measured before
+    # this hardening: ('function', 'int') / ('function', 'void') /
+    # ('function', 'special_function_t') for the three variants below,
+    # none of which is a real function name. Verified not live anywhere in
+    # this tree (no `(*name(args))(` shape exists) but must never silently
+    # mis-key if one is ever added.
+    fnptr_returning_cases = (
+        ("int (*get_fn())(int)\n{\n    room_of(x);\n}\n", 2),
+        ("void (*get_handler(int i))(char_data*)\n{\n    room_of(x);\n}\n", 2),
+        ("special_function_t (*find_special(int vnum))(void)\n{\n    room_of(x);\n}\n", 2),
+    )
+    for case_text, check_line in fnptr_returning_cases:
+        case_attributions = attribute_lines(case_text.splitlines())
+        if case_attributions[check_line] != ("file-scope", ""):
+            failures.append(
+                f"fnptr-returning {case_text.splitlines()[0]!r} line {check_line}: "
+                f"got {case_attributions[check_line]}, want ('file-scope', '')")
 
     for failure in failures:
         print(f"dev-selftest FAILED: {failure}", file=sys.stderr)

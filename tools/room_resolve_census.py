@@ -272,7 +272,26 @@ def derive_macro_family(header_texts):
 # whether ``{`` is present yet, and the SAME iteration's open-brace check
 # (shared with the generic path) opens the function immediately when it
 # is.
-FUNCTION_DEFINER_RE = re.compile(r"^\s*(?:ACMD|SPECIAL)\s*\(\s*(\w+)\s*\)\s*$")
+#
+# FIX ROUND 3, GAP 1 (Task 3's real-tree run hit this fail-closed):
+# ``ASPELL`` (``src/spells.h:401``) is a THIRD single-argument definer of
+# the identical ACMD/SPECIAL shape -- ``#define ASPELL(castname)`` expands
+# to a fixed ``void castname(...)`` spell-handler signature, exactly the
+# ACMD/SPECIAL pattern -- and its ~70 call sites (``src/combat/mage.cpp``/
+# ``mystic.cpp``) fell to file-scope with no recognized definer for them.
+# ENUMERATION METHOD (so this set is reproducible, not hand-picked): every
+# ``#define NAME(single_param)`` across all scanned ``.h`` files whose
+# (backslash-joined, comment/string-masked) body both (1) uses that single
+# parameter as a callable name -- ``\bPARAM\s*\(`` OR the wrapped-name idiom
+# ACMD/SPECIAL themselves use, ``\(PARAM\)\s*\(`` -- and (2) ends the body
+# at a bare ``)`` with no trailing ``;`` (a declarator, not a full
+# statement -- this is what excludes the ``ASSIGNMOB``/``ASSIGNOBJ``/
+# ``ASSIGNROOM``-family macros, which expand to a `{ ... }` statement
+# block, not a function header). Run against the real tree at this fix's
+# commit, this enumeration finds EXACTLY THREE macros tree-wide: ``ACMD``,
+# ``SPECIAL`` (both already recognized), and ``ASPELL`` -- no fourth
+# exists. Re-run this same method before ever adding a new name here.
+FUNCTION_DEFINER_RE = re.compile(r"^\s*(?:ACMD|SPECIAL|ASPELL)\s*\(\s*(\w+)\s*\)\s*$")
 # GoogleTest's own definer family (fix round 1, CRITICAL): TEST/TEST_F/TEST_P
 # each take TWO comma-separated arguments (suite, name) and key as
 # "Suite.Name" -- gtest's own convention, and the shape the ledger's test-
@@ -284,7 +303,7 @@ GTEST_DEFINER_RE = re.compile(r"^\s*(?:TEST|TEST_F|TEST_P)\s*\(\s*(\w+)\s*,\s*(\
 # The recognized macro-definer names -- anything matching an all-caps
 # macro-invocation shape that is NOT one of these is an unrecognized
 # definer, not a function name (see ALL_CAPS_MACRO_INVOCATION_RE below).
-RECOGNIZED_DEFINER_NAMES = frozenset({"ACMD", "SPECIAL", "TEST", "TEST_F", "TEST_P"})
+RECOGNIZED_DEFINER_NAMES = frozenset({"ACMD", "SPECIAL", "ASPELL", "TEST", "TEST_F", "TEST_P"})
 # Hardens the generic heuristic against the same mis-keying class recurring
 # for any FUTURE all-caps macro this scanner doesn't yet recognize (fix
 # round 1, CRITICAL): a header whose very start is an all-caps identifier
@@ -456,7 +475,29 @@ def attribute_lines(masked_lines):
                         first_word = re.match(r"\s*(\w+)", head)
                         all_caps = ALL_CAPS_MACRO_INVOCATION_RE.match(head)
                         if not (all_caps and all_caps.group(1) not in RECOGNIZED_DEFINER_NAMES):
-                            name_part = head[: head.rfind("(")] if "(" in head else ""
+                            # FIX ROUND 3, GAP 2: slice at the FIRST '(' (the
+                            # argument list's own opener), not the LAST. A
+                            # function-pointer PARAMETER -- `void room_target(
+                            # char_data* ch, void (*skill_damage)(char_data*
+                            # character, char_data* victim))`
+                            # (src/combat/olog_hai.cpp:374) -- has THREE '('s;
+                            # `rfind` landed inside the fn-ptr parameter's own
+                            # argument list, examining the wrong text entirely
+                            # and never finding a name. The function's real
+                            # name always precedes the argument list's own
+                            # opening '(', which is the FIRST '(' in `head`
+                            # for every live shape in this tree (ACMD/SPECIAL/
+                            # ASPELL bypass this generic path entirely, so
+                            # their own "(name)(...)" idiom never reaches
+                            # here). KNOWN LIMITATION, verified not live: a
+                            # function whose RETURN TYPE itself contains an
+                            # earlier '(' -- e.g. a returned function pointer,
+                            # `int (*get_fn())(int)` -- would have its first
+                            # '(' land in the return type, before the real
+                            # name, and this rule would then fail closed
+                            # (file-scope) rather than extract "get_fn"; no
+                            # such shape exists anywhere in this tree today.
+                            name_part = head[: head.find("(")] if "(" in head else ""
                             nm = re.search(r"([A-Za-z_][\w:~]*(?:::operator\s*\S+|)|operator\s*\S+)\s*$",
                                            name_part)
                             if (nm and "(" in head
@@ -1066,6 +1107,32 @@ def dev_selftest():
     if case5_attributions[0] != ("file-scope", ""):
         failures.append(f"case5 (ACMD one-liner) line 0: got {case5_attributions[0]}, "
                          "want ('file-scope', '') (known, verified-safe fail-closed gap)")
+
+    # Fix round 3, GAP 1: ASPELL (src/spells.h:401) is a third single-arg
+    # definer of the ACMD/SPECIAL shape -- ~70 spell functions in
+    # src/combat/{mage,mystic}.cpp fell to file-scope with no recognized
+    # definer for them (Task 3's real-tree run hit this fail-closed).
+    aspell_text = "ASPELL(spell_fireball)\n{\n    room_of(caster);\n}\n"
+    aspell_attributions = attribute_lines(aspell_text.splitlines())
+    if aspell_attributions[2] != ("function", "spell_fireball"):
+        failures.append(f"aspell line 2: got {aspell_attributions[2]}, "
+                         "want ('function', 'spell_fireball')")
+
+    # Fix round 3, GAP 2: a function-pointer PARAMETER defeats the generic
+    # name-extraction heuristic, which sliced at head.rfind("(") -- the
+    # LAST paren, landing inside the fn-ptr parameter's own argument list
+    # (src/combat/olog_hai.cpp:374's real `room_target` defeats it this
+    # way). Fixed by slicing at the FIRST '(' instead.
+    fnptr_param_text = (
+        "void room_target(char_data* ch, void (*skill_damage)(char_data* character, char_data* victim))\n"
+        "{\n"
+        "    room_of(ch);\n"
+        "}\n"
+    )
+    fnptr_param_attributions = attribute_lines(fnptr_param_text.splitlines())
+    if fnptr_param_attributions[2] != ("function", "room_target"):
+        failures.append(f"fnptr-param line 2: got {fnptr_param_attributions[2]}, "
+                         "want ('function', 'room_target')")
 
     for failure in failures:
         print(f"dev-selftest FAILED: {failure}", file=sys.stderr)

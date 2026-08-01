@@ -227,15 +227,34 @@ def derive_macro_family(header_texts):
 # Function headers defined via macros (spec section 4; 635 production
 # functions use these -- interpre.h:35/:49). Extend ONLY alongside a
 # self-test direction proving the new definer attributes correctly.
-FUNCTION_DEFINER_RE = re.compile(r"^\s*(?:ACMD|SPECIAL)\s*\(\s*(\w+)\s*\)")
+#
+# FIX ROUND 2: both definer regexes are now FULLY anchored (trailing
+# ``\s*$``) and matched against the ACCUMULATED, brace-stripped header
+# (``head`` -- see attribute_lines) rather than the single current raw
+# line. Round 1 matched only the single current line, which (a) never
+# checked whether that same line also carried the body-opening ``{`` --
+# so the repo's DOMINANT gtest style, a brace-attached one-liner
+# (``TEST(Suite, Name) {``, 536 such headers), silently attributed its
+# whole body to file-scope -- and (b) could never recognize a definer
+# whose two arguments wrap onto a following line (live at
+# occupant_order_tests.cpp:744-745 / db_loader_tests.cpp:1823-1824),
+# which left a STALE ``pending_header`` from an earlier, already-opened
+# test to leak forward and cross-contaminate the next one (confirmed
+# live: occupant_order_tests.cpp:746 keyed to an unrelated prior test's
+# name). Matching against the growing ``head`` fixes both: a definer is
+# recognized the moment its argument list balances, independent of
+# whether ``{`` is present yet, and the SAME iteration's open-brace check
+# (shared with the generic path) opens the function immediately when it
+# is.
+FUNCTION_DEFINER_RE = re.compile(r"^\s*(?:ACMD|SPECIAL)\s*\(\s*(\w+)\s*\)\s*$")
 # GoogleTest's own definer family (fix round 1, CRITICAL): TEST/TEST_F/TEST_P
 # each take TWO comma-separated arguments (suite, name) and key as
 # "Suite.Name" -- gtest's own convention, and the shape the ledger's test-
-# tier rows must match. Measured before this fix: 244 of 1177 tree-wide
-# token hits (~21%, 15 test files) silently mis-keyed to the literal macro
-# name "TEST"/"TEST_F"/"TEST_P" via the generic heuristic below, which is
-# blind to the second comma-separated argument.
-GTEST_DEFINER_RE = re.compile(r"^\s*(?:TEST|TEST_F|TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)")
+# tier rows must match. Measured before round 1's fix: 244 of 1177
+# tree-wide token hits (~21%, 15 test files) silently mis-keyed to the
+# literal macro name "TEST"/"TEST_F"/"TEST_P" via the generic heuristic
+# below, which is blind to the second comma-separated argument.
+GTEST_DEFINER_RE = re.compile(r"^\s*(?:TEST|TEST_F|TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*$")
 # The recognized macro-definer names -- anything matching an all-caps
 # macro-invocation shape that is NOT one of these is an unrecognized
 # definer, not a function name (see ALL_CAPS_MACRO_INVOCATION_RE below).
@@ -355,7 +374,21 @@ def attribute_lines(masked_lines):
         stripped = line.strip()
         base_depth = (namespace_stack[-1][1] + 1) if namespace_stack else 0
         if depth == base_depth and function_name is None:
-            ns = re.match(r"^\s*namespace\s+([\w:]+)?\s*\{", line)
+            # A bare scope-closing line (just '}', optionally with a
+            # trailing ';') can never be part of a header -- discard any
+            # accumulated fragment instead of letting it survive into the
+            # NEXT line. Found via the dev harness itself (fix round 2):
+            # an enclosing namespace's own closing '}' otherwise leaked
+            # into header_accum and glued onto the following, unrelated
+            # header (e.g. a bare '}' immediately before `ACMD(do_look)`
+            # produced the accumulated head "} ACMD(do_look)", which the
+            # generic heuristic then misread as a function literally named
+            # "ACMD" with argument list "(do_look)").
+            is_bare_scope_close = bool(re.fullmatch(r"\}+;?", stripped))
+            if is_bare_scope_close:
+                header_accum = ""
+                pending_header = None
+            ns = None if is_bare_scope_close else re.match(r"^\s*namespace\s+([\w:]+)?\s*\{", line)
             if ns:
                 raw_name = ns.group(1)
                 segments = raw_name.split("::") if raw_name else ["<anon>"]
@@ -363,36 +396,55 @@ def attribute_lines(masked_lines):
                     namespace_stack.append((segment, depth))
                 depth += line.count("{") - line.count("}")
                 continue
-            dm = FUNCTION_DEFINER_RE.match(line)
-            gm = None if dm else GTEST_DEFINER_RE.match(line)
-            if dm:
-                pending_header = dm.group(1)
-                header_accum = ""
-            elif gm:
-                pending_header = f"{gm.group(1)}.{gm.group(2)}"
-                header_accum = ""
-            elif stripped and not stripped.startswith("#"):
+            if not is_bare_scope_close and stripped and not stripped.startswith("#"):
+                # FIX ROUND 2, hygiene (c): a fresh accumulation beginning
+                # while pending_header is still set is necessarily stale --
+                # a real completed header always consumes and clears
+                # pending_header at its own '{' (below). Never let an
+                # earlier header's candidate name leak into a new one.
+                if header_accum == "" and pending_header is not None:
+                    pending_header = None
                 header_accum = (header_accum + " " + stripped).strip()
                 # A ';' at base depth ends any declaration/statement: no header.
                 if ";" in stripped:
                     header_accum = ""
                     pending_header = None
-                # An '=' before '{' means initializer, not a function body.
                 open_here = "{" in stripped
-                if open_here and "=" not in header_accum.split("{")[0]:
-                    head = header_accum.split("{")[0].strip()
-                    first_word = re.match(r"\s*(\w+)", head)
-                    all_caps = ALL_CAPS_MACRO_INVOCATION_RE.match(head)
-                    if (pending_header is None and head.endswith("(") is False
-                            and not (all_caps and all_caps.group(1) not in RECOGNIZED_DEFINER_NAMES)):
-                        name_part = head[: head.rfind("(")] if "(" in head else ""
-                        nm = re.search(r"([A-Za-z_][\w:~]*(?:::operator\s*\S+|)|operator\s*\S+)\s*$",
-                                       name_part)
-                        if (nm and "(" in head
-                                and (first_word is None or first_word.group(1)
-                                     not in CONTROL_KEYWORDS)
-                                and not TYPE_DEFINITION_HEAD_RE.match(head)):
-                            pending_header = nm.group(1)
+                # The header accumulated so far, brace-stripped -- valid
+                # whether or not '{' has appeared yet (FIX ROUND 2 (b)): a
+                # definer's argument list can complete on an EARLIER line
+                # than its '{', so this must be checked every accumulation
+                # step, not only once open_here is true.
+                head = header_accum.split("{")[0].strip()
+                if pending_header is None:
+                    dm = FUNCTION_DEFINER_RE.match(head)
+                    gm = None if dm else GTEST_DEFINER_RE.match(head)
+                    if dm:
+                        pending_header = dm.group(1)
+                    elif gm:
+                        pending_header = f"{gm.group(1)}.{gm.group(2)}"
+                    # An '=' before '{' means initializer, not a function
+                    # body; the generic path only fires once '{' is seen,
+                    # since only then is `head` known to be complete.
+                    elif open_here and "=" not in head and head.endswith("(") is False:
+                        first_word = re.match(r"\s*(\w+)", head)
+                        all_caps = ALL_CAPS_MACRO_INVOCATION_RE.match(head)
+                        if not (all_caps and all_caps.group(1) not in RECOGNIZED_DEFINER_NAMES):
+                            name_part = head[: head.rfind("(")] if "(" in head else ""
+                            nm = re.search(r"([A-Za-z_][\w:~]*(?:::operator\s*\S+|)|operator\s*\S+)\s*$",
+                                           name_part)
+                            if (nm and "(" in head
+                                    and (first_word is None or first_word.group(1)
+                                         not in CONTROL_KEYWORDS)
+                                    and not TYPE_DEFINITION_HEAD_RE.match(head)):
+                                pending_header = nm.group(1)
+                # FIX ROUND 2 (a): open the function on THIS SAME iteration
+                # whenever '{' and a resolved pending_header coincide --
+                # this is what a brace-attached one-liner definer
+                # (`TEST(Suite, Name) {`, `ACMD(do_x) {`, the dominant gtest
+                # style, 536 headers) needs: round 1's separate dm/gm
+                # branches set pending_header but never reached this check
+                # on the SAME line, so the body silently fell to file-scope.
                 if open_here and pending_header is not None:
                     qualifier = "::".join(n for n, _ in namespace_stack)
                     function_name = (qualifier + "::" + pending_header) if qualifier else pending_header
@@ -560,6 +612,80 @@ def dev_selftest():
     for line_index, want in struct_expected.items():
         if struct_attributions[line_index] != want:
             failures.append(f"struct line {line_index}: got {struct_attributions[line_index]}, want {want}")
+
+    # Fix round 2, CRITICAL re-review: round 1's dm/gm branches set
+    # pending_header without ever checking whether the SAME line also
+    # carried the body-opening '{', so the repo's DOMINANT gtest style --
+    # a brace-attached one-liner header, 536 such headers tree-wide --
+    # silently fell to file-scope, and a multi-line-wrapped header could
+    # inherit a STALE pending_header from an earlier, already-opened test
+    # (cross-contamination). Four shapes, each with its own case, plus the
+    # regression fixture proving no leakage between two adjacent tests.
+
+    # (1) Brace-attached one-liner -- the DOMINANT real-tree shape.
+    case1_text = "TEST(SuiteA, NameA) {\n    room_of(x);\n}\n"
+    case1_attributions = attribute_lines(case1_text.splitlines())
+    if case1_attributions[1] != ("function", "SuiteA.NameA"):
+        failures.append(f"case1 (brace-attached) line 1: got {case1_attributions[1]}, "
+                         "want ('function', 'SuiteA.NameA')")
+
+    # (2) Multi-line args, '{' on its own following line.
+    case2_text = "TEST(SuiteB,\n    NameB)\n{\n    room_of(x);\n}\n"
+    case2_attributions = attribute_lines(case2_text.splitlines())
+    if case2_attributions[3] != ("function", "SuiteB.NameB"):
+        failures.append(f"case2 (multi-line, brace-next-line) line 3: got {case2_attributions[3]}, "
+                         "want ('function', 'SuiteB.NameB')")
+
+    # (3) Multi-line args, '{' attached to the closing-paren line.
+    case3_text = "TEST(SuiteC,\n    NameC) {\n    room_of(x);\n}\n"
+    case3_attributions = attribute_lines(case3_text.splitlines())
+    if case3_attributions[2] != ("function", "SuiteC.NameC"):
+        failures.append(f"case3 (multi-line, brace-attached) line 2: got {case3_attributions[2]}, "
+                         "want ('function', 'SuiteC.NameC')")
+
+    # (4) Cross-contamination regression: a brace-attached test immediately
+    # followed by a wrapped-header test. The second body must key to ITS
+    # OWN name; the first test's name must appear nowhere in the second's
+    # range (the live bug: occupant_order_tests.cpp:746 keyed to an
+    # unrelated prior test's name).
+    case4_text = (
+        "TEST(ReportZonePowerTest, EvilRaceDoesSomething) {\n"
+        "    room_of(x);\n"
+        "}\n"
+        "TEST(RecountLightRoomTest,\n"
+        "     AbsoluteDarknessBlocksLight) {\n"
+        "    room_of(y);\n"
+        "}\n"
+    )
+    case4_attributions = attribute_lines(case4_text.splitlines())
+    first_name = ("function", "ReportZonePowerTest.EvilRaceDoesSomething")
+    second_name = ("function", "RecountLightRoomTest.AbsoluteDarknessBlocksLight")
+    if case4_attributions[1] != first_name:
+        failures.append(f"case4 line 1 (first test body): got {case4_attributions[1]}, want {first_name}")
+    for line_index in (4, 5, 6):
+        if case4_attributions[line_index] != second_name:
+            failures.append(f"case4 line {line_index} (second test body): got "
+                             f"{case4_attributions[line_index]}, want {second_name} "
+                             "(cross-contamination: leaked the first test's name)")
+
+    # (5) ACMD/SPECIAL brace-attached one-liner with an inline body
+    # statement: `ACMD(do_x) { room_of(ch); }` all on one physical line.
+    # This still lands file-scope -- the inline ';' inside the body (not a
+    # declaration-ending ';') fires the SAME statement-end reset that
+    # correctly discards a real declaration, since the current line-based
+    # accumulation cannot distinguish "the body's own ';'" from
+    # "terminated before reaching '{'" within a single physical line.
+    # ACCEPTABLE only because it is fail-closed (surfaces as an
+    # unattributed-function site for Task 2's gate to catch, not a wrong
+    # function key) AND because the real tree was swept for this exact
+    # shape: exactly two lines tree-wide match it
+    # (src/app/act_othe.cpp:150, src/script/spec_pro.cpp:2887), and
+    # NEITHER carries a resolver token -- see task-1-report.md Sec 11.5.
+    case5_text = "ACMD(do_x) { room_of(ch); }\n"
+    case5_attributions = attribute_lines(case5_text.splitlines())
+    if case5_attributions[0] != ("file-scope", ""):
+        failures.append(f"case5 (ACMD one-liner) line 0: got {case5_attributions[0]}, "
+                         "want ('file-scope', '') (known, verified-safe fail-closed gap)")
 
     for failure in failures:
         print(f"dev-selftest FAILED: {failure}", file=sys.stderr)

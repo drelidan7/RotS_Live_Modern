@@ -94,33 +94,6 @@ gates ask two different questions and keep two different ledgers (design doc
 section 1, the `world[` bullet -- review O-1/F-1, both spec reviews' top
 finding).
 
-## Known gap: BLOCKED, not silently classified (Task 3 finding)
-
-`--check` against the real tree currently reports **9 unclassified-site
-errors** (75 scanned sites) in `src/combat/mage.cpp` (6 keys), `src/combat/
-mystic.cpp` (2 keys), and `src/combat/olog_hai.cpp` (1 key). These sites are
-genuinely resolver-token call sites inside real production functions --
-`mage.cpp`/`mystic.cpp`'s ~70 `ASPELL(...)`-defined spell functions
-(`src/spells.h:401`'s `ASPELL` macro is a third function-definer family,
-alongside `ACMD`/`SPECIAL`, that `FUNCTION_DEFINER_RE` does not yet
-recognize), and `olog_hai.cpp:374`'s `room_target()` (whose function-pointer
-PARAMETER -- `void (*skill_damage)(char_data*, char_data*)` -- defeats the
-generic name-extraction heuristic's `rfind("(")` logic). Both are Task 1
-scanner attribution gaps, not classification judgment calls: the scanner
-mis-keys these sites' enclosing function as file-scope (`#decl`), which is
-NOT a genuine declaration. Per the task-3 brief's explicit instruction ("If
-any OTHER unexpected file-scope site appears, STOP and return BLOCKED with
-the list rather than inventing classifications"), these 9 keys are
-**deliberately left out of this ledger** rather than misclassified as `DECL`
-(which would falsely claim they are closed, pinned, proof-free declarations)
-or silently folded into `TODO` under the wrong (`#decl`) function key. Once a
-follow-up fix extends the scanner's function-key derivation to recognize
-`ASPELL` and to correctly extract names past a function-pointer parameter,
-re-running `--generate-ledger --force-regenerate` will key these ~70 real
-spell functions under their own names, and Task 3's hand-pinning (this
-section, `MAXIMUM_TODO_COUNT` seeding, and the ceiling-pin self-test
-activation) can complete. See `task-3-report.md` for the full diagnostic.
-
 <!-- ROOM-RESOLVE-CLASSIFICATION -->
 | Key | Count | Class | Kind | Proof |
 | --- | --- | --- | --- | --- |
@@ -266,11 +239,48 @@ activation) can complete. See `task-3-report.md` for the full diagnostic.
 | `src/combat/mage.cpp · different_zone · room_by_id_total(` | 2 | TODO | — | — |
 | `src/combat/mage.cpp · loclife_add_rooms · room_by_id_total(` | 1 | TODO | — | — |
 | `src/combat/mage.cpp · random_exit · room_by_id_total(` | 8 | TODO | — | — |
+| `src/combat/mage.cpp · spell_beacon · room_by_id_total(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_beacon · room_of(` | 2 | TODO | — | — |
+| `src/combat/mage.cpp · spell_black_arrow · SUN_PENALTY(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_blaze · room_of(` | 3 | TODO | — | — |
+| `src/combat/mage.cpp · spell_blink · room_by_id_total(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_cone_of_cold · EXIT(` | 7 | TODO | — | — |
+| `src/combat/mage.cpp · spell_cone_of_cold · room_by_id_total(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_dark_bolt · SUN_PENALTY(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_earthquake · room_by_id_total(` | 6 | TODO | — | — |
+| `src/combat/mage.cpp · spell_earthquake · room_of(` | 4 | TODO | — | — |
+| `src/combat/mage.cpp · spell_earthquake · world[` | 4 | TODO | — | — |
+| `src/combat/mage.cpp · spell_expose_elements · OUTSIDE(` | 3 | TODO | — | — |
+| `src/combat/mage.cpp · spell_expose_elements · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_fireball · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_flash · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_freeze · EXIT(` | 2 | TODO | — | — |
+| `src/combat/mage.cpp · spell_lightning_bolt · OUTSIDE(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_lightning_strike · OUTSIDE(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_lightning_strike · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_locate_living · room_by_id_total(` | 2 | TODO | — | — |
+| `src/combat/mage.cpp · spell_mist_of_baazunga · room_by_id_total(` | 4 | TODO | — | — |
+| `src/combat/mage.cpp · spell_mist_of_baazunga · room_of(` | 3 | TODO | — | — |
+| `src/combat/mage.cpp · spell_relocate · room_by_id_total(` | 2 | TODO | — | — |
+| `src/combat/mage.cpp · spell_relocate · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_reveal_life · room_of(` | 2 | TODO | — | — |
+| `src/combat/mage.cpp · spell_searing_darkness · SUN_PENALTY(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_shout_of_pain · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_spear_of_darkness · SUN_PENALTY(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_summon · room_of(` | 5 | TODO | — | — |
+| `src/combat/mage.cpp · spell_word_of_shock · room_of(` | 1 | TODO | — | — |
+| `src/combat/mage.cpp · spell_word_of_sight · room_of(` | 2 | TODO | — | — |
+| `src/combat/mystic.cpp · spell_divination · room_by_id_total(` | 1 | TODO | — | — |
+| `src/combat/mystic.cpp · spell_divination · room_of(` | 1 | TODO | — | — |
+| `src/combat/mystic.cpp · spell_haze · room_of(` | 2 | TODO | — | — |
+| `src/combat/mystic.cpp · spell_poison · room_of(` | 2 | TODO | — | — |
+| `src/combat/mystic.cpp · spell_terror · room_of(` | 1 | TODO | — | — |
 | `src/combat/olog_hai.cpp · do_overrun · room_of(` | 1 | TODO | — | — |
 | `src/combat/olog_hai.cpp · is_direction_valid · EXIT(` | 5 | TODO | — | — |
 | `src/combat/olog_hai.cpp · is_direction_valid · room_of(` | 2 | TODO | — | — |
 | `src/combat/olog_hai.cpp · olog_hai::get_random_target · room_of(` | 2 | TODO | — | — |
 | `src/combat/olog_hai.cpp · olog_hai::is_skill_valid · room_of(` | 1 | TODO | — | — |
+| `src/combat/olog_hai.cpp · olog_hai::room_target · room_of(` | 1 | TODO | — | — |
 | `src/combat/ranger.cpp · can_ch_blind · room_of(` | 1 | TODO | — | — |
 | `src/combat/ranger.cpp · can_ch_mark · room_of(` | 1 | TODO | — | — |
 | `src/combat/ranger.cpp · can_ch_shoot · room_of(` | 1 | TODO | — | — |

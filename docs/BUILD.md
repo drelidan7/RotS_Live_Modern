@@ -1263,6 +1263,34 @@ docs commit; they are owed at T9 finalization. The controller ran two `rots64` s
 mid-wave (T2's and T5's own HEADs, both matching macOS exactly --
 `.superpowers/sdd/ls3b-controller-gate-log.md`), which does not substitute for the T9 leg.
 
+### Room-resolve retirement (RR program)
+
+A follow-on to the LocationSystem program above, targeting a different defect class:
+`room_data::operator[]` (`src/world/db_world.cpp`) is a *total* function over invalid room ids —
+it silently degrades (mudlog + fallback room, or a silent dummy-room read in the
+allocated-but-uncreated window) rather than failing loudly, so an out-of-range id reaching a
+resolver-reaching spelling (`world[`, `room_by_id`, `room_by_id_total`, etc.) can corrupt state
+quietly instead of crashing where the bug was introduced. LocationSystem's gate
+(`location_read_census.py`) asked whether a raw location-*representation* spelling is licensed to
+exist at all; this program asks a strictly different question — whether the id handed to a
+resolver-reaching spelling can be *proven in-range* before dereference. An `LS1-ALLOW` annotation
+answers the first question and is not evidence for the second: a site can be simultaneously
+`LS1-ALLOW`'d and an unclassified `TODO` in this program's ledger.
+
+Wave R1 (this wave) ships the gate: `tools/room_resolve_census.py`, wired into both `ctest`
+(`RoomResolveCensus`/`RoomResolveCensusSelfTest`, 1860 -> **1862**) and the flat
+`src/tests/Makefile` `tests` recipe, the same two-build-system pattern
+`location_read_census.py`/`string_view_census.py` established. Every resolver-reaching site in the
+tree carries a row in `docs/superpowers/room-resolve-ledger.md`, classified into one of six
+classes (`TODO`/`PROVEN`/`GUARDED`/`TEST-FIXTURE`/`RESOLVER-IMPL`/`DECL`); the initial real-tree
+inventory measured at commit `a7aac434` is 461 rows / 1273 sites, with the `MAXIMUM_TODO_COUNT`
+ratchet seeded at 788 (a **site-sum**, not a row count — a new resolver call site inside an
+already-`TODO` function still trips it) and `MINIMUM_LEDGER_ROW_COUNT` seeded at 451, both
+self-test-pinned. See `docs/superpowers/specs/2026-07-31-room-resolve-retirement-design.md` for
+the full program design and degrade-path enumeration. Owner ruling **RR-O-1 (spec §2a) is
+pending** and blocks only the program's final flip wave (the point at which `operator[]`'s
+degrade paths themselves change) — it does not block R1 or any classification wave before it.
+
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
 Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling

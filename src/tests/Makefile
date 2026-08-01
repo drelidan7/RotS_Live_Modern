@@ -202,6 +202,8 @@ zone_tests.o : ../zone.h ../db.h
 tests: $(EXECUTABLE)
 	python3 ../../tools/location_read_census.py --check
 	python3 ../../tools/location_read_census.py --self-test
+	python3 ../../tools/room_resolve_census.py --check
+	python3 ../../tools/room_resolve_census.py --self-test
 
 $(EXECUTABLE): $(OBJFILES) $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)

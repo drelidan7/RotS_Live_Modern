@@ -76,6 +76,28 @@
   Table A TOKEN row and `TOKEN_PATTERNS`. `SELF_TEST_CASES` itself stayed at **58** (the five new
   registry self-test directions are standalone assertions in `run_self_test()`, not new tuple
   entries, matching the M10/floor-check precedent already in that function).
+  `tools/` now carries a **third** census, `room_resolve_census.py` (Wave R1 of the
+  room-resolve retirement program, `docs/superpowers/specs/2026-07-31-room-resolve-retirement-
+  design.md`; pending owner ruling RR-O-1 §2a blocks only the program's final flip wave, not
+  R1): a DIFFERENT question from `location_read_census.py`'s representation-access gate — this
+  one asks whether the id handed to a `room_data::operator[]`-reaching spelling can be proven
+  in-range before dereference, classifying every resolver-reaching site into one of **six**
+  classes (`TODO`/`PROVEN`/`GUARDED`/`TEST-FIXTURE`/`RESOLVER-IMPL`/`DECL`) recorded in
+  `docs/superpowers/room-resolve-ledger.md` rather than as inline per-line annotations. Its
+  token surface is **16**: 5 static tokens plus an **eleven**-macro family (derived from every
+  scanned header's `#define` body, including `VALID_EDGE`, a `.cpp`-local macro the tool's own
+  derivation sweep still finds). `MAXIMUM_TODO_COUNT` is **788** and `MINIMUM_LEDGER_ROW_COUNT`
+  is **451**, both floors self-test-pinned; the initial real-tree inventory measured at
+  `a7aac434` is 461 rows / 1273 sites. The ratchet compares a **SITE-SUM**, not a row count — a
+  new resolver call site added inside a function whose key is already `TODO` still raises that
+  row's site count and trips `MAXIMUM_TODO_COUNT` exactly as a brand-new `TODO` key would, so
+  there is no free-riding inside an already-deferred function. `--check`/`--self-test` land as
+  two new `ctest` tests, `RoomResolveCensus`/`RoomResolveCensusSelfTest` (1860 → **1862**). An
+  `LS1-ALLOW` annotation is **not** a proof here: the two gates ask two different questions and
+  keep two different ledgers, so a site can be simultaneously `LS1-ALLOW`'d (representation
+  access is fine) and an unclassified `TODO` in the room-resolve ledger (its input validity is
+  still unproven) — see the tool's own module and self-test-block docstrings for the full
+  account, and docs/BUILD.md's "Room-resolve retirement (RR program)" subsection.
 - release-notes/, game design docs/, code documentation/: Docs and release history.
 
 ## Build, Test, and Development Commands

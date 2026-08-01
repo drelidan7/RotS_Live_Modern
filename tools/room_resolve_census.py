@@ -228,6 +228,27 @@ def derive_macro_family(header_texts):
 # functions use these -- interpre.h:35/:49). Extend ONLY alongside a
 # self-test direction proving the new definer attributes correctly.
 FUNCTION_DEFINER_RE = re.compile(r"^\s*(?:ACMD|SPECIAL)\s*\(\s*(\w+)\s*\)")
+# GoogleTest's own definer family (fix round 1, CRITICAL): TEST/TEST_F/TEST_P
+# each take TWO comma-separated arguments (suite, name) and key as
+# "Suite.Name" -- gtest's own convention, and the shape the ledger's test-
+# tier rows must match. Measured before this fix: 244 of 1177 tree-wide
+# token hits (~21%, 15 test files) silently mis-keyed to the literal macro
+# name "TEST"/"TEST_F"/"TEST_P" via the generic heuristic below, which is
+# blind to the second comma-separated argument.
+GTEST_DEFINER_RE = re.compile(r"^\s*(?:TEST|TEST_F|TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)")
+# The recognized macro-definer names -- anything matching an all-caps
+# macro-invocation shape that is NOT one of these is an unrecognized
+# definer, not a function name (see ALL_CAPS_MACRO_INVOCATION_RE below).
+RECOGNIZED_DEFINER_NAMES = frozenset({"ACMD", "SPECIAL", "TEST", "TEST_F", "TEST_P"})
+# Hardens the generic heuristic against the same mis-keying class recurring
+# for any FUTURE all-caps macro this scanner doesn't yet recognize (fix
+# round 1, CRITICAL): a header whose very start is an all-caps identifier
+# immediately followed by '(' is a macro-invocation shape, not an ordinary
+# function definition. If that identifier isn't in RECOGNIZED_DEFINER_NAMES,
+# the site is UNRECOGNIZED and must fail closed to file-scope rather than
+# keying on the macro's own name (which silently invents a wrong function
+# key, exactly like the TEST/TEST_F/TEST_P case above).
+ALL_CAPS_MACRO_INVOCATION_RE = re.compile(r"^([A-Z_][A-Z0-9_]*)\s*\(")
 # An ordinary definition header's name: the last identifier-ish path
 # (possibly class-qualified, possibly operator[]) before the argument
 # list's opening parenthesis. Rejects control flow and declarations.
@@ -235,6 +256,19 @@ HEADER_NAME_RE = re.compile(
     r"([A-Za-z_]\w*(?:::[A-Za-z_~]\w*|::operator\s*(?:\[\]|\(\)|[-+*/<>=!]+))?"
     r"|operator\s*(?:\[\]|\(\)|[-+*/<>=!]+))\s*\($")
 CONTROL_KEYWORDS = frozenset({"if", "while", "for", "switch", "return", "sizeof", "catch"})
+# Fix round 1, IMPORTANT (struct-return-type false rejection): the ORIGINAL
+# guard blanket-rejected any header starting with struct/class/enum/union/
+# typedef, which also rejected legitimate C-style function DEFINITIONS whose
+# return type happens to be struct-prefixed (`struct room_data*
+# get_char_room(...)`) -- ~30 production functions share this shape
+# (get_char_room, the get_obj family, read_mobile/read_object, visibility.cpp
+# getters, unequip_char...). This regex instead recognizes only a bare type
+# DEFINITION head -- a tag keyword, a name, and an optional base-list, with
+# NO parenthesized argument list anywhere -- so `struct foo {` / `struct foo
+# : bar {` still reject, but a struct-return function header (which has a
+# '(' for its argument list) does not match this pattern and is accepted by
+# the ordinary name-extraction path below.
+TYPE_DEFINITION_HEAD_RE = re.compile(r"^(?:struct|class|enum|union)\s+\w+\s*(?::\s*[\w,\s:<>]*)?$")
 
 
 def attribute_lines(masked_lines):
@@ -254,6 +288,38 @@ def attribute_lines(masked_lines):
     instead of ``rots::helper``). Tracking ``base_depth`` from
     ``namespace_stack`` fixes this without weakening any other case: at
     file scope with no namespace open, ``base_depth`` is still 0.
+
+    FIX ROUND 1 (task review, one CRITICAL + two IMPORTANT findings):
+
+    - CRITICAL: ``TEST``/``TEST_F``/``TEST_P`` (gtest's own definer family)
+      fell to the generic heuristic below, which extracted the macro name
+      itself -- every gtest body silently mis-keyed to the literal function
+      name ``"TEST"``/``"TEST_F"``/``"TEST_P"`` (244 of 1177 tree-wide token
+      hits, ~21%, across 15 test files). Fixed two ways: ``GTEST_DEFINER_RE``
+      recognizes the real two-argument shape and keys ``"Suite.Name"``; the
+      generic heuristic additionally fails closed (to file-scope) for ANY
+      other all-caps macro-invocation shape not in
+      ``RECOGNIZED_DEFINER_NAMES``, so a FUTURE unrecognized macro definer
+      can no longer mis-key on its own name either.
+    - IMPORTANT: the C++17 nested-namespace form ``namespace rots::world {``
+      was invisible to the old ``namespace\\s+(\\w+)?\\s*\\{`` regex (``\\w+``
+      cannot match ``::``), so header detection never re-armed inside one --
+      confirmed live at ``src/world/db_world.cpp:198/257/348``, misattributing
+      the resolver ``_impl`` functions themselves. Fixed by widening the
+      capture to ``[\\w:]+`` and pushing one ``namespace_stack`` entry per
+      ``::``-separated segment (all sharing the same ``depth_at_open``, since
+      there is only one physical ``{``/``}`` pair) -- the existing
+      ``qualifier = "::".join(...)`` join already produces the right
+      dotted-in-``::`` name from either a nested or a compound form.
+    - IMPORTANT: the blanket ``not head.startswith(("struct ", "class ", ...))``
+      guard rejected legitimate C-style function definitions with a
+      struct-prefixed return type (``struct room_data* get_char_room(...)``,
+      ~30 production functions). Fixed by replacing the blanket prefix
+      rejection with ``TYPE_DEFINITION_HEAD_RE``, which matches only a bare
+      type-definition head (tag + name + optional base-list, no parenthesized
+      argument list) -- a struct-return function's head always has a ``(``
+      for its argument list and so never matches, while a plain ``struct foo
+      {`` / ``struct foo : bar {`` still does.
     """
     attributions = [("file-scope", "")] * len(masked_lines)
 
@@ -289,14 +355,21 @@ def attribute_lines(masked_lines):
         stripped = line.strip()
         base_depth = (namespace_stack[-1][1] + 1) if namespace_stack else 0
         if depth == base_depth and function_name is None:
-            ns = re.match(r"^\s*namespace\s+(\w+)?\s*\{", line)
+            ns = re.match(r"^\s*namespace\s+([\w:]+)?\s*\{", line)
             if ns:
-                namespace_stack.append((ns.group(1) or "<anon>", depth))
+                raw_name = ns.group(1)
+                segments = raw_name.split("::") if raw_name else ["<anon>"]
+                for segment in segments:
+                    namespace_stack.append((segment, depth))
                 depth += line.count("{") - line.count("}")
                 continue
             dm = FUNCTION_DEFINER_RE.match(line)
+            gm = None if dm else GTEST_DEFINER_RE.match(line)
             if dm:
                 pending_header = dm.group(1)
+                header_accum = ""
+            elif gm:
+                pending_header = f"{gm.group(1)}.{gm.group(2)}"
                 header_accum = ""
             elif stripped and not stripped.startswith("#"):
                 header_accum = (header_accum + " " + stripped).strip()
@@ -309,15 +382,16 @@ def attribute_lines(masked_lines):
                 if open_here and "=" not in header_accum.split("{")[0]:
                     head = header_accum.split("{")[0].strip()
                     first_word = re.match(r"\s*(\w+)", head)
-                    if pending_header is None and head.endswith("(") is False:
+                    all_caps = ALL_CAPS_MACRO_INVOCATION_RE.match(head)
+                    if (pending_header is None and head.endswith("(") is False
+                            and not (all_caps and all_caps.group(1) not in RECOGNIZED_DEFINER_NAMES)):
                         name_part = head[: head.rfind("(")] if "(" in head else ""
                         nm = re.search(r"([A-Za-z_][\w:~]*(?:::operator\s*\S+|)|operator\s*\S+)\s*$",
                                        name_part)
                         if (nm and "(" in head
                                 and (first_word is None or first_word.group(1)
                                      not in CONTROL_KEYWORDS)
-                                and not head.startswith(("struct ", "class ", "enum ",
-                                                         "union ", "typedef "))):
+                                and not TYPE_DEFINITION_HEAD_RE.match(head)):
                             pending_header = nm.group(1)
                 if open_here and pending_header is not None:
                     qualifier = "::".join(n for n, _ in namespace_stack)
@@ -419,6 +493,74 @@ def dev_selftest():
     for line_index, want in expected.items():
         if attributions[line_index] != want:
             failures.append(f"line {line_index}: got {attributions[line_index]}, want {want}")
+
+    # Fix round 1, CRITICAL: gtest's own TEST/TEST_F/TEST_P definer keys as
+    # "Suite.Name"; an unrecognized all-caps macro-invocation shape (the same
+    # class of bug) must fail closed to file-scope rather than key on its own
+    # macro name. Line indices derived by counting this fixture's
+    # splitlines().
+    gtest_text = (
+        "TEST(LoadRoomChain, CalcLoadRoomLeavesTheChannelHoldingTheRawPersistedValue)\n"
+        "{\n"
+        "    int a = room_of(ch)->number;\n"
+        "}\n"
+        "SOMEMACRO(a, b)\n"
+        "{\n"
+        "    int b = room_of(ch)->number;\n"
+        "}\n"
+    )
+    gtest_attributions = attribute_lines(gtest_text.splitlines())
+    gtest_expected = {
+        2: ("function", "LoadRoomChain.CalcLoadRoomLeavesTheChannelHoldingTheRawPersistedValue"),
+        6: ("file-scope", ""),  # unrecognized macro-invocation shape: fail closed
+    }
+    for line_index, want in gtest_expected.items():
+        if gtest_attributions[line_index] != want:
+            failures.append(f"gtest line {line_index}: got {gtest_attributions[line_index]}, want {want}")
+
+    # Fix round 1, IMPORTANT: the C++17 nested-namespace form
+    # `namespace rots::world {` must re-arm header detection and qualify
+    # with the full path.
+    nested_ns_text = (
+        "namespace rots::world {\n"
+        "static int helper2(int a)\n"
+        "{\n"
+        "    return room_of(x);\n"
+        "}\n"
+        "}\n"
+    )
+    nested_ns_attributions = attribute_lines(nested_ns_text.splitlines())
+    if nested_ns_attributions[3] != ("function", "rots::world::helper2"):
+        failures.append(
+            f"nested-namespace line 3: got {nested_ns_attributions[3]}, "
+            "want ('function', 'rots::world::helper2')")
+
+    # Fix round 1, IMPORTANT: a struct-prefixed return type must not be
+    # mistaken for a type DEFINITION -- `struct room_data* get_char_room(...)`
+    # keys as a function, while a plain `struct foo {` / `struct foo : bar {`
+    # stays file-scope.
+    struct_text = (
+        "struct room_data* get_char_room(int i)\n"
+        "{\n"
+        "    return room_of(i);\n"
+        "}\n"
+        "struct foo {\n"
+        "    int x;\n"
+        "};\n"
+        "struct foo2 : bar {\n"
+        "    int y;\n"
+        "};\n"
+    )
+    struct_attributions = attribute_lines(struct_text.splitlines())
+    struct_expected = {
+        2: ("function", "get_char_room"),
+        5: ("file-scope", ""),
+        8: ("file-scope", ""),
+    }
+    for line_index, want in struct_expected.items():
+        if struct_attributions[line_index] != want:
+            failures.append(f"struct line {line_index}: got {struct_attributions[line_index]}, want {want}")
+
     for failure in failures:
         print(f"dev-selftest FAILED: {failure}", file=sys.stderr)
     return 1 if failures else 0

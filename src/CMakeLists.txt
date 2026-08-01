@@ -1459,6 +1459,7 @@ if(ROTS_BUILD_TESTS)
         tests/weather_tests.cpp
         tests/wild_fighting_handler_tests.cpp
         tests/world_hooks_tests.cpp
+        tests/zone_reset_guard_tests.cpp
         tests/zone_tests.cpp
     )
 

@@ -136,8 +136,9 @@
   `zone.cpp::reset_zone` (red-first tested, `src/tests/zone_reset_guard_tests.cpp`,
   boot-golden byte-identical both before and after — the guards fixed a real gap: a
   malformed zone file's room reference that failed `real_room()` at load time
-  (yielding `-1`) previously reached `room_by_id_total` unguarded at 3 of `reset_zone`'s
-  11 `room_by_id_total(` sites). Measured, re-derived-not-hand-computed totals: **72 of
+  (yielding `-1`) previously reached `room_by_id_total` unguarded at 2 of `reset_zone`'s
+  11 `room_by_id_total(` sites, plus a third differently-caused gap at the case-6
+  selector site). Measured, re-derived-not-hand-computed totals: **72 of
   83 in-scope sites drained** (69 `PROVEN` + 3 `GUARDED`), leaving **9 rows / 11 sites**
   staying `TODO` with enumerated reasons — 1 `char_to_room` (RR-O-1-blocked, by design,
   preserves `operator[]`'s negative-room mudlog), 8 OLC/`weather_to_char` sites across 6
@@ -155,9 +156,11 @@
   directly; 2 at Task 2 — `reset_zone`'s 5-site GUARDED-candidate list wrong in 2 of 5,
   and its case-6 site's root cause re-diagnosed as a different defect class than the
   census described) — plus a further caller-count miscount (`get_char_room`'s "8"
-  tree-wide callers corrected to the real **10** in Task 1's own fix round) and one
-  still-deferred cosmetic line-range mislabel (batched into a future whole-branch fix
-  wave). Task 3 wrote `docs/superpowers/room-resolve-playbook.md`, the classification
+  tree-wide callers corrected to the real **10** in Task 1's own fix round) and two
+  cosmetic line-range mislabels (the ledger's zone.cpp case-6 span and its
+  objsave.cpp `load_character()` citation), both closed by the whole-branch review's
+  own fix wave rather than deferred further. Task 3 wrote
+  `docs/superpowers/room-resolve-playbook.md`, the classification
   playbook R3+ (`src/combat/`, `src/script/`, and eventually `src/app/`) reuses — see
   that document for the per-proof-kind worked examples, the pitfalls list, the
   `GUARDED` procedure, the stayed-TODO taxonomy, and the R3/R4 cost-estimation note.

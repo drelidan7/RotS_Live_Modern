@@ -2075,6 +2075,19 @@ if(ROTS_BUILD_TESTS)
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/../tools/location_read_census.py"
                 --self-test)
+        # RR program gate (docs/superpowers/specs/2026-07-31-room-resolve-
+        # retirement-design.md): every resolver-reaching site carries a
+        # classification row; unclassified new code fails the build from R1
+        # onward (the MAXIMUM_TODO_COUNT ratchet).
+        add_test(NAME RoomResolveCensus
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/room_resolve_census.py"
+                --check
+                --ledger "${CMAKE_CURRENT_SOURCE_DIR}/../docs/superpowers/room-resolve-ledger.md")
+        add_test(NAME RoomResolveCensusSelfTest
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/room_resolve_census.py"
+                --self-test)
     endif()
 endif()
 

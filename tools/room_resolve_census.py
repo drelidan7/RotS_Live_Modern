@@ -32,12 +32,29 @@ reviews' top finding). A site can be simultaneously ``LS1-ALLOW``'d
 input validity is still unproven).
 
 This is Task 1 of Wave R1: the scanner core only (tokens, masking, macro-
-family derivation, and per-line function attribution). Task 2 builds the
-ledger reconciliation and ``--check``/``--self-test`` gate on top of the
-exact interfaces below; no gate exists yet in this file.
+family derivation, and per-line function attribution). Task 2 (this
+revision) builds the ledger parser, reconciliation, the ``MAXIMUM_TODO_COUNT``
+ratchet, and the ``--check``/``--self-test`` gate on top of those exact
+interfaces. Task 3 generates the real ledger this gate reads; until that
+lands, ``--check`` against the real tree fails closed with a missing-ledger
+``SystemExit`` (see ``main()``) -- that is the CORRECT, expected state at
+this commit, not a bug.
+
+Token shape note (Task 2, self-test direction 16; Task 3: carry this into
+the ledger prose). Every ``STATIC_TOKEN_PATTERNS``/``MACRO_FAMILY`` pattern
+anchors on the callee name immediately followed by ``(``, matched per PHYSICAL
+LINE (``scan_file`` iterates ``masked.splitlines()``), so a call whose
+ARGUMENTS wrap to a following line (``room_of(\\n    ch)``) still hits --
+only the name-then-open-paren pair has to share a line, not the whole call --
+while a genuinely split spelling (the callee name and its ``(`` on two
+different physical lines, e.g. ``room_of\\n    (ch)``) cannot, structurally,
+by this line-based design. A one-time real-tree grep for that second shape
+(``grep -rnE "room_of\\s*$" src --include="*.cpp"``) found zero matches at
+this commit, confirming the shape does not exist in production today.
 """
 
 import argparse
+import os
 import pathlib
 import re
 import sys
@@ -492,6 +509,343 @@ def source_files(root):
     return sorted(p for p in root.rglob("*") if p.is_file() and p.suffix in SOURCE_SUFFIXES)
 
 
+# ---------------------------------------------------------------------------
+# Task 2: ledger parsing, reconciliation, ratchets, and --check/--self-test.
+#
+# The ledger is docs/superpowers/room-resolve-ledger.md (Task 3 generates it
+# against the exact format documented above; this task only teaches the
+# parser to read it and the gate to enforce it). Several structural idioms
+# below are copied -- not shared -- from tools/location_read_census.py:
+# marker-anchored tables (Opus M10: a look-alike table elsewhere in the doc,
+# or one sitting inside a fenced example, must be inert), a row floor per
+# table, and a subprocess-driven self-test that proves the REAL gate end to
+# end rather than a predicate in isolation. Copy, not import: each gate's
+# self-test must prove its own copy, so one refactor can never weaken both
+# at once.
+# ---------------------------------------------------------------------------
+
+CLASSES = ("TODO", "PROVEN", "GUARDED", "TEST-FIXTURE", "RESOLVER-IMPL", "DECL")
+
+# Closed proof-kind vocabulary (spec section 3; exact-match, prefix-boundary-
+# checked the way ALLOWED_REASON_PREFIXES is in the sibling census -- a row's
+# Kind must equal a vocabulary entry EXACTLY, so "entry-guardish" fails even
+# though it starts with a real entry). Only a row whose Kind is not
+# LEDGER_EMPTY_MARKER is checked against this vocabulary and against
+# MINIMUM_PROOF_TEXT_LENGTH/CITATION_RE below -- a TODO row's Kind/Proof are
+# both the empty marker and need neither.
+PROOF_KINDS = ("entry-guard", "caller-contract", "occupant-chain",
+               "loop-bound", "dominating-resolve")
+
+# Kinds whose Proof text MUST carry a file:line citation (review F-4/O-6).
+CITATION_REQUIRED_KINDS = frozenset({"entry-guard", "dominating-resolve", "caller-contract"})
+CITATION_RE = re.compile(r"\b[\w./-]+\.(?:cpp|h|hpp|cc|inl)\s*:\s*\d+")
+MINIMUM_PROOF_TEXT_LENGTH = 20
+
+# Task 3 seeds this from a real measured TODO-row count; while it is None the
+# ceiling check in reconcile() is a no-op and main() prints a loud stderr
+# notice instead of silently skipping it. Both `--todo-ceiling-override`
+# (self-test only) and the ceiling-pin direction in run_self_test() key off
+# this same literal -- the brief's F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's
+# own pin below.
+MAXIMUM_TODO_COUNT = None
+
+# Same floor tools/location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT
+# uses, at the same value: measured at 315 files under src/ at this commit
+# (python3 -c a rglob-and-count over SOURCE_SUFFIXES), 15 files of headroom.
+# The self-test's own symbolic pin (run_self_test) fails loudly if this is
+# ever lowered below 300 rather than silently tracking a weakened floor.
+MINIMUM_SCANNED_FILE_COUNT = 300
+
+# Task 3 raises this to (the real ledger's measured row count - 10) once that
+# ledger exists; 4 is a placeholder floor, sized so the self-test's own
+# four-row synthetic fixture sits AT it rather than resting inside slack of
+# its own choosing. The self-test's floor direction spends this constant
+# SYMBOLICALLY (MINIMUM_LEDGER_ROW_COUNT - 1 / + 0), the same discipline
+# MINIMUM_SCANNED_FILE_COUNT's own boundary probe uses, so a future edit that
+# raises the literal keeps exercising the real edge rather than a stale one.
+MINIMUM_LEDGER_ROW_COUNT = 4
+
+# Key = backticked `file · function · token`, KEY_SEPARATOR-joined (spec
+# format). U+00B7 MIDDLE DOT, space-padded on both sides, is illegal in a
+# path or a C identifier, so splitting on it is unambiguous and pipe-free by
+# construction. LEDGER_EMPTY_MARKER (U+2014 EM DASH) is the literal cell
+# content meaning "no Kind" / "no Proof" (the TODO row shape in the format
+# example above).
+KEY_SEPARATOR = " · "
+LEDGER_EMPTY_MARKER = "—"
+
+LEDGER_CLASSIFICATION_MARKER = "<!-- ROOM-RESOLVE-CLASSIFICATION -->"
+LEDGER_CLASSIFICATION_HEADER = "| Key | Count | Class | Kind | Proof |"
+LEDGER_TOKEN_COUNTS_MARKER = "<!-- ROOM-RESOLVE-TOKEN-COUNTS -->"
+LEDGER_TOKEN_COUNTS_HEADER = "| Token | Sites |"
+
+
+def _strip_fences(text):
+    """Drop fenced code blocks -- documentation, never data (M10 precedent).
+
+    Copied verbatim from tools/location_read_census.py:563-573."""
+    live_lines = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            live_lines.append(line)
+    return live_lines
+
+
+def _split_row_cells(stripped_line):
+    """Split a `| a | b | c |` table row into unescaped cell strings.
+
+    Splits on '|' NOT preceded by a backslash, so an escaped pipe (`\\|`,
+    the ledger's own Proof-text escaping contract) stays inside its cell
+    instead of prematurely ending it. The leading/trailing empty strings
+    from the row's own bounding pipes are dropped."""
+    raw_cells = re.split(r"(?<!\\)\|", stripped_line)[1:-1]
+    return [cell.strip().replace("\\|", "|") for cell in raw_cells]
+
+
+def _parse_marked_table(live_lines, marker, header, minimum_rows, label):
+    """Parse the cell rows of the single marker-anchored table. Fails closed
+    on: the marker missing or duplicated, a wrong header line, or a row
+    count below the floor. Copied structure from location_read_census.py's
+    own `_parse_marked_table` (marker-then-header-then-rows state machine)."""
+    marker_count = sum(1 for line in live_lines if line.strip() == marker)
+    if marker_count != 1:
+        raise SystemExit(
+            f"error: ledger: {label} marker {marker!r} must appear exactly once "
+            f"outside any fenced code block (found {marker_count})."
+        )
+    rows = []
+    state = "before-marker"
+    for line in live_lines:
+        stripped = line.strip()
+        if state == "before-marker":
+            if stripped == marker:
+                state = "awaiting-header"
+            continue
+        if state == "awaiting-header":
+            if not stripped:
+                continue
+            if stripped != header:
+                raise SystemExit(
+                    f"error: ledger: the line after {marker!r} must be {header!r}, "
+                    f"got {stripped!r}."
+                )
+            state = "in-table"
+            continue
+        if stripped.startswith("|") and set(stripped) <= set("|- :"):
+            continue  # the header's own separator row
+        if not stripped.startswith("|"):
+            break  # table ended
+        rows.append(_split_row_cells(stripped))
+    if len(rows) < minimum_rows:
+        raise SystemExit(
+            f"error: ledger: {label} has {len(rows)} row(s), below the floor of "
+            f"{minimum_rows} -- a truncated ledger must not pass."
+        )
+    return rows
+
+
+def _parse_classification_row(cells):
+    """One `| Key | Count | Class | Kind | Proof |` row -> a row dict, or a
+    fail-closed SystemExit (malformed key, non-integer count, unknown class/
+    kind, proof-shape violations, TEST-FIXTURE path illegality)."""
+    if len(cells) != 5:
+        raise SystemExit(
+            f"error: ledger: classification row has {len(cells)} cell(s), expected 5: {cells!r}"
+        )
+    key_cell, count_cell, cls, kind, proof = cells
+
+    key_match = re.fullmatch(r"`([^`]*)`", key_cell)
+    if key_match is None:
+        raise SystemExit(f"error: ledger: malformed key cell (must be backtick-wrapped): {key_cell!r}")
+    key_text = key_match.group(1)
+    parts = key_text.split(KEY_SEPARATOR)
+    if len(parts) != 3:
+        raise SystemExit(
+            f"error: ledger: malformed key {key_text!r} -- expected exactly three "
+            f"{KEY_SEPARATOR!r}-separated parts (file, function, token)"
+        )
+    key_file, key_function, key_token = parts
+
+    try:
+        count = int(count_cell)
+    except ValueError:
+        raise SystemExit(f"error: ledger: non-integer count {count_cell!r} for key {key_text!r}")
+
+    if cls not in CLASSES:
+        raise SystemExit(f"error: ledger: unknown class {cls!r} for key {key_text!r}")
+
+    if kind != LEDGER_EMPTY_MARKER and kind not in PROOF_KINDS:
+        raise SystemExit(f"error: ledger: unknown proof kind {kind!r} for key {key_text!r}")
+
+    if kind != LEDGER_EMPTY_MARKER:
+        if len(proof) < MINIMUM_PROOF_TEXT_LENGTH:
+            raise SystemExit(
+                f"error: ledger: proof text too short ({len(proof)} < "
+                f"{MINIMUM_PROOF_TEXT_LENGTH} characters) for key {key_text!r}: {proof!r}"
+            )
+        if kind in CITATION_REQUIRED_KINDS and not CITATION_RE.search(proof):
+            raise SystemExit(
+                f"error: ledger: kind {kind!r} requires a file:line citation in the proof "
+                f"text for key {key_text!r}: {proof!r}"
+            )
+
+    if cls == "TEST-FIXTURE" and not (key_file == "src/tests" or key_file.startswith("src/tests/")):
+        raise SystemExit(
+            f"error: ledger: TEST-FIXTURE row for {key_file!r} is outside src/tests/ "
+            f"(key {key_text!r})"
+        )
+
+    return {"key_file": key_file, "key_function": key_function, "key_token": key_token,
+            "count": count, "cls": cls, "kind": kind, "proof": proof}
+
+
+def _parse_token_count_row(cells):
+    """One `| Token | Sites |` row -> (token_name, count), or SystemExit."""
+    if len(cells) != 2:
+        raise SystemExit(
+            f"error: ledger: token-counts row has {len(cells)} cell(s), expected 2: {cells!r}"
+        )
+    token_cell, count_cell = cells
+    token_match = re.fullmatch(r"`([^`]*)`", token_cell)
+    if token_match is None:
+        raise SystemExit(f"error: ledger: malformed token cell (must be backtick-wrapped): {token_cell!r}")
+    token_name = token_match.group(1)
+    valid_tokens = {name for name, _ in token_patterns()}
+    if token_name not in valid_tokens:
+        raise SystemExit(f"error: ledger: unknown token {token_name!r} in token-counts table")
+    try:
+        count = int(count_cell)
+    except ValueError:
+        raise SystemExit(f"error: ledger: non-integer sites count {count_cell!r} for token {token_name!r}")
+    return token_name, count
+
+
+def parse_ledger(text):
+    """Parse the ledger's two marker-anchored tables.
+
+    Returns (rows, token_counts): `rows` is a list of dicts with keys
+    key_file/key_function/key_token/count/cls/kind/proof; `token_counts` maps
+    token name -> declared site count. Fails closed (SystemExit) on any
+    marker/header/row-shape/vocabulary/proof-shape violation -- see the
+    per-row parsers above for the exact conditions."""
+    live_lines = _strip_fences(text)
+    classification_cells = _parse_marked_table(
+        live_lines, LEDGER_CLASSIFICATION_MARKER, LEDGER_CLASSIFICATION_HEADER,
+        MINIMUM_LEDGER_ROW_COUNT, "classification table")
+    token_count_cells = _parse_marked_table(
+        live_lines, LEDGER_TOKEN_COUNTS_MARKER, LEDGER_TOKEN_COUNTS_HEADER,
+        0, "token-counts table")
+    rows = [_parse_classification_row(cells) for cells in classification_cells]
+    token_counts = dict(_parse_token_count_row(cells) for cells in token_count_cells)
+    return rows, token_counts
+
+
+def reconcile(sites, rows, token_counts, *, todo_ceiling=MAXIMUM_TODO_COUNT):
+    """Cross-check scanned sites against ledger rows and the token-counts
+    table (spec section 3). Returns a list of human-readable error strings;
+    an empty list means the tree and the ledger agree completely.
+
+    Every scanned key must have ledger row(s) summing EXACTLY to its scanned
+    count (unclassified-site / count-mismatch, both directions -- the
+    anti-inheritance property, spec section 3/O-5: a stale higher OR a stale
+    lower ledger count are both errors, so a site can never silently inherit
+    an unrelated count). Every ledger row's key must exist among the scanned
+    sites (stale-row). Per-token totals recomputed from the scan must match
+    the declared token-counts table (O-10). TODO rows are ratcheted against
+    `todo_ceiling`, which defaults to the module-level MAXIMUM_TODO_COUNT so
+    ordinary callers matching the documented `reconcile(sites, rows,
+    token_counts)` three-positional-argument interface need not know the
+    self-test-only override exists; main() supplies
+    `--todo-ceiling-override` here when present.
+    """
+    errors = []
+
+    # Macro attributions key as "#NAME"; file-scope (declarations, and any
+    # other line the scanner could not attribute to a real function or
+    # macro body) key as "#decl" -- neither spelling can collide with a real
+    # C++ function name, which can never start with '#'.
+    scanned = {}
+    for site in sites:
+        kind, name = site["attribution"], site["function"]
+        if kind == "macro":
+            function_key = f"#{name}"
+        elif kind == "file-scope":
+            function_key = "#decl"
+        else:
+            function_key = name
+        key = (site["file"], function_key, site["token"])
+        scanned[key] = scanned.get(key, 0) + 1
+
+    ledger_totals = {}
+    row_keys = set()
+    for row in rows:
+        key = (row["key_file"], row["key_function"], row["key_token"])
+        row_keys.add(key)
+        ledger_totals[key] = ledger_totals.get(key, 0) + row["count"]
+
+    for key, scanned_count in scanned.items():
+        display = KEY_SEPARATOR.join(key)
+        ledger_count = ledger_totals.get(key)
+        if ledger_count is None:
+            errors.append(f"{display}: unclassified site (no ledger row for this key)")
+        elif ledger_count != scanned_count:
+            errors.append(
+                f"{display}: ledger row(s) total {ledger_count}, scan found "
+                f"{scanned_count} site(s) (count mismatch)"
+            )
+
+    for key in sorted(row_keys - set(scanned)):
+        display = KEY_SEPARATOR.join(key)
+        errors.append(f"{display}: stale ledger row (no matching scanned site)")
+
+    scanned_token_totals = {}
+    for site in sites:
+        scanned_token_totals[site["token"]] = scanned_token_totals.get(site["token"], 0) + 1
+    all_token_names = {name for name, _ in token_patterns()} | set(token_counts)
+    for token_name in sorted(all_token_names):
+        expected = token_counts.get(token_name, 0)
+        actual = scanned_token_totals.get(token_name, 0)
+        if expected != actual:
+            errors.append(
+                f"token `{token_name}`: token-counts table says {expected}, scan found {actual}"
+            )
+
+    if todo_ceiling is not None:
+        todo_total = sum(row["count"] for row in rows if row["cls"] == "TODO")
+        if todo_total > todo_ceiling:
+            errors.append(
+                f"TODO total {todo_total} exceeds the ceiling of {todo_ceiling} "
+                "(MAXIMUM_TODO_COUNT or --todo-ceiling-override)"
+            )
+
+    return errors
+
+
+def _resolve_scan_targets(paths, repository_root):
+    """Every eligible file under the given search paths (repository_root /
+    'src' when none given), resolving both the search path and comparing
+    against an already-resolved repository_root -- mirrors
+    tools/location_read_census.py's source_files() resolve-both-sides
+    discipline (O-I7/F-14), needed so a symlinked --root (macOS's /tmp ->
+    /private/tmp, or a deliberately symlinked probe directory) never makes
+    scan_file()'s relative_to(repository_root) raise."""
+    search_paths = paths or [repository_root / "src"]
+    discovered = set()
+    for search_path in search_paths:
+        resolved = (search_path if search_path.is_absolute()
+                    else repository_root / search_path).resolve()
+        if resolved.is_file():
+            if resolved.suffix in SOURCE_SUFFIXES:
+                discovered.add(resolved)
+            continue
+        discovered.update(source_files(resolved))
+    return sorted(discovered)
+
+
 def dev_selftest():
     """Task 1's own TDD harness (temporary): proves derive_macro_family and
     attribute_lines against small inline fixtures before Task 2 builds the
@@ -692,26 +1046,662 @@ def dev_selftest():
     return 1 if failures else 0
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Room-resolve retirement census scanner core.")
+# ---------------------------------------------------------------------------
+# Hermetic self-test fixtures. Everything below is synthetic: a
+# TemporaryDirectory tree plus these literal strings, never the repository's
+# own docs or src/ (the real-tree --check run is a separate, one-off manual
+# invocation -- see the Task 2 report -- not part of --self-test).
+# ---------------------------------------------------------------------------
+
+# A four-site probe file: one pinned declaration (file-scope, keys "#decl"),
+# one plain TODO call, one PROVEN call with a citation, and a second TODO
+# call written as a genuinely multi-line invocation (self-test direction 16
+# -- room_of( and its ')' on different physical lines still hits, since the
+# token pattern only needs the callee name immediately followed by '(' on
+# ONE line; see the module docstring's token-shape note).
+PROBE_SOURCE_OK = """struct room_data* room_of(const struct char_data* ch);
+
+int do_light(char_data* ch)
+{
+    room_data* r = world[5];
+    return 0;
+}
+
+void save_char(char_data* ch)
+{
+    if (location_of(ch) != NOWHERE)
+    {
+        dispatch_room_vnum(ch);
+    }
+}
+
+void recalc_zone(char_data* ch)
+{
+    room_data* r = room_of(
+        ch);
+    return;
+}
+"""
+
+# A variant proving masking (self-test direction 15): a token inside a
+# comment, a token inside a string literal, and a real site with a trailing
+# `//` comment -- same four real sites as PROBE_SOURCE_OK (so SELF_TEST_LEDGER_OK
+# reconciles against it unchanged), plus decoys that must NOT add to any count.
+PROBE_SOURCE_MASKING = """struct room_data* room_of(const struct char_data* ch);
+
+int do_light(char_data* ch)
+{
+    // room_of(ch) mentioned in a comment -- must not count
+    const char* s = "world[999] also not a real site";
+    room_data* r = world[5]; // trailing comment after the real site
+    return 0;
+}
+
+void save_char(char_data* ch)
+{
+    if (location_of(ch) != NOWHERE)
+    {
+        dispatch_room_vnum(ch);
+    }
+}
+
+void recalc_zone(char_data* ch)
+{
+    room_data* r = room_of(
+        ch);
+    return;
+}
+"""
+
+DECL_ROW = "| `src/app/probe.cpp · #decl · room_of(` | 1 | DECL | " + LEDGER_EMPTY_MARKER + " | " + LEDGER_EMPTY_MARKER + " |"
+TODO_ROW_DO_LIGHT = "| `src/app/probe.cpp · do_light · world[` | 1 | TODO | " + LEDGER_EMPTY_MARKER + " | " + LEDGER_EMPTY_MARKER + " |"
+PROVEN_ROW = (
+    "| `src/app/probe.cpp · save_char · dispatch_room_vnum(` | 1 | PROVEN | entry-guard | "
+    "guarded two lines above by `location_of(ch) != NOWHERE` — src/app/probe.cpp:11 |"
+)
+TODO_ROW_RECALC_ZONE = "| `src/app/probe.cpp · recalc_zone · room_of(` | 1 | TODO | " + LEDGER_EMPTY_MARKER + " | " + LEDGER_EMPTY_MARKER + " |"
+
+SELF_TEST_LEDGER_OK = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
+| Key | Count | Class | Kind | Proof |
+| --- | --- | --- | --- | --- |
+{DECL_ROW}
+{TODO_ROW_DO_LIGHT}
+{PROVEN_ROW}
+{TODO_ROW_RECALC_ZONE}
+
+<!-- ROOM-RESOLVE-TOKEN-COUNTS -->
+| Token | Sites |
+| --- | --- |
+| `room_of(` | 2 |
+| `world[` | 1 |
+| `dispatch_room_vnum(` | 1 |
+"""
+
+# M10 sabotage fixture (marker sabotage, direction 12): a decoy classification
+# table sitting inside a FENCE, above the one real marker, carrying the exact
+# same header -- must be inert (parse_ledger must still find and use only the
+# real, unfenced table).
+SELF_TEST_LEDGER_FENCED_DECOY = f"""# synthetic ledger with a fenced decoy
+
+```
+<!-- ROOM-RESOLVE-CLASSIFICATION -->
+| Key | Count | Class | Kind | Proof |
+| --- | --- | --- | --- | --- |
+| `src/decoy.cpp · decoy_fn · world[` | 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |
+```
+
+{SELF_TEST_LEDGER_OK}
+"""
+
+# An ACMD-defined function and a macro-body site, exercising self-test
+# direction 16's attribution claims end to end (ACMD keys as its bare name;
+# a macro body keys as "#NAME") plus two plain-function filler sites so the
+# ledger clears MINIMUM_LEDGER_ROW_COUNT. The macro-body site deliberately
+# reuses ASSIGNROOM -- an ALREADY-pinned MACRO_FAMILY member -- rather than a
+# fresh name: a fresh macro name whose body reaches room_of( would ALSO trip
+# the (unrelated) macro-family-closed-world check this fixture is not
+# testing, since derive_macro_family's seed rule is exactly "any body
+# matching a STATIC token pattern." Reusing a pinned name sidesteps that
+# without weakening the attribution claim (the "#NAME" keying is identical
+# either way). The #define line itself doubles as a site for BOTH tokens on
+# one line: "ASSIGNROOM(" (the definer's own parameter list, matching its
+# MACRO_FAMILY call pattern) and "room_of(" (its body) -- both correctly
+# attributed to ("macro", "ASSIGNROOM").
+ATTRIBUTION_PROBE_SOURCE = """ACMD(do_glance)
+{
+    room_data* r = room_of(
+        ch);
+}
+
+#define ASSIGNROOM(ch) (room_of(ch)->number)
+
+int helper_fn(char_data* ch)
+{
+    room_data* r = world[2];
+    return 0;
+}
+
+void another_fn(char_data* ch)
+{
+    room_data* r2 = room_by_id_total(3);
+    return;
+}
+"""
+
+ATTRIBUTION_LEDGER = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
+| Key | Count | Class | Kind | Proof |
+| --- | --- | --- | --- | --- |
+| `src/app/attrib.cpp · do_glance · room_of(` | 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |
+| `src/app/attrib.cpp · #ASSIGNROOM · ASSIGNROOM(` | 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |
+| `src/app/attrib.cpp · #ASSIGNROOM · room_of(` | 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |
+| `src/app/attrib.cpp · helper_fn · world[` | 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |
+| `src/app/attrib.cpp · another_fn · room_by_id_total(` | 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |
+
+<!-- ROOM-RESOLVE-TOKEN-COUNTS -->
+| Token | Sites |
+| --- | --- |
+| `room_of(` | 2 |
+| `ASSIGNROOM(` | 1 |
+| `world[` | 1 |
+| `room_by_id_total(` | 1 |
+"""
+
+
+def _run_gate(root, ledger=None, scan_path=None, *,
+              todo_ceiling_override=None, minimum_files_override=None):
+    """Invoke the REAL gate (subprocess, full main()) against a synthetic
+    tree. `ledger=None` omits --ledger entirely, exercising main()'s own
+    default-path computation (self-test direction 17). `scan_path=None`
+    scans <root>/src (main()'s own default when no positional path is
+    given)."""
+    import subprocess
+
+    command = [sys.executable, str(pathlib.Path(__file__).resolve()),
+               "--check", "--root", str(root)]
+    if ledger is not None:
+        command += ["--ledger", str(ledger)]
+    if scan_path is not None:
+        command.append(str(scan_path))
+    env = dict(os.environ)
+    if todo_ceiling_override is not None:
+        command += ["--todo-ceiling-override", str(todo_ceiling_override)]
+        env["RR_SELF_TEST"] = "1"
+    if minimum_files_override is not None:
+        command += ["--minimum-files-override", str(minimum_files_override)]
+        env["RR_SELF_TEST"] = "1"
+    completed = subprocess.run(command, capture_output=True, text=True, env=env)
+    return completed.returncode, completed.stdout + completed.stderr
+
+
+def run_self_test():
+    """Prove the gate still fails in every direction it must. Returns exit code."""
+    import tempfile
+
+    failures = []
+
+    # Task 1's own TDD harness runs first, as additional standing checks --
+    # nothing it proved is lost now that dev_selftest() is no longer reachable
+    # from a bare invocation.
+    if dev_selftest() != 0:
+        failures.append("dev_selftest() (Task 1's own harness) reported failures -- see stderr above")
+
+    # The floor's VALUE, pinned as a literal on purpose (mirrors
+    # location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT pin): every
+    # boundary probe below spends the constant SYMBOLICALLY, so none of them
+    # would notice it being silently lowered.
+    if MINIMUM_SCANNED_FILE_COUNT < 300:
+        failures.append(
+            f"MINIMUM_SCANNED_FILE_COUNT is {MINIMUM_SCANNED_FILE_COUNT}, below the 300 measured "
+            "against a 315-file scan -- a lowered floor lets a broken scan path pass as clean."
+        )
+
+    # Ceiling pin (F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's pin, T2 brief
+    # direction 5). MAXIMUM_TODO_COUNT is None until Task 3 seeds the real
+    # ceiling from a measured TODO count; while it is None this direction is
+    # a deliberate no-op -- Task 3 replaces the `pass` below with the real
+    # `if MAXIMUM_TODO_COUNT > <literal>: failures.append(...)` comparison
+    # the moment the constant stops being None.
+    if MAXIMUM_TODO_COUNT is not None:
+        # Task 3: replace this stub with the real ceiling-pin comparison.
+        pass
+
+    with tempfile.TemporaryDirectory() as temporary_root:
+        root = pathlib.Path(temporary_root).resolve()
+        app_dir = root / "src" / "app"
+        app_dir.mkdir(parents=True)
+        probe = app_dir / "probe.cpp"
+        ledger = root / "ledger.md"
+
+        # The floor (O-I7-style) needs a realistic file count; pad with
+        # clean files exactly as location_read_census.py's own self-test does.
+        pad_dir = root / "src" / "pad"
+        pad_dir.mkdir(parents=True)
+        for index in range(MINIMUM_SCANNED_FILE_COUNT + 5):
+            (pad_dir / f"pad{index}.cpp").write_text("int clean = 0;\n", encoding="utf-8")
+
+        def reset():
+            probe.write_text(PROBE_SOURCE_OK, encoding="utf-8")
+            ledger.write_text(SELF_TEST_LEDGER_OK, encoding="utf-8")
+
+        reset()
+
+        def run_case(name, expected_exit, *, probe_text=None, ledger_text=None,
+                     scan_path=None, todo_ceiling_override=None, minimum_files_override=None):
+            probe.write_text(probe_text if probe_text is not None else PROBE_SOURCE_OK,
+                              encoding="utf-8")
+            ledger.write_text(ledger_text if ledger_text is not None else SELF_TEST_LEDGER_OK,
+                               encoding="utf-8")
+            exit_code, output = _run_gate(
+                root, ledger, scan_path,
+                todo_ceiling_override=todo_ceiling_override,
+                minimum_files_override=minimum_files_override)
+            if exit_code != expected_exit:
+                failures.append(f"{name}: expected gate exit {expected_exit}, got {exit_code}\n{output}")
+            reset()
+
+        # 1. clean.
+        run_case("clean", 0)
+
+        # 2. unclassified-site: a brand-new function with a real token and no
+        # matching ledger row.
+        run_case(
+            "unclassified-site", 1,
+            probe_text=PROBE_SOURCE_OK + (
+                "\nvoid untracked_fn(char_data* ch)\n{\n"
+                "    room_data* r = room_of(ch);\n}\n"
+            ),
+        )
+
+        # 3. stale-row: an extra classification row naming a key nothing scans to.
+        run_case(
+            "stale-row", 1,
+            ledger_text=SELF_TEST_LEDGER_OK.replace(
+                TODO_ROW_RECALC_ZONE,
+                TODO_ROW_RECALC_ZONE + "\n| `src/app/probe.cpp · nonexistent_fn · room_of(` "
+                f"| 1 | TODO | {LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |"
+            ),
+        )
+
+        # 4. count-mismatch-low: scan finds MORE sites than the ledger row claims.
+        run_case(
+            "count-mismatch-low", 1,
+            probe_text=PROBE_SOURCE_OK.replace(
+                "    room_data* r = room_of(\n        ch);\n    return;\n}\n",
+                "    room_data* r = room_of(\n        ch);\n"
+                "    room_data* r2 = room_of(ch);\n    return;\n}\n"
+            ),
+        )
+        # 4. count-mismatch-high: scan finds FEWER sites than the ledger row claims
+        # (the anti-inheritance direction, spec section 3/O-5 -- a stale HIGHER
+        # count must fail exactly like a stale lower one).
+        run_case(
+            "count-mismatch-high", 1,
+            ledger_text=SELF_TEST_LEDGER_OK.replace(
+                TODO_ROW_RECALC_ZONE,
+                "| `src/app/probe.cpp · recalc_zone · room_of(` | 2 | TODO | "
+                f"{LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |"
+            ),
+        )
+
+        # 5. todo-over-ceiling: two TODO rows total count 2; a ceiling of 1 must fail.
+        run_case("todo-over-ceiling", 1, todo_ceiling_override=1)
+        # ...and a ceiling AT the real total must pass (boundary, not exclusive).
+        run_case("todo-at-ceiling", 0, todo_ceiling_override=2)
+
+        # The overrides refuse to parse without RR_SELF_TEST=1 -- _run_gate
+        # always sets it when passing one, so drive the subprocess directly
+        # here to prove the refusal itself.
+        import subprocess
+        env_without_flag = dict(os.environ)
+        env_without_flag.pop("RR_SELF_TEST", None)
+        completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
+             "--root", str(root), "--ledger", str(ledger), "--todo-ceiling-override", "1"],
+            capture_output=True, text=True, env=env_without_flag,
+        )
+        if completed.returncode == 0 or "RR_SELF_TEST" not in (completed.stdout + completed.stderr):
+            failures.append(
+                "todo-ceiling-override-refused-outside-self-test: expected an argparse "
+                f"error naming RR_SELF_TEST, got exit {completed.returncode}\n"
+                f"{completed.stdout}{completed.stderr}"
+            )
+
+        # 6. bad-class / bad-kind / kind-prefix-extension: pure ledger-format
+        # violations, checked directly against parse_ledger() (no real sites
+        # needed -- these never reach reconcile()).
+        def expect_parse_ledger_systemexit(name, ledger_text):
+            try:
+                parse_ledger(ledger_text)
+                failures.append(f"{name}: parse_ledger() did NOT raise SystemExit")
+            except SystemExit:
+                pass
+
+        try:
+            parse_ledger(SELF_TEST_LEDGER_OK)
+        except SystemExit as exc:
+            failures.append(f"baseline-ledger-parses: SELF_TEST_LEDGER_OK raised SystemExit: {exc}")
+
+        expect_parse_ledger_systemexit(
+            "bad-class", SELF_TEST_LEDGER_OK.replace("| DECL |", "| BOGUS-CLASS |", 1))
+        expect_parse_ledger_systemexit(
+            "bad-kind", SELF_TEST_LEDGER_OK.replace("| entry-guard |", "| entry-guardish |", 1))
+        expect_parse_ledger_systemexit(
+            "kind-prefix-extension",
+            SELF_TEST_LEDGER_OK.replace("| entry-guard |", "| entry-guard-extended |", 1))
+
+        # 7. proof-too-short: a PROVEN row's proof text under MINIMUM_PROOF_TEXT_LENGTH.
+        short_proof_row = PROVEN_ROW.replace(
+            "guarded two lines above by `location_of(ch) != NOWHERE` — src/app/probe.cpp:11",
+            "ok")
+        expect_parse_ledger_systemexit(
+            "proof-too-short", SELF_TEST_LEDGER_OK.replace(PROVEN_ROW, short_proof_row))
+
+        # 8. citation-missing: a PROVEN/entry-guard row with no file:line in the proof.
+        no_citation_row = PROVEN_ROW.replace(
+            "guarded two lines above by `location_of(ch) != NOWHERE` — src/app/probe.cpp:11",
+            "guarded by a runtime nil-check with no citation text at all here")
+        expect_parse_ledger_systemexit(
+            "citation-missing", SELF_TEST_LEDGER_OK.replace(PROVEN_ROW, no_citation_row))
+
+        # 9. test-fixture-outside-tests: a TEST-FIXTURE row for a src/app/ key.
+        expect_parse_ledger_systemexit(
+            "test-fixture-outside-tests",
+            SELF_TEST_LEDGER_OK.replace("| DECL |", "| TEST-FIXTURE |", 1))
+        # ...and the path legality holds under a symlinked --root (F-14/PR-#23):
+        # the clean pair must still pass end to end when accessed through a
+        # symlink, proving the check is computed on the resolved tree.
+        symlink_root = root.parent / "rr1-symlink-root"
+        symlink_root.symlink_to(root)
+        try:
+            exit_code, output = _run_gate(symlink_root, ledger)
+            if exit_code != 0:
+                failures.append(f"symlinked --root broke an otherwise-clean gate run\n{output}")
+        finally:
+            symlink_root.unlink()
+
+        # 10. decl-outside-pinned-set: the file-scope declaration's site is
+        # mis-keyed under a plain function name instead of "#decl" -- the
+        # scanned key and the ledger row key no longer match at all, so the
+        # site is unclassified AND the row is stale.
+        run_case(
+            "decl-outside-pinned-set", 1,
+            ledger_text=SELF_TEST_LEDGER_OK.replace(
+                "src/app/probe.cpp · #decl · room_of(", "src/app/probe.cpp · room_of · room_of("),
+        )
+
+        # 11. macro-family-closed-world: a new header defines a resolver-
+        # reaching macro with no MACRO_FAMILY entry.
+        sneaky_header = app_dir / "sneaky.h"
+        sneaky_header.write_text(
+            "#define SNEAKY(ch) (room_of(ch)->number)\n", encoding="utf-8")
+        try:
+            exit_code, output = _run_gate(root, ledger)
+            if exit_code == 0 or "SNEAKY" not in output:
+                failures.append(
+                    f"macro-family-closed-world: expected a failure naming SNEAKY, got "
+                    f"exit {exit_code}\n{output}"
+                )
+        finally:
+            sneaky_header.unlink()
+
+        # 12. marker sabotage (both markers; the M10 copies).
+        expect_parse_ledger_systemexit(
+            "marker-missing-classification",
+            SELF_TEST_LEDGER_OK.replace(LEDGER_CLASSIFICATION_MARKER, ""))
+        expect_parse_ledger_systemexit(
+            "marker-duplicate-classification",
+            SELF_TEST_LEDGER_OK.replace(
+                LEDGER_CLASSIFICATION_MARKER,
+                LEDGER_CLASSIFICATION_MARKER + "\n" + LEDGER_CLASSIFICATION_MARKER, 1))
+        expect_parse_ledger_systemexit(
+            "marker-missing-token-counts",
+            SELF_TEST_LEDGER_OK.replace(LEDGER_TOKEN_COUNTS_MARKER, ""))
+        expect_parse_ledger_systemexit(
+            "wrong-header-classification",
+            SELF_TEST_LEDGER_OK.replace(LEDGER_CLASSIFICATION_HEADER, "| Wrong | Header |"))
+        # A marker+table INSIDE a fence is inert -- the real table (unfenced)
+        # still parses correctly, and the fenced decoy row is never seen.
+        try:
+            fenced_rows, _ = parse_ledger(SELF_TEST_LEDGER_FENCED_DECOY)
+            if any(row["key_file"] == "src/decoy.cpp" for row in fenced_rows):
+                failures.append("marker-inside-fence: the fenced decoy row was NOT inert")
+            if len(fenced_rows) != 4:
+                failures.append(
+                    f"marker-inside-fence: expected 4 real rows, parsed {len(fenced_rows)}"
+                )
+        except SystemExit as exc:
+            failures.append(f"marker-inside-fence: the real (unfenced) table failed to parse: {exc}")
+
+        # 13. floor sabotage: the ledger-row floor (direct parse_ledger call).
+        # Built PROGRAMMATICALLY off MINIMUM_LEDGER_ROW_COUNT itself (not by
+        # dropping a row from the fixed 4-row SELF_TEST_LEDGER_OK fixture),
+        # the same symbolic discipline MINIMUM_SCANNED_FILE_COUNT's own
+        # boundary probe uses -- so Task 3 raising this literal keeps this
+        # probe exercising the real edge rather than a value that was only
+        # ever true for THIS commit's specific fixture size.
+        def _synthetic_classification_ledger(row_count):
+            lines = [LEDGER_CLASSIFICATION_MARKER, LEDGER_CLASSIFICATION_HEADER,
+                     "| --- | --- | --- | --- | --- |"]
+            for index in range(row_count):
+                lines.append(
+                    f"| `src/synthetic{index}.cpp · fn{index} · world[` | 1 | TODO | "
+                    f"{LEDGER_EMPTY_MARKER} | {LEDGER_EMPTY_MARKER} |"
+                )
+            lines += ["", LEDGER_TOKEN_COUNTS_MARKER, LEDGER_TOKEN_COUNTS_HEADER, "| --- | --- |"]
+            return "\n".join(lines) + "\n"
+
+        expect_parse_ledger_systemexit(
+            "ledger-row-floor-below",
+            _synthetic_classification_ledger(MINIMUM_LEDGER_ROW_COUNT - 1))
+        try:
+            parse_ledger(_synthetic_classification_ledger(MINIMUM_LEDGER_ROW_COUNT))
+        except SystemExit as exc:
+            failures.append(
+                f"ledger-row-floor-at-boundary: exactly {MINIMUM_LEDGER_ROW_COUNT} rows "
+                f"(AT the floor, a minimum not an exclusive bound) raised SystemExit: {exc}"
+            )
+        # ...and the scanned-file floor, via --minimum-files-override so the
+        # boundary can be probed cheaply rather than by padding hundreds of
+        # files per sub-case. A SEPARATE synthetic --root (not the shared
+        # `root`/`ledger` fixture) whose own src/app/probe.cpp mirrors the
+        # real layout exactly, so the ledger's "src/app/probe.cpp"-keyed rows
+        # still reconcile once the floor itself passes.
+        floor_root = root / "floor_root"
+        floor_app_dir = floor_root / "src" / "app"
+        floor_app_dir.mkdir(parents=True)
+        (floor_app_dir / "probe.cpp").write_text(PROBE_SOURCE_OK, encoding="utf-8")
+        for index in range(3):
+            (floor_app_dir / f"pad{index}.cpp").write_text("int clean = 0;\n", encoding="utf-8")
+        # 4 files total (probe + 3 pad): one BELOW an override of 5.
+        exit_code, output = _run_gate(floor_root, ledger, minimum_files_override=5)
+        if exit_code == 0:
+            failures.append(f"scanned-file floor did NOT fire one file below the override\n{output}")
+        (floor_app_dir / "pad3.cpp").write_text("int clean = 0;\n", encoding="utf-8")
+        # 5 files total: AT the override -- must pass (a minimum, not an
+        # exclusive bound), and the ledger reconciles exactly against probe.cpp.
+        exit_code, output = _run_gate(floor_root, ledger, minimum_files_override=5)
+        if exit_code != 0:
+            failures.append(f"scanned-file floor fired AT the override (must be inclusive)\n{output}")
+
+        # 14. token-counts-table: the declared table disagrees with the scan.
+        run_case(
+            "token-counts-table", 1,
+            ledger_text=SELF_TEST_LEDGER_OK.replace("| `world[` | 1 |", "| `world[` | 2 |"),
+        )
+
+        # 15. masking: comment/string-literal tokens are not counted; a
+        # `//`-trailed real site still is (an otherwise-clean pair -> exit 0).
+        run_case("masking", 0, probe_text=PROBE_SOURCE_MASKING)
+
+        # 16. attribution directions: ACMD keys as its bare name, a macro body
+        # keys as "#NAME", and a multi-line call still hits (both ATTRIBUTION_
+        # PROBE_SOURCE's do_glance body and PROBE_SOURCE_OK's recalc_zone
+        # already exercise the multi-line-call shape used throughout this
+        # self-test). A one-time real-tree grep confirmed the genuinely SPLIT
+        # shape (callee name and '(' on different lines) does not exist in
+        # production (see the module docstring's token-shape note).
+        # A separate synthetic --root (same reasoning as floor_root above):
+        # the ledger's keys are "src/app/attrib.cpp"-relative, so the file
+        # must actually sit at <root>/src/app/attrib.cpp under whichever
+        # directory is passed as --root.
+        attrib_root = root / "attrib_root"
+        attrib_app_dir = attrib_root / "src" / "app"
+        attrib_app_dir.mkdir(parents=True)
+        (attrib_app_dir / "attrib.cpp").write_text(ATTRIBUTION_PROBE_SOURCE, encoding="utf-8")
+        attrib_ledger = root / "attrib_ledger.md"
+        attrib_ledger.write_text(ATTRIBUTION_LEDGER, encoding="utf-8")
+        exit_code, output = _run_gate(attrib_root, attrib_ledger, minimum_files_override=1)
+        if exit_code != 0:
+            failures.append(f"attribution-directions: expected exit 0, got {exit_code}\n{output}")
+
+        # 17. ctest-invocation-shape: an explicit --ledger naming the exact
+        # default-relative location must behave identically to omitting
+        # --ledger (the W-1 direction).
+        default_ledger_dir = root / "docs" / "superpowers"
+        default_ledger_dir.mkdir(parents=True)
+        default_ledger = default_ledger_dir / "room-resolve-ledger.md"
+        default_ledger.write_text(SELF_TEST_LEDGER_OK, encoding="utf-8")
+        exit_explicit, output_explicit = _run_gate(root, default_ledger)
+        exit_default, output_default = _run_gate(root, None)
+        if exit_explicit != 0 or exit_default != 0:
+            failures.append(
+                "ctest-invocation-shape: explicit-default-path and omitted --ledger disagreed "
+                f"on a clean pair (explicit={exit_explicit}, default={exit_default})\n"
+                f"{output_explicit}\n{output_default}"
+            )
+        default_ledger.write_text(
+            SELF_TEST_LEDGER_OK.replace("| `world[` | 1 |", "| `world[` | 2 |"), encoding="utf-8")
+        exit_explicit, _ = _run_gate(root, default_ledger)
+        exit_default, _ = _run_gate(root, None)
+        if exit_explicit == 0 or exit_default == 0 or exit_explicit != exit_default:
+            failures.append(
+                "ctest-invocation-shape: explicit-default-path and omitted --ledger disagreed "
+                f"on a sabotaged pair (explicit={exit_explicit}, default={exit_default})"
+            )
+
+    for failure in failures:
+        print(f"self-test FAILED: {failure}", file=sys.stderr)
+    if failures:
+        return 1
+    print("room_resolve_census self-test: all directions pass (gate invoked end to end)")
+    return 0
+
+
+def build_argument_parser():
+    parser = argparse.ArgumentParser(description="Room-resolve retirement census.")
+    parser.add_argument("paths", nargs="*", type=pathlib.Path)
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--self-test", action="store_true",
+                        help="prove the gate still fails in every direction it must")
+    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).parents[1])
+    parser.add_argument("--ledger", type=pathlib.Path, default=None,
+                        help="defaults to <root>/docs/superpowers/room-resolve-ledger.md")
     parser.add_argument(
         "--derive-macros", action="store_true",
         help="Print the macro family derived from all scanned headers' "
              "#define bodies, one name per line, sorted (debug/maintenance).")
+    parser.add_argument("--todo-ceiling-override", type=int, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1")
+    parser.add_argument("--minimum-files-override", type=int, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1")
+    parser.add_argument("--generate-ledger", action="store_true",
+                        help="not implemented yet -- Task 3")
+    parser.add_argument("--advise", action="store_true",
+                        help="not implemented yet -- Task 3")
+    return parser
+
+
+def main(argv=None):
+    parser = build_argument_parser()
     args = parser.parse_args(argv)
 
+    if args.self_test:
+        return run_self_test()
+
+    if (args.todo_ceiling_override is not None or args.minimum_files_override is not None) \
+            and os.environ.get("RR_SELF_TEST") != "1":
+        parser.error(
+            "--todo-ceiling-override/--minimum-files-override are self-test-only hooks -- "
+            "set RR_SELF_TEST=1 to use them (see run_self_test())"
+        )
+
+    if args.generate_ledger or args.advise:
+        parser.error("--generate-ledger/--advise are not implemented yet -- Task 3 builds them")
+
+    repository_root = args.root.resolve()
+
     if args.derive_macros:
-        repository_root = pathlib.Path(__file__).resolve().parent.parent
+        scanned_for_derive = source_files(repository_root / "src")
         header_texts = {
             str(path): path.read_text(encoding="utf-8", errors="replace")
-            for path in source_files(repository_root / "src")
+            for path in scanned_for_derive
         }
-        family = derive_macro_family(header_texts)
-        for name in sorted(family):
+        for name in sorted(derive_macro_family(header_texts)):
             print(name)
         return 0
 
-    return dev_selftest()
+    ledger_path = (
+        args.ledger.resolve() if args.ledger is not None
+        else repository_root / "docs" / "superpowers" / "room-resolve-ledger.md"
+    )
+
+    scanned_files = _resolve_scan_targets(args.paths, repository_root)
+
+    minimum_files = (
+        args.minimum_files_override if args.minimum_files_override is not None
+        else MINIMUM_SCANNED_FILE_COUNT
+    )
+    if len(scanned_files) < minimum_files:
+        print(
+            f"error: only {len(scanned_files)} file(s) scanned under {repository_root} -- "
+            f"expected at least {minimum_files}. This almost always means a broken --root or "
+            "a typo'd path argument, not a genuine shrink of production src/.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"[scanned] {len(scanned_files)} file(s) under {repository_root} -- no directory "
+          "is excluded (R-B8).")
+
+    if not ledger_path.exists():
+        raise SystemExit(
+            f"error: ledger not found at {ledger_path} -- Task 3 generates "
+            "docs/superpowers/room-resolve-ledger.md; nothing to reconcile against until then."
+        )
+
+    header_texts = {
+        str(path): path.read_text(encoding="utf-8", errors="replace") for path in scanned_files
+    }
+    derived_family = derive_macro_family(header_texts)
+    unknown_macros = sorted(derived_family - set(MACRO_FAMILY))
+
+    sites = []
+    for path in scanned_files:
+        sites.extend(scan_file(path, repository_root))
+
+    rows, token_counts = parse_ledger(ledger_path.read_text(encoding="utf-8"))
+
+    if MAXIMUM_TODO_COUNT is None and args.todo_ceiling_override is None:
+        print("notice: MAXIMUM_TODO_COUNT is unset -- ceiling check skipped (Task 3 seeds it)",
+              file=sys.stderr)
+    todo_ceiling = (
+        args.todo_ceiling_override if args.todo_ceiling_override is not None
+        else MAXIMUM_TODO_COUNT
+    )
+
+    errors = reconcile(sites, rows, token_counts, todo_ceiling=todo_ceiling)
+    if unknown_macros:
+        errors.insert(
+            0,
+            f"macro family closed-world violation: {unknown_macros} not in MACRO_FAMILY -- a "
+            "new resolver-reaching macro must be reviewed and added to the pinned literal"
+        )
+
+    for error in errors:
+        print(error)
+
+    if args.check and errors:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

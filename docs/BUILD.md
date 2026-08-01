@@ -1350,6 +1350,14 @@ recording the same-function site-swap limit, cross-class count-shuffling being r
 `#decl`'s three-way conflation, the caller-contract token-pinning policy, and the `<root>/src`-only
 scan scope plus `collect_define_bodies`'s last-wins duplicate-macro-name behavior.
 
+**Wave R2 (small tiers)** applied the gate to its first real rows — 72 of 83 in-scope
+`src/entity/`/`src/pathfind/`/`src/olc/`/`src/world/` sites drained (`MAXIMUM_TODO_COUNT`
+788 → 716; ctest 1862 → 1865, +3 `ResetZoneTest.*` covering 3 genuine `GUARDED`
+`zone.cpp::reset_zone` fixes) — see AGENTS.md's Project Structure entry for the full
+measured account and `docs/superpowers/room-resolve-playbook.md` for the classification
+recipe (per-proof-kind worked examples, pitfalls, the `GUARDED` procedure, the
+stayed-TODO taxonomy) that R3+ (`src/combat/`, `src/script/`) reuses.
+
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
 Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling

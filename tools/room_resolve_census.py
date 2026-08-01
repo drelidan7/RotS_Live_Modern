@@ -685,16 +685,18 @@ CITATION_RE = re.compile(r"\b[\w./-]+\.(?:cpp|h|hpp|cc|inl)\s*:\s*\d+")
 MINIMUM_PROOF_TEXT_LENGTH = 20
 
 # Seeded (Task 3) from the real ledger's measured TODO total: the SUM of
-# every TODO row's Count cell -- 300 TODO rows, 788 TODO sites -- since
-# reconcile()'s own ceiling check sums `row["count"]` (site occurrences), not
-# the number of TODO-classified rows; a value of 300 here would immediately
-# fail the real tree (788 > 300), confirmed by probe before picking this
-# literal. Both `--todo-ceiling-override` (self-test only) and the
-# ceiling-pin direction in run_self_test() key off this same literal -- the
-# brief's F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's own pin below. Each
-# drain wave lowers this in the same commit that adds its proofs (design doc
-# section 4/O-10).
-MAXIMUM_TODO_COUNT = 788
+# every TODO row's Count cell -- since reconcile()'s own ceiling check sums
+# `row["count"]` (site occurrences), not the number of TODO-classified rows.
+# Both `--todo-ceiling-override` (self-test only) and the ceiling-pin
+# direction in run_self_test() key off this same literal -- the brief's F-10
+# mirror of MINIMUM_SCANNED_FILE_COUNT's own pin below. Each drain wave
+# lowers this in the same commit that adds its proofs (design doc section
+# 4/O-10). RR Wave R2 Task 1 (entity/pathfind/olc small tiers) drained 40 of
+# its 48 scanned TODO sites to PROVEN -- 8 stayed TODO per controller ruling
+# (the char_to_room F17/RR-O-1 site, the four ACMD-dispatched-only-against-
+# a-placed-character OLC rows, and obj_to_room/CAN_GO's un-completable
+# HIGH-fan-in caller enumeration) -- taking the ceiling 788 -> 748.
+MAXIMUM_TODO_COUNT = 748
 
 # Same floor tools/location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT
 # uses, at the same value: measured at 315 files under src/ at this commit
@@ -1649,16 +1651,17 @@ def run_self_test():
 
     # Ceiling pin (F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's pin, T2 brief
     # direction 5), ACTIVATED (Task 3, the tracked review obligation): pinned
-    # at 788 -- the exact MAXIMUM_TODO_COUNT this commit seeds, measured
-    # against the real ledger's TODO total. An accidental RAISE (an edit that
-    # loosens the ratchet without a deliberate, reviewed drain-wave decision)
-    # fails `--self-test`, not just review; a LOWER value (a real drain wave)
-    # keeps passing `<=`, and that wave updates this literal in the same
-    # commit that lowers MAXIMUM_TODO_COUNT itself (the two literals are set
-    # together, never independently).
-    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 788:
+    # at 748 -- the exact MAXIMUM_TODO_COUNT this commit seeds (RR Wave R2
+    # Task 1 lowered it 788 -> 748), measured against the real ledger's TODO
+    # total. An accidental RAISE (an edit that loosens the ratchet without a
+    # deliberate, reviewed drain-wave decision) fails `--self-test`, not just
+    # review; a LOWER value (a real drain wave) keeps passing `<=`, and that
+    # wave updates this literal in the same commit that lowers
+    # MAXIMUM_TODO_COUNT itself (the two literals are set together, never
+    # independently).
+    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 748:
         failures.append(
-            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 788 -- "
+            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 748 -- "
             "an accidental raise must not silently loosen the ratchet."
         )
 

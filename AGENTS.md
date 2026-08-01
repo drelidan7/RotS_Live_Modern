@@ -140,8 +140,9 @@
   11 `room_by_id_total(` sites). Measured, re-derived-not-hand-computed totals: **72 of
   83 in-scope sites drained** (69 `PROVEN` + 3 `GUARDED`), leaving **9 rows / 11 sites**
   staying `TODO` with enumerated reasons — 1 `char_to_room` (RR-O-1-blocked, by design,
-  preserves `operator[]`'s negative-room mudlog), 5 OLC/`weather_to_char` sites across 6
-  rows (the ACMD-argument-`ch` dispatch-pattern class, formally deferred by owner ruling
+  preserves `operator[]`'s negative-room mudlog), 8 OLC/`weather_to_char` sites across 6
+  rows (5 OLC sites across 4 rows + 3 `weather_to_char` sites across 2 rows — the
+  ACMD-argument-`ch` dispatch-pattern class, formally deferred by owner ruling
   to R3+'s own policy design — NOT one of `PROVEN`'s five closed kinds), 1 `CAN_GO`
   (scale-flagged, 42 tree-wide call sites), 1 `obj_to_room` (medium-confidence refusal,
   20 callers across 3 provenance patterns, per the wave's own "no medium-confidence

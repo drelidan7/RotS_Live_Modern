@@ -127,7 +127,39 @@
   live occurrences (a fresh whole-tree `} while(0)` grep counts 36, not 96, correcting a stale
   count this wave's own gitignored progress notes carried). See docs/BUILD.md's "Room-resolve
   retirement (RR program)" subsection for the full findings-closure account.
-- release-notes/, game design docs/, code documentation/: Docs and release history.
+  **RR Wave R2 (small tiers — `src/entity/`/`src/pathfind/`/`src/olc/`/`src/world/`)**
+  applied the R1-shipped gate to its first real production rows: Task 0's read-only
+  mini-census (`.superpowers/sdd/2026-08-01-rr2-small-tiers/rr2-census.md`) bucketed
+  all 38 in-scope rows (83 sites); Task 1 classified `entity`/`pathfind`/`olc` (25
+  rows/48 sites, proof-only, zero `GUARDED`); Task 2 classified `world` (13 rows/35
+  sites) and additionally landed **3 genuine `GUARDED` behavior changes** in
+  `zone.cpp::reset_zone` (red-first tested, `src/tests/zone_reset_guard_tests.cpp`,
+  boot-golden byte-identical both before and after — the guards fixed a real gap: a
+  malformed zone file's room reference that failed `real_room()` at load time
+  (yielding `-1`) previously reached `room_by_id_total` unguarded at 3 of `reset_zone`'s
+  11 `room_by_id_total(` sites). Measured, re-derived-not-hand-computed totals: **72 of
+  83 in-scope sites drained** (69 `PROVEN` + 3 `GUARDED`), leaving **9 rows / 11 sites**
+  staying `TODO` with enumerated reasons — 1 `char_to_room` (RR-O-1-blocked, by design,
+  preserves `operator[]`'s negative-room mudlog), 5 OLC/`weather_to_char` sites across 6
+  rows (the ACMD-argument-`ch` dispatch-pattern class, formally deferred by owner ruling
+  to R3+'s own policy design — NOT one of `PROVEN`'s five closed kinds), 1 `CAN_GO`
+  (scale-flagged, 42 tree-wide call sites), 1 `obj_to_room` (medium-confidence refusal,
+  20 callers across 3 provenance patterns, per the wave's own "no medium-confidence
+  proofs land" rule); `MAXIMUM_TODO_COUNT` **788 → 716** (788 − 72, `--check`-derived);
+  ctest **1862 → 1865** (+3 `ResetZoneTest.*`); **5** distinct census advisory/premise
+  overturns landed across the wave (2 at Task 0's own census-writing stage —
+  `get_sun_level`'s and `location_benchmark.cpp measure_iteration`'s `occupant-loop?`
+  advisories, both scanner-heuristic mismatches; 1 at Task 1 — `get_char_room`'s
+  `SPECIAL(cname)`-parameter premise, corrected by reading the macro definition
+  directly; 2 at Task 2 — `reset_zone`'s 5-site GUARDED-candidate list wrong in 2 of 5,
+  and its case-6 site's root cause re-diagnosed as a different defect class than the
+  census described) — plus a further caller-count miscount (`get_char_room`'s "8"
+  tree-wide callers corrected to the real **10** in Task 1's own fix round) and one
+  still-deferred cosmetic line-range mislabel (batched into a future whole-branch fix
+  wave). Task 3 wrote `docs/superpowers/room-resolve-playbook.md`, the classification
+  playbook R3+ (`src/combat/`, `src/script/`, and eventually `src/app/`) reuses — see
+  that document for the per-proof-kind worked examples, the pitfalls list, the
+  `GUARDED` procedure, the stayed-TODO taxonomy, and the R3/R4 cost-estimation note.
 
 ## Build, Test, and Development Commands
 - Bootstrap data: `cd src && make setup` — creates required runtime directories/files under `lib/`, `log/`, and `bin/`.

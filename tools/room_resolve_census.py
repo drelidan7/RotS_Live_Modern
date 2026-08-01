@@ -744,7 +744,10 @@ def parse_ledger(text):
     return rows, token_counts
 
 
-def reconcile(sites, rows, token_counts, *, todo_ceiling=MAXIMUM_TODO_COUNT):
+_UNSET = object()  # sentinel: "no todo_ceiling override was passed" (see reconcile())
+
+
+def reconcile(sites, rows, token_counts, *, todo_ceiling=_UNSET):
     """Cross-check scanned sites against ledger rows and the token-counts
     table (spec section 3). Returns a list of human-readable error strings;
     an empty list means the tree and the ledger agree completely.
@@ -756,12 +759,26 @@ def reconcile(sites, rows, token_counts, *, todo_ceiling=MAXIMUM_TODO_COUNT):
     an unrelated count). Every ledger row's key must exist among the scanned
     sites (stale-row). Per-token totals recomputed from the scan must match
     the declared token-counts table (O-10). TODO rows are ratcheted against
-    `todo_ceiling`, which defaults to the module-level MAXIMUM_TODO_COUNT so
-    ordinary callers matching the documented `reconcile(sites, rows,
-    token_counts)` three-positional-argument interface need not know the
-    self-test-only override exists; main() supplies
-    `--todo-ceiling-override` here when present.
+    `todo_ceiling`, which defaults to the LIVE module-level MAXIMUM_TODO_COUNT
+    -- resolved at CALL time, inside this function body, not baked in as an
+    ordinary keyword default -- so ordinary callers matching the documented
+    `reconcile(sites, rows, token_counts)` three-positional-argument interface
+    transparently see whatever MAXIMUM_TODO_COUNT the module currently holds,
+    including a monkeypatched or Task-3-raised value, without needing to know
+    the self-test-only `--todo-ceiling-override` mechanism exists (main()
+    supplies that override here explicitly when present).
+
+    A plain `todo_ceiling=MAXIMUM_TODO_COUNT` default would be WRONG here:
+    Python evaluates a default argument expression once, at `def` time, so it
+    would freeze whatever MAXIMUM_TODO_COUNT held at import time and silently
+    ignore any later change to the module constant -- a footgun for exactly
+    the callers this default exists to serve. The `_UNSET` sentinel plus an
+    explicit `if todo_ceiling is _UNSET: todo_ceiling = MAXIMUM_TODO_COUNT`
+    below re-reads the module global on every call instead.
     """
+    if todo_ceiling is _UNSET:
+        todo_ceiling = MAXIMUM_TODO_COUNT
+
     errors = []
 
     # Macro attributions key as "#NAME"; file-scope (declarations, and any
@@ -1265,6 +1282,35 @@ def run_self_test():
         # Task 3: replace this stub with the real ceiling-pin comparison.
         pass
 
+    # Review-1 IMPORTANT finding 1: reconcile()'s todo_ceiling default must
+    # be resolved at CALL time (the LIVE MAXIMUM_TODO_COUNT), not baked in as
+    # an ordinary keyword default evaluated once at `def` time -- a plain
+    # `todo_ceiling=MAXIMUM_TODO_COUNT` default would freeze whatever the
+    # constant held at import time and silently ignore any later change
+    # (Task 3 raising it, or a test monkeypatching it). Proven in-process,
+    # no subprocess needed -- this is a pure Python calling-convention
+    # property, not something the gate's file-scanning path affects.
+    original_maximum_todo_count = MAXIMUM_TODO_COUNT
+    try:
+        globals()["MAXIMUM_TODO_COUNT"] = 1
+        live_ceiling_sites = [
+            {"file": "x.cpp", "function": "f", "attribution": "function", "token": "world["},
+            {"file": "x.cpp", "function": "f", "attribution": "function", "token": "world["},
+        ]
+        live_ceiling_rows = [{
+            "key_file": "x.cpp", "key_function": "f", "key_token": "world[",
+            "count": 2, "cls": "TODO", "kind": LEDGER_EMPTY_MARKER, "proof": LEDGER_EMPTY_MARKER,
+        }]
+        live_ceiling_errors = reconcile(live_ceiling_sites, live_ceiling_rows, {"world[": 2})
+        if not any("exceeds the ceiling of 1" in error for error in live_ceiling_errors):
+            failures.append(
+                "reconcile()'s todo_ceiling default did not honor a live-monkeypatched "
+                f"MAXIMUM_TODO_COUNT=1 when called without the kwarg (early-bound-default "
+                f"regression): {live_ceiling_errors}"
+            )
+    finally:
+        globals()["MAXIMUM_TODO_COUNT"] = original_maximum_todo_count
+
     with tempfile.TemporaryDirectory() as temporary_root:
         root = pathlib.Path(temporary_root).resolve()
         app_dir = root / "src" / "app"
@@ -1579,6 +1625,79 @@ def run_self_test():
                 f"on a sabotaged pair (explicit={exit_explicit}, default={exit_default})"
             )
 
+        # Review-1 IMPORTANT finding 2: the positional `paths` argument and
+        # _resolve_scan_targets()'s multi-path/single-file branches had zero
+        # self-test coverage -- the reviewer drove them independently and
+        # found the logic sound, but an unverified code path is exactly the
+        # wave-coverage-gap class this repository's own conventions flag.
+        # At this point in the run, app_dir holds exactly one file
+        # (probe.cpp, PROBE_SOURCE_OK) -- reset() ran after "masking" (the
+        # last run_case call before direction 17) and nothing since has
+        # touched app_dir, so "[scanned] 1 file(s)" is the real expected count.
+
+        # (a) a positional RELATIVE directory path -- exercises the
+        # not-absolute branch and the `source_files(resolved)` (non-file)
+        # branch, and narrows the scan enough that the notice must show 1.
+        exit_code, output = _run_gate(
+            root, ledger, pathlib.Path("src/app"), minimum_files_override=1)
+        if exit_code != 0:
+            failures.append(
+                f"positional-relative-directory-path: expected exit 0, got {exit_code}\n{output}"
+            )
+        if "[scanned] 1 file(s)" not in output:
+            failures.append(
+                "positional-relative-directory-path: expected the scanned-file notice to "
+                f"reflect the narrowed scope (1 file), got:\n{output}"
+            )
+
+        # (b) a positional SINGLE-FILE path, also relative -- exercises both
+        # the not-absolute branch AND resolved.is_file() in one case.
+        exit_code, output = _run_gate(
+            root, ledger, pathlib.Path("src/app/probe.cpp"), minimum_files_override=1)
+        if exit_code != 0:
+            failures.append(
+                f"positional-single-file-path: expected exit 0, got {exit_code}\n{output}"
+            )
+        if "[scanned] 1 file(s)" not in output:
+            failures.append(
+                "positional-single-file-path: expected the scanned-file notice to reflect "
+                f"the narrowed scope (1 file), got:\n{output}"
+            )
+
+        # (c) MULTIPLE positional paths -- exercises _resolve_scan_targets'
+        # own for-loop actually iterating more than once. src/app (the one
+        # real, reconciling file) plus src/pad (all clean pad files, zero
+        # sites) together clear the real MINIMUM_SCANNED_FILE_COUNT floor
+        # with no override needed.
+        import subprocess
+        multi_path_completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
+             "--root", str(root), "--ledger", str(ledger), "src/app", "src/pad"],
+            capture_output=True, text=True,
+        )
+        if multi_path_completed.returncode != 0:
+            failures.append(
+                "positional-multiple-paths: expected exit 0, got "
+                f"{multi_path_completed.returncode}\n"
+                f"{multi_path_completed.stdout}{multi_path_completed.stderr}"
+            )
+
+        # (d) --derive-macros silently ignored positional paths before this
+        # review; now it must be an explicit argparse error.
+        derive_macros_completed = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--derive-macros",
+             "--root", str(root), "src/app"],
+            capture_output=True, text=True,
+        )
+        if derive_macros_completed.returncode == 0 or "positional paths are not supported" not in (
+                derive_macros_completed.stdout + derive_macros_completed.stderr):
+            failures.append(
+                "derive-macros-rejects-positional-paths: expected an argparse error naming "
+                f"'positional paths are not supported', got exit "
+                f"{derive_macros_completed.returncode}\n"
+                f"{derive_macros_completed.stdout}{derive_macros_completed.stderr}"
+            )
+
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -1627,6 +1746,11 @@ def main(argv=None):
 
     if args.generate_ledger or args.advise:
         parser.error("--generate-ledger/--advise are not implemented yet -- Task 3 builds them")
+
+    if args.derive_macros and args.paths:
+        parser.error(
+            "--derive-macros scans the whole tree; positional paths are not supported"
+        )
 
     repository_root = args.root.resolve()
 

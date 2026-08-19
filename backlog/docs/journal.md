@@ -112,4 +112,12 @@ nine-library layout, one subagent miscount (TOKEN_PATTERNS "eight") caught and c
 against the file (eleven). Incidental finds: `.git/info/exclude`'s blanket `.claude/` line
 (added by the index tooling) had silently kept `build-and-smoke` untracked since creation —
 narrowed to `.claude/index/`, so the skills/agents/hook (and build-and-smoke, finally) are
-actually committed.
+actually committed. A same-day background security review of the commit flagged the hook's
+parity gap (Bash cp/mv/dd/redirects onto a fixture path bypassed the Edit/Write block) and its
+string-presence container/override detection; both hardened in a follow-up commit — mutating
+shell references to fixture paths now require the override (read-only inspections stay free),
+UPDATE_GOLDENS must appear inside the compose invocation rather than merely alongside it, the
+override token is word-boundary-matched, and the docstring now states the accepted threat
+model (accidental-footgun guard, not a security boundary). Battery extended 13 → 27 cases,
+all passing — including the hook live-blocking this session's own test harness mid-hardening,
+its first real catch.

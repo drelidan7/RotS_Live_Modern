@@ -78,3 +78,16 @@ approval, the one tracker-style doc — the Phase 2b 64-bit seed list — was to
 board: its live Y2038 items became TASK-011, its MSSP and monolithic-pollution sections were
 verified already closed/superseded in code, and the per-wave plans/specs stay untouched as the
 historical record the board cites.
+
+## 2026-08-18 — Documentation audit
+A three-agent audit re-measured every gate-checked claim true (censuses, ledger sums, library
+and test counts) but found the ungated human-facing tier badly drifted across the db.cpp/
+structs.h splits, the per-wave relocations, and the physical-layout wave — worst: the RNG
+systems doc still describing rand() as live, AGENTS.md's own dead-code section pointing at
+pre-layout paths, and five docs calling the deleted combat_manager "dormant." Full findings:
+backlog/docs/doc-audit-2026-08-18.md. The owner approved capturing the repair as TASK-012
+(substantive fixes), TASK-013 (mechanical path sweep), and TASK-014 (a doc-citation census in
+the house gate style); the quick fixes — README's broken links and fictional CI-job
+description, and the repo-level clang-format hook that contradicted the tracked
+.no-autoformat opt-out — were applied the same day. Skills/subagents recommendations were
+reviewed and deliberately deferred by the owner.

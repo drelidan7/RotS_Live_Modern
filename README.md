@@ -315,15 +315,20 @@ sending at higher scale:
 
 ## GitHub Actions
 
-This repository includes a GitHub Actions workflow that runs on pushes to
-`master` and pull requests targeting `master`. It builds the game, runs the C++
-unit tests, and then runs the proxy-backed account smoke flow.
+This repository includes a GitHub Actions workflow (`CI`) that runs on pushes
+to `master` and pull requests targeting `master`. It configures, builds, and
+runs the full CTest suite (including characterization goldens) across six
+required jobs — `Linux i386 legacy`, `Linux x64`, `Linux x64 ASan+UBSan`,
+`macOS arm64`, `macOS arm64 ASan+UBSan`, and `Windows MSVC` — plus an advisory
+(non-blocking) `clang-tidy` job. CI does not run the boot or account smoke
+flows; those run locally (`make smoke-account`, `scripts/boot-golden.sh`) per
+the verification cadence in `AGENTS.md`.
 
 If you want GitHub to block merges until those checks pass, enable branch
-protection for `master` in the repository settings and mark the `Build, Unit
-Tests, and Smoke Tests` job from the CI workflow as a required status check.
-If you also want to block direct pushes to `master`, make sure your branch
-protection or ruleset disables direct-push bypass as well.
+protection for `master` in the repository settings and mark the six required
+jobs from the CI workflow as required status checks. If you also want to block
+direct pushes to `master`, make sure your branch protection or ruleset
+disables direct-push bypass as well.
 
 #### Step 5: Running the Game
 
@@ -349,8 +354,8 @@ If you want the game to expect the Rust proxy header, use the explicit proxy fla
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.MD) for details on our code of
-conduct, and the process for submitting pull request to us.
+Please read [AGENTS.md](AGENTS.md) — the authoritative repository guide — for
+coding style, testing requirements, and the commit/pull-request conventions.
 
 ## Releases and Design Documentation
 
@@ -362,7 +367,7 @@ present it to the end-users. You can find all the release notes here.
 
 Design documentation should be added to the following location.
 
-* [RotS Design Documentation](game%20design%20docs/README.md)
+* [RotS Design Documentation](game%20design%20docs/)
 
 ## Authors
 

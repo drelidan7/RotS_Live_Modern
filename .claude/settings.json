@@ -1,1 +1,26 @@
-{}
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_legacy_goldens.py\"",
+            "statusMessage": "Checking legacy-golden guard"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_legacy_goldens.py\"",
+            "statusMessage": "Checking legacy-golden guard"
+          }
+        ]
+      }
+    ]
+  }
+}

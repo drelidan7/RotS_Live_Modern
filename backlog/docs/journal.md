@@ -91,3 +91,25 @@ the house gate style); the quick fixes — README's broken links and fictional C
 description, and the repo-level clang-format hook that contradicted the tracked
 .no-autoformat opt-out — were applied the same day. Skills/subagents recommendations were
 reviewed and deliberately deferred by the owner.
+
+## 2026-08-19 — Claude Code automations slice (TASK-017)
+Built the five automation artifacts the 2026-08-18 audit identified and the owner deferred,
+then approved on 2026-08-19: two in-repo skills (`.claude/skills/i386-battery` — the battery
+runbook plus its four recorded operational traps, previously living only in private session
+memory; `.claude/skills/rr-wave` — the RR wave-standup sequence pointing at the playbook as
+source of truth), two subagents (`.claude/agents/adversarial-branch-reviewer` — the dual-review
+brief, findings format, and the no-concurrent-reviewers/clean-rebuild-first process rules;
+`.claude/agents/gate-runner` — the macOS verification leg with the rots64 container leg handed
+back to the controller, the Option-B shape the owner chose because the recorded LS-2 T2
+subagent docker-stall makes a full-two-host agent a bet against twice-recorded history), and a
+PreToolUse hook (`.claude/hooks/guard_legacy_goldens.py`, wired in `.claude/settings.json`)
+blocking edits to `legacy_*_fixture.bin` and host `UPDATE_GOLDENS` runs lacking the i386
+container or an explicit `HOST_GOLDENS_OK=1` override — 13/13 direct hook tests pass, including
+the rots64-does-not-count-as-rots discrimination. The stale `.claude/index` (predated the
+physical-layout wave; 267 modified + 94 deleted of 249 indexed files) was rebuilt via 13
+Sonnet indexing subagents — 350 files across 22 shards, INDEX.md rewritten around the
+nine-library layout, one subagent miscount (TOKEN_PATTERNS "eight") caught and corrected
+against the file (eleven). Incidental finds: `.git/info/exclude`'s blanket `.claude/` line
+(added by the index tooling) had silently kept `build-and-smoke` untracked since creation —
+narrowed to `.claude/index/`, so the skills/agents/hook (and build-and-smoke, finally) are
+actually committed.

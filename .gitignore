@@ -96,6 +96,8 @@ src/.vs/
 .vscode/
 .vscode/settings.json
 *build*/
+# *build*/ is for build trees; the tracked Claude Code skill directory below is not one.
+!.claude/skills/build-and-smoke/
 .gitignore
 
 # Clang

@@ -334,6 +334,33 @@
   COMBAT ROW IS CLOSED" sections (spec_pro/spec_ass rows now marked RESOLVED; the full five-wave
   arc summary that closed all 11 combat-seed-wave DEFER TUs plus the `profs` rider).
 
+## Task tracking
+
+Work items live in `backlog/` (Backlog.md CLI; plain markdown, `autoCommit` off — commit
+backlog changes yourself). This is the single source of truth for what is planned, in
+progress, and done. A user-level SessionStart hook briefs each new session on backlog
+state — if a session opened with a backlog summary, that hook produced it.
+
+- **Lifecycle:** create a task (milestone + priority + `## Why` section, user-story form
+  for user-facing work, acceptance criteria always) before starting a slice; move it to
+  In Progress while working; on completion append to the arc's "How it unfolded" section
+  (`backlog/docs/arc-*.md`) and, at slice boundaries, add a dated entry to
+  `backlog/docs/journal.md` (Housekeeping-milestone tasks skip the arc-doc step).
+- **Milestones carry their own context:** every milestone file
+  (`backlog/milestones/*.md`) has a real description — what it buys, who asked
+  for/suggested it (with the recorded source), and a pointer to its arc doc. A
+  placeholder-description milestone is incomplete.
+- **Priority changes require a dated, reasoned note** appended to the task. A bare
+  priority edit is a convention violation.
+- **Triage is journaled:** a reprioritization conversation ends with a dated journal
+  entry recording what moved and the trade-offs; direction-changing shifts get a full
+  decision record, linked from the journal.
+- **Triage questions always offer full context:** when asking the user to rule on a
+  task's priority, one option must be "show me the full context first, then let's chat
+  again". Never force a ruling from a summary alone.
+- Answer "why is this important?" from the task's `## Why` and its arc doc — if you
+  cannot, the task is missing context and should be fixed, not worked.
+
 ## Verification Cadence
 
 - Use the host-appropriate build, CTest, sanitizer, and boot-golden gates documented here and in

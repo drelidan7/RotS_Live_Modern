@@ -3417,6 +3417,23 @@ and this is the file those rows live in.
   is NOT deleted, NOT proven, and NOT to be removed: intent is unknown and the
   disposition is a future design decision. The row stays `TODO` with that
   reason, and no proof is to be written for it.
+- **`intervening-relocation`** (Wave R3 Task 1c) -- a row whose every door IS a
+  registered dispatch entry, but where a statement between one entry's guard and
+  the site can move the actor, so the guard's `location_of(...) != NOWHERE`
+  conclusion does not survive to the site. `src/combat/visibility.cpp ·
+  target_from_word · EXIT(` (1 row / 2 sites, both visibility.cpp:1164) is the
+  first: its `command_interpreter` door is fully dominated after Task 1c, but its
+  `do_cast` door (src/combat/spell_pa.cpp:624, reachable with `TAR_DIR_NAME` set
+  by the `freeze` spell) sits below `complete_delay(ch)` at
+  src/combat/spell_pa.cpp:516, which re-enters `command_interpreter`
+  (src/app/comm.cpp:2837) and from there dispatches arbitrary spec procs through
+  `special()`; `appear(ch)` at src/combat/spell_pa.cpp:721 is a second such
+  statement (`affect_from_char` -> `affect_remove` -> `affect_total` ->
+  `affect_modify`'s APPLY_SPELL arm, which runs an arbitrary ASPELL with
+  `caster == victim == ch`). This is NOT the T3d "guard does not dominate" shape,
+  which was about textual order and is now closed; it is about what runs in
+  between. It is the open question T2d's report flagged against the `do_cast`
+  entry, and it needs an owner/coordinator ruling, not a classification decision.
 - **`scale-flagged`** (widened by owner ruling R3-O-3) -- already carrying
   `CAN_GO` and `obj_to_room` from Wave R2, this category now also covers
   `src/combat/visibility.cpp`'s `CAN_SEE` (the `:578`/`:580` half; the `:121`

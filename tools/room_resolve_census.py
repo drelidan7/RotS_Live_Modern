@@ -626,25 +626,68 @@ def attribute_lines(masked_lines):
     return attributions
 
 
-def scan_file(source_path, repository_root):
-    """Every resolver-token site in one file, keyed by its enclosing
-    function/macro. Returns a list of Site dicts: {"file": rel_posix,
-    "function": name_or_macro, "attribution": kind, "token": token_name}."""
+def scan_file_full(source_path, repository_root):
+    """One masking+attribution pass over a file, yielding all three of the
+    gate's per-file measurements:
+
+      * `sites` -- every resolver-token site, keyed by its enclosing
+        function/macro (the ledger's own unit; see `scan_file`).
+      * `dispatch_occurrences` -- every DISPATCH_SPELLING_TOKENS occurrence
+        in PRODUCTION code on a non-file-scope line (R3 Task 1a, direction
+        (b) of the dispatch-entry registry's closed world).
+      * `caller_counts` -- per-token occurrence counts for the R3-O-3
+        caller-count pins, measured by the method recorded verbatim beside
+        `PINNED_CALLER_COUNTS`.
+
+    All three ride the SAME pass deliberately: `attribute_lines` is the
+    expensive step, and re-walking 316 files twice more would triple the
+    gate's `ctest` runtime for measurements that need exactly the same masked
+    text and attributions the site scan already computed."""
     text = source_path.read_text(encoding="utf-8", errors="replace")
     masked = mask_comments_and_string_literals(text).splitlines()
     attributions = attribute_lines(masked)
     sites = []
+    dispatch_occurrences = []
+    caller_counts = {}
     rel = source_path.relative_to(repository_root).as_posix()
+    is_test_tier = rel == "src/tests" or rel.startswith("src/tests/")
     for i, line in enumerate(masked):
+        kind, name = attributions[i]
         for token_name, pattern in token_patterns():
             for _ in pattern.finditer(line):
                 # Two hits of one token on one line are two sites -- the
                 # per-key COUNT is the anti-inheritance mechanism and must
                 # not collapse them.
-                kind, name = attributions[i]
                 sites.append({"file": rel, "function": name,
                               "attribution": kind, "token": token_name})
-    return sites
+        # The dispatch registry and the caller-count pins are both
+        # PRODUCTION-scoped claims, and both skip file-scope lines
+        # (declarations and non-brace-attached definition heads -- never
+        # calls). See DISPATCH_SPELLING_TOKENS / PINNED_CALLER_COUNTS for the
+        # full rationale of each exclusion.
+        if is_test_tier or kind == "file-scope":
+            continue
+        for token_name, pattern in DISPATCH_SPELLING_TOKENS:
+            for _ in pattern.finditer(line):
+                dispatch_occurrences.append(
+                    {"file": rel, "function": name, "attribution": kind,
+                     "token": token_name, "line": i + 1})
+        for token_name, pattern in PINNED_CALLER_PATTERNS.items():
+            hits = len(pattern.findall(line))
+            if hits:
+                caller_counts[token_name] = caller_counts.get(token_name, 0) + hits
+    return sites, dispatch_occurrences, caller_counts
+
+
+def scan_file(source_path, repository_root):
+    """Every resolver-token site in one file, keyed by its enclosing
+    function/macro. Returns a list of Site dicts: {"file": rel_posix,
+    "function": name_or_macro, "attribution": kind, "token": token_name}.
+
+    Thin projection of `scan_file_full` (R3 Task 1a), kept as its own name
+    because `--generate-ledger`, `--advise` and several self-test directions
+    want only the site list."""
+    return scan_file_full(source_path, repository_root)[0]
 
 
 def source_files(root):
@@ -676,11 +719,24 @@ CLASSES = ("TODO", "PROVEN", "GUARDED", "TEST-FIXTURE", "RESOLVER-IMPL", "DECL")
 # LEDGER_EMPTY_MARKER is checked against this vocabulary and against
 # MINIMUM_PROOF_TEXT_LENGTH/CITATION_RE below -- a TODO row's Kind/Proof are
 # both the empty marker and need neither.
+#
+# RR Wave R3 (owner ruling R3-O-1) mints the SIXTH kind, `dispatch-invariant`:
+# a row whose actor id is proven not by a guard in its OWN body but by a
+# tripwire guard at the DISPATCH ENTRY POINT that handed the actor to that
+# body (`if (location_of(ch) == NOWHERE) { mudlog(...); return; }`). Such a
+# proof is only as strong as the claim that the entry set is complete, which
+# is why the kind arrives together with the marker-anchored dispatch-entry
+# registry below (`LEDGER_DISPATCH_ENTRIES_MARKER`) and its closed-world
+# token check: an eighth dispatcher cannot silently inherit the proof.
 PROOF_KINDS = ("entry-guard", "caller-contract", "occupant-chain",
-               "loop-bound", "dominating-resolve")
+               "loop-bound", "dominating-resolve", "dispatch-invariant")
 
 # Kinds whose Proof text MUST carry a file:line citation (review F-4/O-6).
-CITATION_REQUIRED_KINDS = frozenset({"entry-guard", "dominating-resolve", "caller-contract"})
+# `dispatch-invariant` joins the set because its FIRST mandatory citation
+# part IS a file:line -- the registry entry whose guard covers the actor
+# (design doc `2026-08-21-rr3-combat-design.md` section 2, "Proof kind").
+CITATION_REQUIRED_KINDS = frozenset({"entry-guard", "dominating-resolve", "caller-contract",
+                                     "dispatch-invariant"})
 CITATION_RE = re.compile(r"\b[\w./-]+\.(?:cpp|h|hpp|cc|inl)\s*:\s*\d+")
 MINIMUM_PROOF_TEXT_LENGTH = 20
 
@@ -781,6 +837,162 @@ LEDGER_CLASSIFICATION_MARKER = "<!-- ROOM-RESOLVE-CLASSIFICATION -->"
 LEDGER_CLASSIFICATION_HEADER = "| Key | Count | Class | Kind | Proof |"
 LEDGER_TOKEN_COUNTS_MARKER = "<!-- ROOM-RESOLVE-TOKEN-COUNTS -->"
 LEDGER_TOKEN_COUNTS_HEADER = "| Token | Sites |"
+
+# ---------------------------------------------------------------------------
+# RR Wave R3 Task 1a: the dispatch-entry registry (design doc
+# `docs/superpowers/specs/2026-08-21-rr3-combat-design.md` section 2,
+# "Closure"; owner ruling R3-O-1).
+#
+# The `dispatch-invariant` proof kind above lets a row inherit its actor's
+# placement from a tripwire guard at the DISPATCH ENTRY POINT rather than
+# from anything in the row's own function. That inheritance is only sound
+# while the entry set is CLOSED -- an eighth dispatcher, or a new
+# fn-ptr-dispatch call site inside some unrelated function, would otherwise
+# hand an unguarded actor to a body whose row already claims to be proven.
+# Two checks close it, mirroring `tools/location_read_census.py`'s
+# location-state registry (`parse_registry`/`check_registry_consistency`,
+# the stated precedent):
+#
+#   (a) DOWNWARD -- every registry row with a GUARDED/GUARDED-PRIOR status
+#       names a real file and a real function whose (comment/string-masked)
+#       body still contains that row's guard literal. Deleting the guard from
+#       production is a gate failure, not a silent proof rot.
+#   (b) UPWARD -- every occurrence of a pinned DISPATCH-SPELLING token in
+#       PRODUCTION code lies inside a registered entry's function. A new
+#       `.spell_pointer(` (or `command_pointer)(`, or ...) call anywhere else
+#       is a gate ERROR naming the unregistered site.
+#
+# The registry lives in the ledger (marker-anchored, exactly once, outside
+# any fence -- the M10 rule) rather than in this file, for the same reason
+# the location-state registry does: the rows are prose-adjacent facts a
+# reviewer reads beside the proofs that cite them. What IS pinned here, as a
+# review-visible script edit, is the token surface (below) and the small,
+# named exemption set -- the `RESOLVER_IMPL_KEYS`/`PINNED_DECL_KEYS`
+# discipline.
+LEDGER_DISPATCH_ENTRIES_MARKER = "<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->"
+LEDGER_DISPATCH_ENTRIES_HEADER = (
+    "| Entry point (file · function) | Actor parameter | Guard literal | Status |"
+)
+
+# The closed status vocabulary.
+#
+# `PENDING-T1b` is the ONLY status exempt from check (a): it marks an entry
+# whose guard Task 1a has SPECIFIED but Task 1b has not yet LANDED, so the
+# row legitimately carries no guard literal yet. The exemption is deliberately
+# removable -- T1b flips each row to `GUARDED` with the real literal and the
+# exemption evaporates row by row -- and `--check` WARNS (loudly, on every
+# run) while any `PENDING-T1b` row remains, so the wave cannot finish with
+# one still standing. A `PENDING-T1b` row is still required to name a real
+# file and a real, scanner-findable function (a typo'd entry must not sit
+# there unnoticed until T1b), and is required to leave its guard-literal cell
+# at the empty marker (a PENDING row must not carry an unchecked literal that
+# LOOKS like a landed guard).
+#
+# `GUARDED-PRIOR` is `GUARDED` for an entry whose guard predates this program
+# entirely (`special()`, `one_mobile_activity`, `affect_update_room`): check
+# (a) treats the two identically; the distinct spelling is what keeps the
+# ledger honest about which guards this wave actually wrote.
+DISPATCH_ENTRY_STATUSES = ("PENDING-T1b", "GUARDED", "GUARDED-PRIOR")
+DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES = frozenset({"GUARDED", "GUARDED-PRIOR"})
+
+# Floor pinned AT the real registry's row count (12 = the nine R3 entries
+# plus the three already-guarded ones), zero headroom -- the same reasoning
+# `MINIMUM_REGISTRY_ROWS_A` records in the sibling census: the row-count
+# floor is the only backstop against a single-row deletion whose token
+# occurrences happen to sit inside ANOTHER registered entry's function, so it
+# must trip on any deletion at all. `--minimum-dispatch-entries-override`
+# (self-test only, RR_SELF_TEST-gated like every other override here) lets
+# the hermetic fixtures run against their own tiny tables.
+MINIMUM_DISPATCH_ENTRY_ROWS = 12
+
+# The dispatch spellings themselves (design doc section 2's "Closure"
+# bullet). Every one of these is a fn-ptr invocation through a dispatch
+# table or a `skills[]`/`cmd_info[]` slot, or a direct call to one of the two
+# SPECIAL invokers -- i.e. the exact syntactic shapes by which a body is
+# entered with an actor it never validated. Matched per PHYSICAL LINE against
+# comment/string-MASKED text, exactly like `token_patterns()` above.
+#
+# Occurrences attributed to FILE SCOPE are skipped: those are the
+# declarations and (non-brace-attached) definition headers of the dispatch
+# machinery itself -- `interpre.h:157`'s `command_pointer` struct member,
+# `spells.h:360`'s `spell_pointer` member, `protos.h:229`/`interpre.h:139`'s
+# prototypes, and `interpre.cpp:1197`/`:1230`/`shapemob.cpp:2364`'s own
+# definition heads -- never calls. Everything else (a function body OR a
+# macro body) must be registered or exempt.
+DISPATCH_SPELLING_TOKENS = (
+    ("command_pointer)(", re.compile(r"command_pointer\s*\)\s*\(")),
+    ("g_command_table[", re.compile(r"\bg_command_table\s*\[")),
+    ("spell_pointer)(", re.compile(r"spell_pointer\s*\)\s*\(")),
+    (".spell_pointer(", re.compile(r"\.\s*spell_pointer\s*\(")),
+    ("activate_char_special(", re.compile(r"\bactivate_char_special\s*\(")),
+    ("activate_obj_special(", re.compile(r"\bactivate_obj_special\s*\(")),
+    ("shape_center(", re.compile(r"\bshape_center\s*\(")),
+)
+
+# The two sites that carry a dispatch spelling but are NOT dispatch entry
+# points, pinned as a `(file, function, token)` -> reason map so adding a
+# third is a review-visible SCRIPT edit rather than a ledger-only one (the
+# `RESOLVER_IMPL_KEYS` precedent). Both were enumerated directly from the
+# real tree by this task's own masked scan; neither can be expressed as a
+# registry row without a category error.
+DISPATCH_TOKEN_EXEMPT_SITES = {
+    ("src/combat/combat_hooks.cpp", "rots::combat::set_combat_command", "g_command_table["):
+        "registration WRITE (`g_command_table[i] = handler;`, combat_hooks.cpp:56), not a "
+        "dispatch -- no actor exists at this statement",
+    ("src/entity/entity_lifecycle.cpp", "affect_modify", ".spell_pointer("):
+        "the APPLY_SPELL arm (entity_lifecycle.cpp:2440/:2442) -- design doc section 2 "
+        "EXCLUDES it deliberately: it runs at NOWHERE by design inside the login/rent-load "
+        "window (producer P1), so a tripwire there would fire on every login of a character "
+        "carrying an APPLY_SPELL affect. The rows reachable through it stay TODO under the "
+        "`APPLY_SPELL-window` category (owner ruling R3-O-2)",
+}
+
+# ---------------------------------------------------------------------------
+# RR Wave R3 Task 1a: the caller-count pins (owner ruling R3-O-3).
+#
+# `CAN_SEE(` and `get_char_room_vis(` are the two scale-flagged rows R3 does
+# NOT drain: both stay TODO, and both are id-TAKING in the sense the ledger's
+# "caller-contract token-pinning policy" blind spot describes -- their safety
+# claim would rest on "every caller is accounted for." The policy's own
+# remedy is to pin the name as a SCANNED TOKEN so a new caller surfaces as
+# its own site; here that remedy is unaffordable, because these two names
+# have 86 + 41 = 127 production call sites and pinning them as
+# `token_patterns()` entries would mint ~127 new ledger rows and raise
+# `MAXIMUM_TODO_COUNT` by the same amount, for zero proof value.
+#
+# R3-O-3's deliberate deviation: pin the COUNTS instead. A new caller of
+# either name changes the measured count and fails `--check` with a message
+# naming the two-edit fix -- so the scale-flagged rows cannot silently grow
+# a caller while they wait for TASK-005, and the ledger's stated policy is
+# satisfied without the row explosion.
+#
+# MEASUREMENT METHOD (re-run this exact method before ever changing a
+# literal here -- these are NOT hand counts):
+#   * scan every `SOURCE_SUFFIXES` file under `<root>/src`, EXCLUDING
+#     `src/tests/` (production only -- both names have zero occurrences in
+#     `src/tests/` today, so the exclusion is scope discipline, not a
+#     concession);
+#   * mask comments and string literals with this module's own
+#     `mask_comments_and_string_literals`;
+#   * attribute every line with this module's own `attribute_lines`;
+#   * count every regex occurrence (per occurrence, not per line) on a line
+#     whose attribution is NOT `file-scope`.
+# The file-scope exclusion is what drops the declarations and definition
+# heads -- `utils.h:669`/`:670` and `visibility.cpp:107`/`:527` for
+# `CAN_SEE`, `handler.h:509` and `visibility.cpp:617` for
+# `get_char_room_vis` -- while KEEPING real calls that live inside a macro
+# body (`spec_pro.cpp:2345` is one such `CAN_SEE(` call, attributed
+# `macro`; counting only `function` lines would have silently lost it).
+# Measured at this commit: `CAN_SEE(` 86 (85 function + 1 macro),
+# `get_char_room_vis(` 41 (41 function + 0 macro).
+PINNED_CALLER_COUNTS = {
+    "CAN_SEE(": 86,
+    "get_char_room_vis(": 41,
+}
+PINNED_CALLER_PATTERNS = {
+    "CAN_SEE(": re.compile(r"\bCAN_SEE\s*\("),
+    "get_char_room_vis(": re.compile(r"\bget_char_room_vis\s*\("),
+}
 
 
 def _strip_fences(text):
@@ -1038,6 +1250,210 @@ def parse_ledger(text, *, minimum_rows=_UNSET):
     rows = [_parse_classification_row(cells) for cells in classification_cells]
     token_counts = dict(_parse_token_count_row(cells) for cells in token_count_cells)
     return rows, token_counts
+
+
+def _normalize_whitespace(text):
+    """Collapse every run of whitespace to a single space, and strip.
+
+    Guard-literal containment is checked "verbatim up to whitespace
+    normalization": a registry row's Guard literal cell cannot carry a
+    newline (it lives in a markdown table cell), while the real guards it
+    pins routinely wrap across two or three physical lines and carry
+    file-specific indentation. Normalizing both sides is what lets ONE
+    single-line literal in the ledger match the real, wrapped statement
+    without the row degenerating into a substring so short it would match
+    almost anything."""
+    return " ".join(text.split())
+
+
+def _parse_dispatch_entry_row(cells):
+    """One `| Entry point | Actor parameter | Guard literal | Status |` row ->
+    a dict, or a fail-closed SystemExit."""
+    if len(cells) != 4:
+        raise SystemExit(
+            f"error: ledger: dispatch-entry row has {len(cells)} cell(s), expected 4: {cells!r}"
+        )
+    entry_cell, actor_cell, guard_cell, status = cells
+
+    entry_match = re.fullmatch(r"`([^`]*)`", entry_cell)
+    if entry_match is None:
+        raise SystemExit(
+            f"error: ledger: malformed dispatch-entry cell (must be backtick-wrapped): "
+            f"{entry_cell!r}"
+        )
+    entry_text = entry_match.group(1)
+    parts = entry_text.split(KEY_SEPARATOR)
+    if len(parts) != 2:
+        raise SystemExit(
+            f"error: ledger: malformed dispatch entry {entry_text!r} -- expected exactly two "
+            f"{KEY_SEPARATOR!r}-separated parts (file, function)"
+        )
+    entry_file, entry_function = parts
+
+    if status not in DISPATCH_ENTRY_STATUSES:
+        raise SystemExit(
+            f"error: ledger: unknown dispatch-entry status {status!r} for {entry_text!r} -- "
+            f"the closed vocabulary is {list(DISPATCH_ENTRY_STATUSES)}"
+        )
+
+    actor_match = re.fullmatch(r"`([^`]*)`", actor_cell)
+    if actor_match is None or not actor_match.group(1).strip():
+        raise SystemExit(
+            f"error: ledger: dispatch entry {entry_text!r} must name its actor parameter as a "
+            f"backtick-wrapped, non-empty cell (got {actor_cell!r}) -- an actor-inherited "
+            "proof that does not say WHICH argument it covers is unreviewable (design doc "
+            "section 2, mandatory citation part (ii))"
+        )
+    actor = actor_match.group(1).strip()
+
+    if status in DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES:
+        guard_match = re.fullmatch(r"`([^`]*)`", guard_cell)
+        if guard_match is None or not guard_match.group(1).strip():
+            raise SystemExit(
+                f"error: ledger: {status} dispatch entry {entry_text!r} must carry a "
+                f"backtick-wrapped, non-empty guard literal (got {guard_cell!r})"
+            )
+        guard = guard_match.group(1)
+    else:
+        if guard_cell != LEDGER_EMPTY_MARKER:
+            raise SystemExit(
+                f"error: ledger: {status} dispatch entry {entry_text!r} must leave its guard "
+                f"literal at the empty marker {LEDGER_EMPTY_MARKER!r} (got {guard_cell!r}) -- a "
+                "not-yet-landed entry must not carry a literal that LOOKS like a checked guard"
+            )
+        guard = ""
+
+    return {"file": entry_file, "function": entry_function, "actor": actor,
+            "guard": guard, "status": status}
+
+
+def parse_dispatch_entries(text, *, minimum_rows=_UNSET):
+    """Parse the ledger's marker-anchored dispatch-entry registry.
+
+    Deliberately NOT folded into `parse_ledger`: the location census's own
+    registry (`parse_registry`) is likewise a separate entry point called by
+    `main()`, and keeping it separate means the ~20 existing hermetic
+    `parse_ledger` fixtures in `run_self_test` stay judged on the violation
+    each one actually targets instead of incidentally tripping this table's
+    absence.
+
+    `minimum_rows` is late-bound through the same `_UNSET` sentinel
+    `parse_ledger`/`reconcile` use, so a monkeypatched or self-test-overridden
+    floor is honored at CALL time rather than frozen at `def` time."""
+    if minimum_rows is _UNSET:
+        minimum_rows = MINIMUM_DISPATCH_ENTRY_ROWS
+    live_lines = _strip_fences(text)
+    cells = _parse_marked_table(
+        live_lines, LEDGER_DISPATCH_ENTRIES_MARKER, LEDGER_DISPATCH_ENTRIES_HEADER,
+        minimum_rows, "dispatch-entry registry")
+    return [_parse_dispatch_entry_row(row_cells) for row_cells in cells]
+
+
+def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
+    """The registry's two closed-world directions. Returns (errors, warnings).
+
+    Direction (a), DOWNWARD: every GUARDED/GUARDED-PRIOR entry names a real
+    file and a real, scanner-findable function whose MASKED body still
+    contains that entry's guard literal (whitespace-normalized). A
+    PENDING-T1b entry is exempt from the literal half only -- it must still
+    name a real file and a real function.
+
+    Direction (b), UPWARD: every production occurrence of a
+    DISPATCH_SPELLING_TOKENS spelling (already filtered to non-file-scope
+    lines by the scanner) lies inside a registered entry's function, or is
+    one of the pinned DISPATCH_TOKEN_EXEMPT_SITES."""
+    errors = []
+    warnings = []
+
+    seen = set()
+    registered = set()
+    for entry in entries:
+        key = (entry["file"], entry["function"])
+        if key in seen:
+            errors.append(
+                f"dispatch-entry registry: duplicate entry {KEY_SEPARATOR.join(key)} -- one row "
+                "per entry point, so a second row cannot quietly relax the first's status"
+            )
+        seen.add(key)
+        registered.add(key)
+
+        if entry["status"] == "PENDING-T1b":
+            warnings.append(
+                f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} is still PENDING-T1b "
+                f"(actor `{entry['actor']}`) -- its guard has been SPECIFIED but not LANDED, so "
+                "every `dispatch-invariant` row citing it is unproven until Task 1b flips it to "
+                "GUARDED. The wave must not finish while this warning stands."
+            )
+
+        source_path = repository_root / entry["file"]
+        if not source_path.is_file():
+            errors.append(
+                f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} names a file that does not "
+                f"exist under {repository_root}"
+            )
+            continue
+        masked = mask_comments_and_string_literals(
+            source_path.read_text(encoding="utf-8", errors="replace")).splitlines()
+        attributions = attribute_lines(masked)
+        body_lines = [line for line, attribution in zip(masked, attributions)
+                      if attribution == ("function", entry["function"])]
+        if not body_lines:
+            errors.append(
+                f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} names a function the "
+                "scanner cannot find in that file (renamed, moved, or mis-spelled)"
+            )
+            continue
+        if entry["status"] not in DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES:
+            continue
+        if _normalize_whitespace(entry["guard"]) not in _normalize_whitespace("\n".join(body_lines)):
+            errors.append(
+                f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} is {entry['status']}, but "
+                f"its guard literal {entry['guard']!r} no longer appears in that function's "
+                "(comment/string-masked) body -- either the guard was removed/rewritten in "
+                "production, or the registry row is stale. Every `dispatch-invariant` row "
+                "citing this entry rests on that literal."
+            )
+
+    for occurrence in dispatch_occurrences:
+        key = (occurrence["file"], occurrence["function"])
+        if key in registered:
+            continue
+        exempt_key = (occurrence["file"], occurrence["function"], occurrence["token"])
+        if exempt_key in DISPATCH_TOKEN_EXEMPT_SITES:
+            continue
+        errors.append(
+            f"unregistered dispatch site {occurrence['file']}:{occurrence['line']} -- token "
+            f"`{occurrence['token']}` inside `{occurrence['function']}`, which is not a "
+            "registered dispatch entry and is not in DISPATCH_TOKEN_EXEMPT_SITES. A new "
+            "dispatcher cannot inherit the `dispatch-invariant` proof: either register it (with "
+            "a guard) in the ledger's dispatch-entry registry, or pin it as a reviewed "
+            "exemption in the script."
+        )
+
+    return errors, warnings
+
+
+def check_caller_counts(measured_counts, pinned_counts):
+    """The R3-O-3 caller-count pins. Returns a list of error strings.
+
+    Drift in EITHER direction is an error: a new caller (count up) is the
+    case the pin exists to catch, and a removed caller (count down) means the
+    pinned literal is now stale and would stop catching the next new one."""
+    errors = []
+    for token_name in sorted(pinned_counts):
+        expected = pinned_counts[token_name]
+        actual = measured_counts.get(token_name, 0)
+        if actual == expected:
+            continue
+        errors.append(
+            f"caller-count pin `{token_name}`: PINNED_CALLER_COUNTS says {expected}, the "
+            f"production scan found {actual} (owner ruling R3-O-3). These two names stay TODO "
+            "under the scale-flagged category, so a caller change must be seen, not absorbed. "
+            "The fix is TWO edits made together: update PINNED_CALLER_COUNTS in "
+            "tools/room_resolve_census.py, AND the measured figure in the ledger's "
+            '"Caller-count pins (R3-O-3)" section.'
+        )
+    return errors
 
 
 def reconcile(sites, rows, token_counts, *, todo_ceiling=_UNSET):
@@ -1499,6 +1915,20 @@ PROVEN_ROW = (
 )
 TODO_ROW_RECALC_ZONE = "| `src/app/probe.cpp · recalc_zone · room_of(` | 1 | TODO | " + LEDGER_EMPTY_MARKER + " | " + LEDGER_EMPTY_MARKER + " |"
 
+# Every hermetic fixture ledger driven through the REAL gate (`_run_gate`)
+# needs the dispatch-entry marker present, since `main()` now parses that
+# table too and the M10 rule fails closed on a missing marker. The fixtures
+# that only exercise `parse_ledger` directly (the ~18
+# `expect_parse_ledger_systemexit` directions and direction 13's synthetic
+# row-floor ledgers) do NOT need it -- `parse_dispatch_entries` is a separate
+# entry point precisely so those stay judged on the violation each one
+# actually targets.
+EMPTY_DISPATCH_TABLE = f"""
+{LEDGER_DISPATCH_ENTRIES_MARKER}
+{LEDGER_DISPATCH_ENTRIES_HEADER}
+| --- | --- | --- | --- |
+"""
+
 SELF_TEST_LEDGER_OK = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | Key | Count | Class | Kind | Proof |
 | --- | --- | --- | --- | --- |
@@ -1513,7 +1943,7 @@ SELF_TEST_LEDGER_OK = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | `room_of(` | 2 |
 | `world[` | 1 |
 | `dispatch_room_vnum(` | 1 |
-"""
+{EMPTY_DISPATCH_TABLE}"""
 
 # Task 3 raised MINIMUM_LEDGER_ROW_COUNT (above) to the real ledger's scale
 # (451) -- far larger than any hermetic self-test fixture in this file should
@@ -1592,12 +2022,73 @@ ATTRIBUTION_LEDGER = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | `ASSIGNROOM(` | 1 |
 | `world[` | 1 |
 | `room_by_id_total(` | 1 |
+{EMPTY_DISPATCH_TABLE}"""
+
+
+# RR Wave R3 Task 1a fixtures: one synthetic dispatcher carrying a real
+# dispatch spelling (`.spell_pointer(`) behind a real entry guard, plus a
+# second, deliberately UNREGISTERED function carrying the same spelling. The
+# file has NO resolver token at all, so it needs no classification row and
+# SELF_TEST_LEDGER_OK reconciles against the shared probe.cpp unchanged --
+# which keeps every dispatch direction isolated to the dispatch check.
+DISPATCH_PROBE_SOURCE = """void dispatcher_fn(char_data* ch)
+{
+    if (location_of(ch) == NOWHERE) {
+        return;
+    }
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+DISPATCH_PROBE_SOURCE_GUARD_DELETED = """void dispatcher_fn(char_data* ch)
+{
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+DISPATCH_PROBE_SOURCE_SECOND_DISPATCHER = DISPATCH_PROBE_SOURCE + """
+void sneaky_new_dispatcher(char_data* ch)
+{
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+DISPATCH_ENTRY_ROW_GUARDED = (
+    "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+    "`if (location_of(ch) == NOWHERE) { return; }` | GUARDED |"
+)
+
+
+def _dispatch_ledger(*entry_rows):
+    """SELF_TEST_LEDGER_OK with the empty dispatch table filled in."""
+    filled = EMPTY_DISPATCH_TABLE.rstrip("\n") + "".join(
+        "\n" + row for row in entry_rows) + "\n"
+    return SELF_TEST_LEDGER_OK.replace(EMPTY_DISPATCH_TABLE, filled, 1)
+
+
+# RR Wave R3 Task 1a: a caller-count probe. The DECLARATION must not count
+# (file-scope attribution); the two calls inside a function body must.
+CALLER_COUNT_PROBE_SOURCE = PROBE_SOURCE_OK + """
+int CAN_SEE(char_data* sub);
+
+void looks_around(char_data* ch, char_data* other)
+{
+    if (CAN_SEE(ch, other)) {
+        return;
+    }
+}
+"""
+
+CALLER_COUNT_PROBE_SOURCE_DECLARATION_ONLY = PROBE_SOURCE_OK + """
+int CAN_SEE(char_data* sub);
 """
 
 
 def _run_gate(root, ledger=None, scan_path=None, *,
               todo_ceiling_override=None, minimum_files_override=None,
-              minimum_ledger_rows_override=SELF_TEST_LEDGER_ROW_FLOOR):
+              minimum_ledger_rows_override=SELF_TEST_LEDGER_ROW_FLOOR,
+              minimum_dispatch_entries_override=0,
+              caller_count_pins_override=""):
     """Invoke the REAL gate (subprocess, full main()) against a synthetic
     tree. `ledger=None` omits --ledger entirely, exercising main()'s own
     default-path computation (self-test direction 17). `scan_path=None`
@@ -1610,7 +2101,14 @@ def _run_gate(root, ledger=None, scan_path=None, *,
     HERE (rather than at each of the ~20 call sites) is what lets Task 3's
     real MINIMUM_LEDGER_ROW_COUNT (451) coexist with the hermetic fixtures
     unchanged. Pass `None` explicitly to test the REAL floor instead
-    (direction 13's boundary probes)."""
+    (direction 13's boundary probes).
+
+    `minimum_dispatch_entries_override` (R3 Task 1a) defaults to 0 and
+    `caller_count_pins_override` to the empty string for the same reason: a
+    synthetic tree has neither the real registry's 12 entry points nor any
+    of the 127 real `CAN_SEE(`/`get_char_room_vis(` callers, so the real
+    floor and the real pins would fail every unrelated direction. The
+    directions that PROBE those two checks pass their own values."""
     import subprocess
 
     command = [sys.executable, str(pathlib.Path(__file__).resolve()),
@@ -1628,6 +2126,12 @@ def _run_gate(root, ledger=None, scan_path=None, *,
         env["RR_SELF_TEST"] = "1"
     if minimum_ledger_rows_override is not None:
         command += ["--minimum-ledger-rows-override", str(minimum_ledger_rows_override)]
+        env["RR_SELF_TEST"] = "1"
+    if minimum_dispatch_entries_override is not None:
+        command += ["--minimum-dispatch-entries-override", str(minimum_dispatch_entries_override)]
+        env["RR_SELF_TEST"] = "1"
+    if caller_count_pins_override is not None:
+        command += ["--caller-count-pins-override", caller_count_pins_override]
         env["RR_SELF_TEST"] = "1"
     completed = subprocess.run(command, capture_output=True, text=True, env=env)
     return completed.returncode, completed.stdout + completed.stderr
@@ -2202,7 +2706,9 @@ def run_self_test():
         multi_path_completed = subprocess.run(
             [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
              "--root", str(root), "--ledger", str(ledger), "src/app", "src/pad",
-             "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR)],
+             "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR),
+             "--minimum-dispatch-entries-override", "0",
+             "--caller-count-pins-override", ""],
             capture_output=True, text=True,
             env={**os.environ, "RR_SELF_TEST": "1"},
         )
@@ -2267,7 +2773,9 @@ def run_self_test():
                 [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
                  "--root", str(generate_root), "--ledger", str(generated_ledger),
                  "--minimum-files-override", "4",
-                 "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR)],
+                 "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR),
+                 "--minimum-dispatch-entries-override", "0",
+                 "--caller-count-pins-override", ""],
                 capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
             )
             if check_completed.returncode != 0:
@@ -2341,6 +2849,219 @@ def run_self_test():
                 "advise-emits-suggestions-writes-nothing: --advise modified the filesystem "
                 f"(listing {before_listing} -> {after_listing})"
             )
+
+        # ------------------------------------------------------------------
+        # RR Wave R3 Task 1a, direction 21: the `dispatch-invariant` proof
+        # kind's own vocabulary pins. Cheap, in-process, and the thing a
+        # future edit is most likely to undo by accident.
+        # ------------------------------------------------------------------
+        if "dispatch-invariant" not in PROOF_KINDS:
+            failures.append(
+                "PROOF_KINDS no longer contains 'dispatch-invariant' -- owner ruling R3-O-1 "
+                "mints it; removing it silently invalidates every R3 row that cites it."
+            )
+        if "dispatch-invariant" not in CITATION_REQUIRED_KINDS:
+            failures.append(
+                "CITATION_REQUIRED_KINDS no longer contains 'dispatch-invariant' -- its FIRST "
+                "mandatory citation part IS a file:line (the registry entry), so a row without "
+                "one cites nothing."
+            )
+        dispatch_kind_uncited_row = (
+            f"| `src/app/probe.cpp · recalc_zone · room_of(` | 1 | PROVEN | dispatch-invariant | "
+            "actor ch arrives through the command dispatcher and is therefore placed |"
+        )
+        expect_parse_ledger_systemexit(
+            "dispatch-invariant-requires-a-citation",
+            SELF_TEST_LEDGER_OK.replace(TODO_ROW_RECALC_ZONE, dispatch_kind_uncited_row))
+        dispatch_kind_cited_row = (
+            f"| `src/app/probe.cpp · recalc_zone · room_of(` | 1 | PROVEN | dispatch-invariant | "
+            "actor `ch`, guarded at the registered entry src/app/probe.cpp:11; sole direct "
+            "caller is the dispatcher itself |"
+        )
+        try:
+            parse_ledger(
+                SELF_TEST_LEDGER_OK.replace(TODO_ROW_RECALC_ZONE, dispatch_kind_cited_row),
+                minimum_rows=SELF_TEST_LEDGER_ROW_FLOOR)
+        except SystemExit as exc:
+            failures.append(
+                f"dispatch-invariant-accepts-a-cited-proof: parse_ledger() rejected a "
+                f"well-formed dispatch-invariant row: {exc}"
+            )
+
+        # ------------------------------------------------------------------
+        # RR Wave R3 Task 1a, direction 22: the dispatch-entry registry, driven
+        # END TO END through the real gate (its own synthetic --root, the
+        # floor_root/attrib_root pattern). Every sub-direction below is a
+        # SABOTAGE direction: the fixture is clean first, then broken one way
+        # at a time, and the clean case is re-asserted by construction (each
+        # sub-case rewrites both files from the constants).
+        # ------------------------------------------------------------------
+        dispatch_root = root / "dispatch_root"
+        dispatch_app_dir = dispatch_root / "src" / "app"
+        dispatch_app_dir.mkdir(parents=True)
+        (dispatch_app_dir / "probe.cpp").write_text(PROBE_SOURCE_OK, encoding="utf-8")
+        dispatch_probe = dispatch_app_dir / "dispatch_probe.cpp"
+        dispatch_ledger = root / "dispatch_ledger.md"
+
+        def run_dispatch_case(name, expected_exit, *, probe_text=DISPATCH_PROBE_SOURCE,
+                              ledger_text=None, expected_output=(), forbidden_output=(),
+                              minimum_dispatch_entries_override=0):
+            dispatch_probe.write_text(probe_text, encoding="utf-8")
+            dispatch_ledger.write_text(
+                ledger_text if ledger_text is not None
+                else _dispatch_ledger(DISPATCH_ENTRY_ROW_GUARDED),
+                encoding="utf-8")
+            exit_code, output = _run_gate(
+                dispatch_root, dispatch_ledger, minimum_files_override=2,
+                minimum_dispatch_entries_override=minimum_dispatch_entries_override)
+            if expected_exit == 0 and exit_code != 0:
+                failures.append(f"{name}: expected gate exit 0, got {exit_code}\n{output}")
+            if expected_exit != 0 and exit_code == 0:
+                failures.append(f"{name}: expected a NON-zero gate exit, got 0\n{output}")
+            for needle in expected_output:
+                if needle not in output:
+                    failures.append(f"{name}: expected {needle!r} in the gate output\n{output}")
+            for needle in forbidden_output:
+                if needle in output:
+                    failures.append(
+                        f"{name}: did NOT expect {needle!r} in the gate output\n{output}")
+
+        # (a) clean: a GUARDED entry whose guard literal really is in the body,
+        # and whose dispatch token really is inside that registered function.
+        run_dispatch_case("dispatch-clean", 0, forbidden_output=("PENDING-T1b",))
+
+        # (b) SABOTAGE: the guard literal is deleted from production while the
+        # registry row still claims GUARDED -- the proof-rot direction.
+        run_dispatch_case(
+            "dispatch-guard-literal-deleted", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_GUARD_DELETED,
+            expected_output=("guard literal",))
+
+        # (c) SABOTAGE: the entry row is removed while its dispatch token
+        # remains in production -- the row-deletion direction.
+        run_dispatch_case(
+            "dispatch-entry-row-removed", 1,
+            ledger_text=SELF_TEST_LEDGER_OK,
+            expected_output=("unregistered dispatch site", "dispatcher_fn"))
+
+        # (d) SABOTAGE: a NEW `.spell_pointer(` call appears in a function
+        # nobody registered -- the eighth-dispatcher direction, the whole
+        # reason the closed world exists.
+        run_dispatch_case(
+            "dispatch-new-unregistered-dispatcher", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_SECOND_DISPATCHER,
+            expected_output=("unregistered dispatch site", "sneaky_new_dispatcher"))
+
+        # (e)/(f) SABOTAGE: the M10 marker rules -- duplicated, and the whole
+        # table buried inside a fence (leaving zero LIVE markers).
+        run_dispatch_case(
+            "dispatch-marker-duplicated", 1,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_GUARDED).replace(
+                LEDGER_DISPATCH_ENTRIES_MARKER,
+                LEDGER_DISPATCH_ENTRIES_MARKER + "\n" + LEDGER_DISPATCH_ENTRIES_MARKER, 1),
+            expected_output=("must appear exactly once",))
+        # The fenced variant strips the ONE live table out of the fixture and
+        # re-adds it inside a fence, so the live marker count is 0 -- a
+        # dispatch registry that exists only as documentation must not be
+        # mistaken for the real thing.
+        fenced_dispatch_ledger = (
+            SELF_TEST_LEDGER_OK.replace(EMPTY_DISPATCH_TABLE, "\n", 1)
+            + "\n```\n"
+            + LEDGER_DISPATCH_ENTRIES_MARKER + "\n"
+            + LEDGER_DISPATCH_ENTRIES_HEADER + "\n"
+            + "| --- | --- | --- | --- |\n"
+            + DISPATCH_ENTRY_ROW_GUARDED + "\n"
+            + "```\n"
+        )
+        run_dispatch_case(
+            "dispatch-marker-fenced", 1,
+            ledger_text=fenced_dispatch_ledger,
+            expected_output=("must appear exactly once",))
+
+        # (g) a PENDING-T1b entry passes the gate but WARNS -- loudly, every
+        # run -- so the wave cannot finish with one standing.
+        run_dispatch_case(
+            "dispatch-pending-warns", 0,
+            ledger_text=_dispatch_ledger(
+                "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+                f"{LEDGER_EMPTY_MARKER} | PENDING-T1b |"),
+            expected_output=("WARNING", "PENDING-T1b"))
+
+        # (h) a PENDING-T1b entry must NOT carry a guard literal (an unchecked
+        # literal that LOOKS like a landed guard).
+        run_dispatch_case(
+            "dispatch-pending-with-a-guard-literal", 1,
+            ledger_text=_dispatch_ledger(
+                DISPATCH_ENTRY_ROW_GUARDED.replace("| GUARDED |", "| PENDING-T1b |")),
+            expected_output=("empty marker",))
+
+        # (i) the status vocabulary is closed.
+        run_dispatch_case(
+            "dispatch-unknown-status", 1,
+            ledger_text=_dispatch_ledger(
+                DISPATCH_ENTRY_ROW_GUARDED.replace("| GUARDED |", "| GUARDED-ISH |")),
+            expected_output=("unknown dispatch-entry status",))
+
+        # (j) a registry row naming a function that does not exist fails
+        # closed -- including for a PENDING-T1b row, which is exempt from the
+        # guard-literal half only, never from naming something real.
+        run_dispatch_case(
+            "dispatch-entry-names-a-missing-function", 1,
+            ledger_text=_dispatch_ledger(
+                "| `src/app/dispatch_probe.cpp · no_such_function` | `ch` | "
+                f"{LEDGER_EMPTY_MARKER} | PENDING-T1b |",
+                DISPATCH_ENTRY_ROW_GUARDED),
+            expected_output=("cannot find",))
+
+        # (k) the registry's own row-count floor: one row, floor of two.
+        run_dispatch_case(
+            "dispatch-entry-row-floor", 1,
+            minimum_dispatch_entries_override=2,
+            expected_output=("below the floor",))
+
+        # ------------------------------------------------------------------
+        # RR Wave R3 Task 1a, direction 23: the R3-O-3 caller-count pins, both
+        # drift directions plus the declaration-does-not-count claim the
+        # measurement method rests on.
+        # ------------------------------------------------------------------
+        caller_root = root / "caller_root"
+        caller_app_dir = caller_root / "src" / "app"
+        caller_app_dir.mkdir(parents=True)
+        caller_probe = caller_app_dir / "probe.cpp"
+        caller_ledger = root / "caller_ledger.md"
+        caller_ledger.write_text(SELF_TEST_LEDGER_OK, encoding="utf-8")
+
+        def run_caller_case(name, expected_exit, probe_text, pins, *, expected_output=()):
+            caller_probe.write_text(probe_text, encoding="utf-8")
+            exit_code, output = _run_gate(
+                caller_root, caller_ledger, minimum_files_override=1,
+                caller_count_pins_override=pins)
+            if expected_exit == 0 and exit_code != 0:
+                failures.append(f"{name}: expected gate exit 0, got {exit_code}\n{output}")
+            if expected_exit != 0 and exit_code == 0:
+                failures.append(f"{name}: expected a NON-zero gate exit, got 0\n{output}")
+            for needle in expected_output:
+                if needle not in output:
+                    failures.append(f"{name}: expected {needle!r} in the gate output\n{output}")
+
+        # The probe has exactly ONE CAN_SEE( call in a function body (plus a
+        # declaration that must not count): pinning 1 passes.
+        run_caller_case("caller-count-at-the-pin", 0, CALLER_COUNT_PROBE_SOURCE, "CAN_SEE(=1")
+        # DRIFT UP (a new caller appeared): the pin says 0, the scan finds 1.
+        run_caller_case(
+            "caller-count-drift-up", 1, CALLER_COUNT_PROBE_SOURCE, "CAN_SEE(=0",
+            expected_output=("caller-count pin", "TWO edits"))
+        # DRIFT DOWN (a caller was removed, leaving the pin stale): the pin
+        # says 1, the scan finds 0.
+        run_caller_case(
+            "caller-count-drift-down", 1, PROBE_SOURCE_OK, "CAN_SEE(=1",
+            expected_output=("caller-count pin", "TWO edits"))
+        # The DECLARATION-does-not-count claim the measurement method rests
+        # on: a file-scope `int CAN_SEE(char_data* sub);` and nothing else
+        # measures 0, not 1.
+        run_caller_case(
+            "caller-count-ignores-declarations", 0,
+            CALLER_COUNT_PROBE_SOURCE_DECLARATION_ONLY, "CAN_SEE(=0")
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
@@ -2452,9 +3173,10 @@ A row proved by the `occupant-chain` kind must state, in its own proof text,
 which half of the occupant-chain invariant it relies on (design doc section 3):
 the invariant's **contrapositive gives `!= NOWHERE` only** -- it does not by
 itself prove the id is *in range*, only that it is not the sentinel. In-range-
-ness instead follows from placement's M-1 precondition
-(`src/entity/placement.cpp:369-395`) plus append-only room allocation (a room
-id, once valid, stays valid for the process lifetime). The invariant's second
+ness instead follows from the WRITE side, in the wording ruling R3-C-2 fixes
+below ("The in-range half's standing citation"): the location field's only
+writers are `char_to_room` and `ScopedRenderLocation`, plus append-only room
+allocation (a room id, once valid, stays valid for the process lifetime). The invariant's second
 half -- that the occupant-chain-derived id still equals the character's own
 stored location field -- does **not** hold inside a `ScopedRenderLocation`
 window (the render cursor temporarily diverges from the stored field by
@@ -2467,12 +3189,196 @@ The SAME two-half distinction applies to an `entry-guard` or `caller-contract`
 proof built on a `location_of(ch) != NOWHERE` test, not only to
 `occupant-chain` proofs (review-1 W-4): the guard establishes only that the
 id is not the `NOWHERE` sentinel -- it does not, by itself, establish that the
-id is *in range*. In-range-ness follows the same way it does for the
-occupant-chain invariant's second half: from placement's M-1 precondition
-(`src/entity/placement.cpp:369-395`) plus append-only room allocation. A row
-proved by `entry-guard`/`caller-contract` over a `location_of()` test must
-therefore state BOTH halves in its own proof text -- the sentinel exclusion
-AND the in-range justification -- not the sentinel half alone.
+id is *in range*. A row proved by
+`entry-guard`/`caller-contract`/`dispatch-invariant` over a `location_of()`
+test must therefore state BOTH halves in its own proof text -- the sentinel
+exclusion AND the in-range justification -- not the sentinel half alone.
+
+### The in-range half's standing citation (R3-C-2)
+
+Wave R1/R2 rows spell the in-range half as "in-range via M-1
+(`placement.cpp:369-395`) + append-only allocation". **That citation is wrong
+about what it points at**: `src/entity/placement.cpp:369-395` is
+`ScopedRenderLocation`'s own explanatory banner and precondition discussion,
+not an in-range argument. Coordinator ruling R3-C-2 replaces it, from Wave R3
+onward, with a citation that is honest about where in-range-ness actually
+comes from -- the WRITE side, which this same program drains:
+
+> in-range: the location field's only writers are `char_to_room`
+> (`src/entity/placement.cpp:548`, whose own unconditional resolve at `:564`
+> is the program's RR-O-1 site and catches every invalid id -- mudlog today,
+> abort post-flip) and `ScopedRenderLocation` (which refuses NOWHERE-over-real
+> in `would_break_the_absence_invariant`, `src/entity/placement.cpp:410-420`,
+> enforced from the constructor at `:427` and from `retarget` at `:440`, and
+> otherwise spoofs only ids its callers supply), plus append-only room
+> allocation.
+
+Two notes on this section's own citations. **First**, R3-C-2's drafted wording
+cited the `ScopedRenderLocation` half as `:369-391`; every line above was
+re-read at this commit, and the refusal is implemented at `:410-420` and
+enforced at `:427`/`:440`, so the span is corrected here rather than copied
+forward (the wave's standing "every line number re-read before citation"
+rule). **Second**, this is an INHERITED proof, not a self-standing one: the
+in-range half rests on the write side's own unconditional resolve, which is
+exactly the site the program's final flip wave converts from mudlog to abort.
+Saying so plainly is the point of the wording.
+
+**R2's landed rows are NOT rewritten.** Every Wave R2 `PROVEN`/`GUARDED` row
+still carries the `M-1 (placement.cpp:369-395)` boilerplate in its own `Proof`
+cell. Those rows' CONCLUSIONS are correct; only the citation pointed at the
+wrong lines, so R3-C-2 fixes the one prose section they all lean on instead of
+editing dozens of `Proof` cells -- churn with no reviewable content, and a
+diff that would bury the rows a reviewer actually needs to read. **This
+section supersedes that boilerplate**: wherever an R2 row says "in-range via
+M-1 (`placement.cpp:369-395`)", read the block-quoted wording above instead.
+Rows landed from Wave R3 onward cite the new wording directly.
+
+## `dispatch-invariant` proofs and the dispatch-entry registry
+
+`dispatch-invariant` (Wave R3, owner ruling R3-O-1) is the sixth and newest
+`PROOF_KINDS` entry, and the first whose evidence lives ENTIRELY OUTSIDE the
+row's own function. It covers the pattern that dominates `src/combat/` and
+`src/script/`: a body resolves the room of an actor (`ch`/`caster`) it never
+validated, because the actor arrived through a dispatch mechanism -- an
+`cmd_info[].command_pointer` ACMD dispatch, the `combat_command` table, a
+`skills[].spell_pointer` door, one of the two SPECIAL invokers, or the mob-AI
+driver. The proof is that the DISPATCHER guards the actor before dispatching:
+one tripwire per entry point, on the actor argument, in the
+`db_world.cpp:2083` idiom (`if (location_of(ch) == NOWHERE) { mudlog(<globally
+unique string>); return; }`).
+
+**A `dispatch-invariant` proof must carry three citation parts. All three, or
+the row is not proven:**
+
+1. **The registry entry** -- the `file:line` of the dispatch-entry row whose
+   guard covers this row's actor. A `dispatch-invariant` row that cites no
+   entry cites nothing; this is also why the kind is in
+   `CITATION_REQUIRED_KINDS`.
+2. **The actor parameter, by name.** The guard covers ONE argument. A proof
+   that does not say which one is unreviewable, and silently over-claims for
+   any `victim`/target-derived id -- ruling R3-C-5: the tree's
+   `location_of(A) == location_of(B)` equality checks all pass when BOTH are
+   NOWHERE, so a target id inherits the caster's status and nothing more.
+   Rows whose id is target-derived are classified on their own merits.
+3. **The body's exhaustive direct-caller list**, with every door that is NOT
+   the registered dispatcher proven separately or the row split. A body called
+   directly from elsewhere (`do_mental` from `do_hit`/`perform_violence`,
+   `perform_drop` from `script.cpp`) does not inherit the entry's guard on
+   that path.
+
+The in-range half is cited exactly as "The in-range half's standing citation"
+above states it -- the entry guard, like any `location_of()` test, excludes
+only the sentinel.
+
+**The closure.** The kind is sound only while the entry set is CLOSED, so the
+entry points are enumerated in the marker-anchored **dispatch-entry registry**
+at the end of this file (`<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->`, exactly
+once, outside any fence -- the M10 rule the classification and token-counts
+tables already follow). `tools/room_resolve_census.py --check` asserts two
+directions over it, the same bidirectional shape
+`tools/location_read_census.py`'s location-state registry uses:
+
+- **Downward:** every `GUARDED`/`GUARDED-PRIOR` row names a real file and a
+  real, scanner-findable function whose comment/string-MASKED body still
+  contains that row's guard literal (verbatim up to whitespace normalization,
+  since a real guard wraps across physical lines and a table cell cannot).
+  Deleting a guard from production is a gate failure, not silent proof rot.
+- **Upward:** every occurrence of a pinned dispatch spelling
+  (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`,
+  `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
+  `shape_center(`) in production code lies inside a registered entry's
+  function. An eighth dispatcher is a gate ERROR naming the unregistered
+  site, not a free inheritance of the proof. Occurrences attributed to file
+  scope are skipped -- those are the dispatch machinery's own declarations
+  and definition heads, never calls -- and exactly two real sites are pinned
+  as reviewed exemptions in the script's `DISPATCH_TOKEN_EXEMPT_SITES` (see
+  below).
+
+`PENDING-T1b` is a transitional status: the entry's guard is SPECIFIED but not
+yet LANDED, so the row carries no guard literal and is exempt from the
+downward direction only (it must still name a real file and a real function).
+`--check` prints a loud WARNING for every `PENDING-T1b` row that remains, so
+the wave cannot finish with one standing.
+
+**Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**
+(`src/entity/entity_lifecycle.cpp:2440`/`:2442`). That arm runs a real
+`ASPELL` with `caster == victim == ch` at NOWHERE **by design**, inside the
+login/rent-load window (`src/persist/db_players.cpp:1403` sets NOWHERE and
+calls `affect_total` on the next line; `src/app/objsave.cpp:506`'s
+`Crash_load` runs the same way before placement). A tripwire there would fire
+on every login of a character carrying an `APPLY_SPELL` affect. It is pinned
+in `DISPATCH_TOKEN_EXEMPT_SITES` with that reason, and every row reachable
+through it stays `TODO` under the `APPLY_SPELL-window` category below (owner
+ruling R3-O-2). The other pinned exemption is
+`src/combat/combat_hooks.cpp:56`'s `g_command_table[i] = handler;` -- a
+registration WRITE, at which no actor exists at all.
+
+## Caller-count pins (R3-O-3)
+
+`src/combat/visibility.cpp · CAN_SEE` and `· get_char_room_vis` are the two
+scale-flagged rows Wave R3 does NOT drain: both stay `TODO`, waiting for the
+same batch treatment `CAN_GO`/`obj_to_room` are queued for. Both are also
+id-TAKING in the sense "The caller-contract token-pinning policy" blind spot
+below describes -- any future proof of them rests on "every caller is
+accounted for" -- and that policy's own remedy is to pin the name as a
+SCANNED TOKEN, so a new caller surfaces as its own ledger site.
+
+Here that remedy is unaffordable. The two names have **127 production call
+sites** between them; pinning them in `token_patterns()` would mint roughly
+that many new ledger rows and raise `MAXIMUM_TODO_COUNT` by the same amount,
+for zero proof value. **Owner ruling R3-O-3's deliberate deviation: pin the
+COUNTS instead.** `PINNED_CALLER_COUNTS` in `tools/room_resolve_census.py`
+carries the measured figures, and `--check` fails on drift in EITHER
+direction (a new caller is what the pin exists to catch; a removed caller
+means the literal is stale and would stop catching the next one), with a
+message naming the two-edit fix -- the script literal and this section, always
+updated together.
+
+| Name | Pinned production call sites |
+|---|---|
+| `CAN_SEE(` | 86 |
+| `get_char_room_vis(` | 41 |
+
+Measured at this commit by the method recorded verbatim beside
+`PINNED_CALLER_COUNTS`: every `SOURCE_SUFFIXES` file under `src/` except
+`src/tests/`, comment/string-masked with the tool's own masker, attributed
+with the tool's own `attribute_lines`, counting every regex occurrence (per
+occurrence, not per line) on a line whose attribution is NOT `file-scope`.
+The file-scope exclusion is what drops the declarations and definition heads
+(`src/utils.h:669`/`:670` and `src/combat/visibility.cpp:107`/`:527` for
+`CAN_SEE`; `src/handler.h:509` and `src/combat/visibility.cpp:617` for
+`get_char_room_vis`) while KEEPING real calls that live inside a macro body --
+`src/script/spec_pro.cpp:2345` is one such `CAN_SEE(` call, and counting only
+`function`-attributed lines would have silently lost it. Neither name occurs
+anywhere in `src/tests/` today, so the production scoping is discipline
+rather than a concession.
+
+## Stayed-TODO taxonomy: the Wave R3 additions
+
+The canonical taxonomy lives in `docs/superpowers/room-resolve-playbook.md`
+("The stayed-TODO taxonomy"), which named four categories out of Wave R2. Wave
+R3 adds two and widens one; they are recorded here because R3's rows cite them
+and this is the file those rows live in.
+
+- **`APPLY_SPELL-window`** (owner ruling R3-O-2) -- rows reachable with an
+  unplaced caster through `affect_modify`'s APPLY_SPELL arm (producer P1, the
+  login/rent-load window; see the dispatch-entry section above for why that
+  arm is deliberately unguarded). 11 combat rows / 16 sites at R3. These are
+  NOT covered by `dispatch-invariant` and are not silently left: they stay
+  `TODO` as a named class, to be ruled together with the program's pending
+  `RR-O-1` ruling, since both are rulings about the same login window.
+- **`owner-punted`** (owner ruling R3-O-4) -- `src/combat/olog_hai.cpp ·
+  get_random_target` (1 row / 2 sites) has zero production callers; the
+  repository's own dead-code heuristic would delete it, but the owner ruled it
+  is NOT deleted, NOT proven, and NOT to be removed: intent is unknown and the
+  disposition is a future design decision. The row stays `TODO` with that
+  reason, and no proof is to be written for it.
+- **`scale-flagged`** (widened by owner ruling R3-O-3) -- already carrying
+  `CAN_GO` and `obj_to_room` from Wave R2, this category now also covers
+  `src/combat/visibility.cpp`'s `CAN_SEE` (the `:578`/`:580` half; the `:121`
+  entry-guard half drains normally, so the row splits) and
+  `get_char_room_vis`. See "Caller-count pins (R3-O-3)" above for the
+  compensating control these two carry while they wait.
 
 ## The two-room-macro rule
 
@@ -2618,6 +3524,18 @@ def render_ledger(rows, token_counts):
     lines += ["", LEDGER_TOKEN_COUNTS_MARKER, LEDGER_TOKEN_COUNTS_HEADER, "| --- | --- |"]
     for token_name, _ in token_patterns():
         lines.append(f"| `{token_name}` | {token_counts.get(token_name, 0)} |")
+    # The dispatch-entry registry is EMPTY in generated output, by design
+    # (R3 Task 1a). Its rows are human judgment -- which functions are
+    # dispatch entry points, which actor argument each one guards -- and this
+    # generator mints no judgment (spec section 4/F-12, the same rule that
+    # forbids machine-minted PROVEN rows). The marker and header are still
+    # emitted so a regenerated ledger PARSES, and the empty table then fails
+    # `--check` closed on both the row-count floor and every unregistered
+    # dispatch site, which is the correct outcome: `--generate-ledger
+    # --force-regenerate` discards hand-refined classification work, and the
+    # registry is exactly such work.
+    lines += ["", LEDGER_DISPATCH_ENTRIES_MARKER, LEDGER_DISPATCH_ENTRIES_HEADER,
+              "| --- | --- | --- | --- |"]
     lines.append("")
     return "\n".join(lines)
 
@@ -2767,6 +3685,26 @@ def _advise(args):
     return 0
 
 
+def _parse_caller_count_pins_override(raw_value, parser):
+    """Self-test-only: `TOKEN=COUNT[,TOKEN=COUNT...]` -> the pin dict that
+    REPLACES PINNED_CALLER_COUNTS. The empty string yields an empty dict
+    (pin nothing), which is what every hermetic fixture root needs: a
+    synthetic tree contains none of the real production callers, so applying
+    the real 86/41 literals there would fail every unrelated direction."""
+    pins = {}
+    for chunk in raw_value.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        token_name, separator, count_text = chunk.partition("=")
+        if not separator or not count_text.strip().lstrip("-").isdigit():
+            parser.error(
+                f"--caller-count-pins-override: expected TOKEN=COUNT pairs, got {chunk!r}"
+            )
+        pins[token_name.strip()] = int(count_text)
+    return pins
+
+
 def build_argument_parser():
     parser = argparse.ArgumentParser(description="Room-resolve retirement census.")
     parser.add_argument("paths", nargs="*", type=pathlib.Path)
@@ -2787,6 +3725,13 @@ def build_argument_parser():
                         help="self-test only -- requires RR_SELF_TEST=1")
     parser.add_argument("--minimum-ledger-rows-override", type=int, default=None,
                         help="self-test only -- requires RR_SELF_TEST=1")
+    parser.add_argument("--minimum-dispatch-entries-override", type=int, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1")
+    parser.add_argument("--caller-count-pins-override", type=str, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1; a comma-separated "
+                             "TOKEN=COUNT list REPLACING PINNED_CALLER_COUNTS (the empty "
+                             "string pins nothing, which is what every hermetic fixture root "
+                             "wants -- a synthetic tree has none of the real callers)")
     parser.add_argument("--generate-ledger", action="store_true",
                         help="write docs/superpowers/room-resolve-ledger.md (or --ledger) from "
                              "a fresh scan: every production key TODO, every src/tests/ key "
@@ -2808,10 +3753,13 @@ def main(argv=None):
         return run_self_test()
 
     if (args.todo_ceiling_override is not None or args.minimum_files_override is not None
-            or args.minimum_ledger_rows_override is not None) \
+            or args.minimum_ledger_rows_override is not None
+            or args.minimum_dispatch_entries_override is not None
+            or args.caller_count_pins_override is not None) \
             and os.environ.get("RR_SELF_TEST") != "1":
         parser.error(
-            "--todo-ceiling-override/--minimum-files-override/--minimum-ledger-rows-override "
+            "--todo-ceiling-override/--minimum-files-override/--minimum-ledger-rows-override/"
+            "--minimum-dispatch-entries-override/--caller-count-pins-override "
             "are self-test-only hooks -- set RR_SELF_TEST=1 to use them (see run_self_test())"
         )
 
@@ -2876,15 +3824,38 @@ def main(argv=None):
     unknown_macros = sorted(derived_family - set(MACRO_FAMILY))
 
     sites = []
+    dispatch_occurrences = []
+    measured_caller_counts = {}
     for path in scanned_files:
-        sites.extend(scan_file(path, repository_root))
+        file_sites, file_dispatch, file_callers = scan_file_full(path, repository_root)
+        sites.extend(file_sites)
+        dispatch_occurrences.extend(file_dispatch)
+        for token_name, count in file_callers.items():
+            measured_caller_counts[token_name] = measured_caller_counts.get(token_name, 0) + count
 
     minimum_ledger_rows = (
         args.minimum_ledger_rows_override if args.minimum_ledger_rows_override is not None
         else MINIMUM_LEDGER_ROW_COUNT
     )
-    rows, token_counts = parse_ledger(
-        ledger_path.read_text(encoding="utf-8"), minimum_rows=minimum_ledger_rows)
+    ledger_text = ledger_path.read_text(encoding="utf-8")
+    rows, token_counts = parse_ledger(ledger_text, minimum_rows=minimum_ledger_rows)
+
+    minimum_dispatch_entries = (
+        args.minimum_dispatch_entries_override
+        if args.minimum_dispatch_entries_override is not None
+        else MINIMUM_DISPATCH_ENTRY_ROWS
+    )
+    dispatch_entries = parse_dispatch_entries(
+        ledger_text, minimum_rows=minimum_dispatch_entries)
+    dispatch_errors, dispatch_warnings = check_dispatch_entries(
+        dispatch_entries, dispatch_occurrences, repository_root)
+
+    pinned_caller_counts = (
+        _parse_caller_count_pins_override(args.caller_count_pins_override, parser)
+        if args.caller_count_pins_override is not None
+        else PINNED_CALLER_COUNTS
+    )
+    caller_count_errors = check_caller_counts(measured_caller_counts, pinned_caller_counts)
 
     if MAXIMUM_TODO_COUNT is None and args.todo_ceiling_override is None:
         print("notice: MAXIMUM_TODO_COUNT is unset -- ceiling check skipped (Task 3 seeds it)",
@@ -2895,6 +3866,10 @@ def main(argv=None):
     )
 
     errors = reconcile(sites, rows, token_counts, todo_ceiling=todo_ceiling)
+    errors.extend(dispatch_errors)
+    errors.extend(caller_count_errors)
+    for warning in dispatch_warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     if unknown_macros:
         errors.insert(
             0,

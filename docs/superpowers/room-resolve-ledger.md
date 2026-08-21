@@ -86,9 +86,10 @@ A row proved by the `occupant-chain` kind must state, in its own proof text,
 which half of the occupant-chain invariant it relies on (design doc section 3):
 the invariant's **contrapositive gives `!= NOWHERE` only** -- it does not by
 itself prove the id is *in range*, only that it is not the sentinel. In-range-
-ness instead follows from placement's M-1 precondition
-(`src/entity/placement.cpp:369-395`) plus append-only room allocation (a room
-id, once valid, stays valid for the process lifetime). The invariant's second
+ness instead follows from the WRITE side, in the wording ruling R3-C-2 fixes
+below ("The in-range half's standing citation"): the location field's only
+writers are `char_to_room` and `ScopedRenderLocation`, plus append-only room
+allocation (a room id, once valid, stays valid for the process lifetime). The invariant's second
 half -- that the occupant-chain-derived id still equals the character's own
 stored location field -- does **not** hold inside a `ScopedRenderLocation`
 window (the render cursor temporarily diverges from the stored field by
@@ -101,12 +102,196 @@ The SAME two-half distinction applies to an `entry-guard` or `caller-contract`
 proof built on a `location_of(ch) != NOWHERE` test, not only to
 `occupant-chain` proofs (review-1 W-4): the guard establishes only that the
 id is not the `NOWHERE` sentinel -- it does not, by itself, establish that the
-id is *in range*. In-range-ness follows the same way it does for the
-occupant-chain invariant's second half: from placement's M-1 precondition
-(`src/entity/placement.cpp:369-395`) plus append-only room allocation. A row
-proved by `entry-guard`/`caller-contract` over a `location_of()` test must
-therefore state BOTH halves in its own proof text -- the sentinel exclusion
-AND the in-range justification -- not the sentinel half alone.
+id is *in range*. A row proved by
+`entry-guard`/`caller-contract`/`dispatch-invariant` over a `location_of()`
+test must therefore state BOTH halves in its own proof text -- the sentinel
+exclusion AND the in-range justification -- not the sentinel half alone.
+
+### The in-range half's standing citation (R3-C-2)
+
+Wave R1/R2 rows spell the in-range half as "in-range via M-1
+(`placement.cpp:369-395`) + append-only allocation". **That citation is wrong
+about what it points at**: `src/entity/placement.cpp:369-395` is
+`ScopedRenderLocation`'s own explanatory banner and precondition discussion,
+not an in-range argument. Coordinator ruling R3-C-2 replaces it, from Wave R3
+onward, with a citation that is honest about where in-range-ness actually
+comes from -- the WRITE side, which this same program drains:
+
+> in-range: the location field's only writers are `char_to_room`
+> (`src/entity/placement.cpp:548`, whose own unconditional resolve at `:564`
+> is the program's RR-O-1 site and catches every invalid id -- mudlog today,
+> abort post-flip) and `ScopedRenderLocation` (which refuses NOWHERE-over-real
+> in `would_break_the_absence_invariant`, `src/entity/placement.cpp:410-420`,
+> enforced from the constructor at `:427` and from `retarget` at `:440`, and
+> otherwise spoofs only ids its callers supply), plus append-only room
+> allocation.
+
+Two notes on this section's own citations. **First**, R3-C-2's drafted wording
+cited the `ScopedRenderLocation` half as `:369-391`; every line above was
+re-read at this commit, and the refusal is implemented at `:410-420` and
+enforced at `:427`/`:440`, so the span is corrected here rather than copied
+forward (the wave's standing "every line number re-read before citation"
+rule). **Second**, this is an INHERITED proof, not a self-standing one: the
+in-range half rests on the write side's own unconditional resolve, which is
+exactly the site the program's final flip wave converts from mudlog to abort.
+Saying so plainly is the point of the wording.
+
+**R2's landed rows are NOT rewritten.** Every Wave R2 `PROVEN`/`GUARDED` row
+still carries the `M-1 (placement.cpp:369-395)` boilerplate in its own `Proof`
+cell. Those rows' CONCLUSIONS are correct; only the citation pointed at the
+wrong lines, so R3-C-2 fixes the one prose section they all lean on instead of
+editing dozens of `Proof` cells -- churn with no reviewable content, and a
+diff that would bury the rows a reviewer actually needs to read. **This
+section supersedes that boilerplate**: wherever an R2 row says "in-range via
+M-1 (`placement.cpp:369-395`)", read the block-quoted wording above instead.
+Rows landed from Wave R3 onward cite the new wording directly.
+
+## `dispatch-invariant` proofs and the dispatch-entry registry
+
+`dispatch-invariant` (Wave R3, owner ruling R3-O-1) is the sixth and newest
+`PROOF_KINDS` entry, and the first whose evidence lives ENTIRELY OUTSIDE the
+row's own function. It covers the pattern that dominates `src/combat/` and
+`src/script/`: a body resolves the room of an actor (`ch`/`caster`) it never
+validated, because the actor arrived through a dispatch mechanism -- an
+`cmd_info[].command_pointer` ACMD dispatch, the `combat_command` table, a
+`skills[].spell_pointer` door, one of the two SPECIAL invokers, or the mob-AI
+driver. The proof is that the DISPATCHER guards the actor before dispatching:
+one tripwire per entry point, on the actor argument, in the
+`db_world.cpp:2083` idiom (`if (location_of(ch) == NOWHERE) { mudlog(<globally
+unique string>); return; }`).
+
+**A `dispatch-invariant` proof must carry three citation parts. All three, or
+the row is not proven:**
+
+1. **The registry entry** -- the `file:line` of the dispatch-entry row whose
+   guard covers this row's actor. A `dispatch-invariant` row that cites no
+   entry cites nothing; this is also why the kind is in
+   `CITATION_REQUIRED_KINDS`.
+2. **The actor parameter, by name.** The guard covers ONE argument. A proof
+   that does not say which one is unreviewable, and silently over-claims for
+   any `victim`/target-derived id -- ruling R3-C-5: the tree's
+   `location_of(A) == location_of(B)` equality checks all pass when BOTH are
+   NOWHERE, so a target id inherits the caster's status and nothing more.
+   Rows whose id is target-derived are classified on their own merits.
+3. **The body's exhaustive direct-caller list**, with every door that is NOT
+   the registered dispatcher proven separately or the row split. A body called
+   directly from elsewhere (`do_mental` from `do_hit`/`perform_violence`,
+   `perform_drop` from `script.cpp`) does not inherit the entry's guard on
+   that path.
+
+The in-range half is cited exactly as "The in-range half's standing citation"
+above states it -- the entry guard, like any `location_of()` test, excludes
+only the sentinel.
+
+**The closure.** The kind is sound only while the entry set is CLOSED, so the
+entry points are enumerated in the marker-anchored **dispatch-entry registry**
+at the end of this file (`<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->`, exactly
+once, outside any fence -- the M10 rule the classification and token-counts
+tables already follow). `tools/room_resolve_census.py --check` asserts two
+directions over it, the same bidirectional shape
+`tools/location_read_census.py`'s location-state registry uses:
+
+- **Downward:** every `GUARDED`/`GUARDED-PRIOR` row names a real file and a
+  real, scanner-findable function whose comment/string-MASKED body still
+  contains that row's guard literal (verbatim up to whitespace normalization,
+  since a real guard wraps across physical lines and a table cell cannot).
+  Deleting a guard from production is a gate failure, not silent proof rot.
+- **Upward:** every occurrence of a pinned dispatch spelling
+  (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`,
+  `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
+  `shape_center(`) in production code lies inside a registered entry's
+  function. An eighth dispatcher is a gate ERROR naming the unregistered
+  site, not a free inheritance of the proof. Occurrences attributed to file
+  scope are skipped -- those are the dispatch machinery's own declarations
+  and definition heads, never calls -- and exactly two real sites are pinned
+  as reviewed exemptions in the script's `DISPATCH_TOKEN_EXEMPT_SITES` (see
+  below).
+
+`PENDING-T1b` is a transitional status: the entry's guard is SPECIFIED but not
+yet LANDED, so the row carries no guard literal and is exempt from the
+downward direction only (it must still name a real file and a real function).
+`--check` prints a loud WARNING for every `PENDING-T1b` row that remains, so
+the wave cannot finish with one standing.
+
+**Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**
+(`src/entity/entity_lifecycle.cpp:2440`/`:2442`). That arm runs a real
+`ASPELL` with `caster == victim == ch` at NOWHERE **by design**, inside the
+login/rent-load window (`src/persist/db_players.cpp:1403` sets NOWHERE and
+calls `affect_total` on the next line; `src/app/objsave.cpp:506`'s
+`Crash_load` runs the same way before placement). A tripwire there would fire
+on every login of a character carrying an `APPLY_SPELL` affect. It is pinned
+in `DISPATCH_TOKEN_EXEMPT_SITES` with that reason, and every row reachable
+through it stays `TODO` under the `APPLY_SPELL-window` category below (owner
+ruling R3-O-2). The other pinned exemption is
+`src/combat/combat_hooks.cpp:56`'s `g_command_table[i] = handler;` -- a
+registration WRITE, at which no actor exists at all.
+
+## Caller-count pins (R3-O-3)
+
+`src/combat/visibility.cpp · CAN_SEE` and `· get_char_room_vis` are the two
+scale-flagged rows Wave R3 does NOT drain: both stay `TODO`, waiting for the
+same batch treatment `CAN_GO`/`obj_to_room` are queued for. Both are also
+id-TAKING in the sense "The caller-contract token-pinning policy" blind spot
+below describes -- any future proof of them rests on "every caller is
+accounted for" -- and that policy's own remedy is to pin the name as a
+SCANNED TOKEN, so a new caller surfaces as its own ledger site.
+
+Here that remedy is unaffordable. The two names have **127 production call
+sites** between them; pinning them in `token_patterns()` would mint roughly
+that many new ledger rows and raise `MAXIMUM_TODO_COUNT` by the same amount,
+for zero proof value. **Owner ruling R3-O-3's deliberate deviation: pin the
+COUNTS instead.** `PINNED_CALLER_COUNTS` in `tools/room_resolve_census.py`
+carries the measured figures, and `--check` fails on drift in EITHER
+direction (a new caller is what the pin exists to catch; a removed caller
+means the literal is stale and would stop catching the next one), with a
+message naming the two-edit fix -- the script literal and this section, always
+updated together.
+
+| Name | Pinned production call sites |
+|---|---|
+| `CAN_SEE(` | 86 |
+| `get_char_room_vis(` | 41 |
+
+Measured at this commit by the method recorded verbatim beside
+`PINNED_CALLER_COUNTS`: every `SOURCE_SUFFIXES` file under `src/` except
+`src/tests/`, comment/string-masked with the tool's own masker, attributed
+with the tool's own `attribute_lines`, counting every regex occurrence (per
+occurrence, not per line) on a line whose attribution is NOT `file-scope`.
+The file-scope exclusion is what drops the declarations and definition heads
+(`src/utils.h:669`/`:670` and `src/combat/visibility.cpp:107`/`:527` for
+`CAN_SEE`; `src/handler.h:509` and `src/combat/visibility.cpp:617` for
+`get_char_room_vis`) while KEEPING real calls that live inside a macro body --
+`src/script/spec_pro.cpp:2345` is one such `CAN_SEE(` call, and counting only
+`function`-attributed lines would have silently lost it. Neither name occurs
+anywhere in `src/tests/` today, so the production scoping is discipline
+rather than a concession.
+
+## Stayed-TODO taxonomy: the Wave R3 additions
+
+The canonical taxonomy lives in `docs/superpowers/room-resolve-playbook.md`
+("The stayed-TODO taxonomy"), which named four categories out of Wave R2. Wave
+R3 adds two and widens one; they are recorded here because R3's rows cite them
+and this is the file those rows live in.
+
+- **`APPLY_SPELL-window`** (owner ruling R3-O-2) -- rows reachable with an
+  unplaced caster through `affect_modify`'s APPLY_SPELL arm (producer P1, the
+  login/rent-load window; see the dispatch-entry section above for why that
+  arm is deliberately unguarded). 11 combat rows / 16 sites at R3. These are
+  NOT covered by `dispatch-invariant` and are not silently left: they stay
+  `TODO` as a named class, to be ruled together with the program's pending
+  `RR-O-1` ruling, since both are rulings about the same login window.
+- **`owner-punted`** (owner ruling R3-O-4) -- `src/combat/olog_hai.cpp ·
+  get_random_target` (1 row / 2 sites) has zero production callers; the
+  repository's own dead-code heuristic would delete it, but the owner ruled it
+  is NOT deleted, NOT proven, and NOT to be removed: intent is unknown and the
+  disposition is a future design decision. The row stays `TODO` with that
+  reason, and no proof is to be written for it.
+- **`scale-flagged`** (widened by owner ruling R3-O-3) -- already carrying
+  `CAN_GO` and `obj_to_room` from Wave R2, this category now also covers
+  `src/combat/visibility.cpp`'s `CAN_SEE` (the `:578`/`:580` half; the `:121`
+  entry-guard half drains normally, so the row splits) and
+  `get_char_room_vis`. See "Caller-count pins (R3-O-3)" above for the
+  compensating control these two carry while they wait.
 
 ## The two-room-macro rule
 
@@ -681,3 +866,19 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `IS_WATER(` | 4 |
 | `ASSIGNROOM(` | 5 |
 | `VALID_EDGE(` | 3 |
+
+<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->
+| Entry point (file · function) | Actor parameter | Guard literal | Status |
+| --- | --- | --- | --- |
+| `src/app/interpre.cpp · command_interpreter` | `ch` | — | PENDING-T1b |
+| `src/combat/combat_hooks.cpp · rots::combat::issue_command` | `ch` | — | PENDING-T1b |
+| `src/olc/shapemob.cpp · shape_center` | `ch` | — | PENDING-T1b |
+| `src/combat/spell_pa.cpp · do_cast` | `ch` | — | PENDING-T1b |
+| `src/app/act_othe.cpp · do_use` | `ch` | — | PENDING-T1b |
+| `src/combat/mystic.cpp · cast_mass_spell` | `caster` | — | PENDING-T1b |
+| `src/app/interpre.cpp · activate_char_special` | `victim` | — | PENDING-T1b |
+| `src/app/interpre.cpp · activate_obj_special` | `ch` | — | PENDING-T1b |
+| `src/script/mobact.cpp · mobile_activity` | `ch` | — | PENDING-T1b |
+| `src/app/interpre.cpp · special` | `ch` | `if (in_room == NOWHERE) return FALSE;` | GUARDED-PRIOR |
+| `src/script/mobact.cpp · one_mobile_activity` | `ch` | `if ((location_of(ch) < 0) \|\| (location_of(ch) > top_of_world)) {` | GUARDED-PRIOR |
+| `src/combat/limits.cpp · affect_update_room` | `tmpch` | `for (tmpch = rots::entity::first_occupant(room); tmpch; tmpch = next_tmpch) {` | GUARDED-PRIOR |

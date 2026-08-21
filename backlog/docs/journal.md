@@ -121,3 +121,63 @@ override token is word-boundary-matched, and the docstring now states the accept
 model (accidental-footgun guard, not a security boundary). Battery extended 13 → 27 cases,
 all passing — including the hook live-blocking this session's own test harness mid-hardening,
 its first real catch.
+
+## 2026-08-21 — RR Wave R3: the dispatch-pattern policy, and `src/combat/` classified (TASK-001 + TASK-002)
+The owner folded TASK-002 into TASK-001 and ruled that the policy had to land BEFORE any
+classification task — the single decision the whole wave turned on, since 45 of `src/combat/`'s
+95 rows (84 of 186 sites) were the dispatch-pattern class Wave R2 had formally deferred to
+"R3+'s own policy design". Task 0 ran three parallel read-only censuses (mage/mystic/spell_pa;
+fight/limits/clerics/olog_hai/ranger/visibility; and a tree-wide census of the dispatch mechanism
+itself) and came back with the finding that shaped everything after it: **no dispatcher checks
+placement at all.** `command_interpreter` checks position only; `issue_command`'s 148 callers
+check nothing; the `skills[].spell_pointer` doors check nothing on the caster; `shape_center`
+bypasses even the position check. The class's tree-wide upper bound was 106 rows / 375 sites —
+52% of every remaining TODO site in the program. Owner ruling R3-O-1 adopted policy (A):
+`dispatch-invariant`, a sixth proof kind whose evidence is that the DISPATCHER guards the actor,
+closed by a marker-anchored registry the gate checks in both directions so an eighth dispatcher
+becomes a build failure rather than a free inheritance of the proof.
+
+Nine entry-point tripwires landed first, consumer-free, with one unplaced/placed test pair each
+and a measurement rather than an assertion that they are unreachable: rebuilt with every guard
+replaced by `abort()`, the entire pre-existing suite produced failures only in the fixtures that
+had been dispatching at NOWHERE as a test convenience, and the native boot golden still matched.
+Then four classification tasks drained 138 sites — 130 in combat, plus the 5 OLC and 3
+`weather_to_char` sites R2 had deferred pending exactly this policy, taking `src/olc/` to zero
+TODO. Ledger-wide TODO went 716 → 579 sites; ctest 1865 → 1890.
+
+**What the wave cost, and why, is the part worth remembering.** It spent two entire extra TASKS
+repairing its own policy. Task 3d found that the `command_interpreter` guard sat 34 lines BELOW
+the `target_parser` call it was supposed to dominate; Task 1c moved it and then STOPped, because
+reading `do_cast` from its guard to its dispatch turned up two statements that can relocate the
+actor in between — `complete_delay(ch)`, which is mainline for every prepared-spell cast and
+re-enters `command_interpreter` from there into arbitrary spec procs, and `appear(ch)`, which
+reaches an arbitrary further ASPELL through `affect_modify`'s APPLY_SPELL arm. Task 1d's own
+full read found a THIRD one statement above the dispatch. Three readers of the same 430 lines
+found two, then three; ruling R3-C-7 concluded that this class cannot be closed by exhaustion and
+made the answer structural (ADJACENCY: the tripwire sits immediately before the dispatch, and an
+entry that also parses the actor earlier carries a second one there). That is the wave's most
+transferable finding, and R4 inherits the machinery rather than the argument.
+
+Three real defects were fixed red-first along the way (an already-failed `spell_blink` no longer
+resolves NOWHERE; an unplaced dying character's death cry no longer broadcasts into room 0's
+neighbours; an unplaced corpse no longer inherits room 0's "floating here" wording), and a fourth
+was filed rather than fixed: TASK-018, a live use-after-free census A found while OVERTURNING
+`spell_fireball`'s own HIGH-confidence classification — the orc-fumble arm sets `victim = caster`,
+so an NPC self-kill frees the caster before the row's site reads it. That row stays TODO because
+of it. 29 rows / 56 sites stay TODO in combat overall, each with an enumerated reason across
+eight categories, three of them named this wave (`APPLY_SPELL-window` for the login/rent-load
+window, `intervening-relocation`, and `owner-punted` — the owner declined to delete a dead
+function, and "the owner said so" is now a recorded category rather than an omission).
+
+The advisory heuristic proved close to useless in this tier and the playbook now says so with
+numbers: census A overturned 14 of 42 advisories, census B 11 of 14. Line drift was worse — every
+citation Task 1d checked was stale, and the docs task then found several sets Task 1d had missed
+or mis-diagnosed, so 15 more rows were re-pointed with every target line re-read. Both are new
+pitfalls in `docs/superpowers/room-resolve-playbook.md`, alongside the `dispatch-invariant`
+recipe, the seven-category stayed-TODO taxonomy and R3's measured cost row.
+
+**Not done yet.** TASK-001 and TASK-002 both stay In Progress. What remains is T5 finalization
+only: the final-HEAD `rots64` leg, `make smoke-account` (mandatory — `do_cast`, `do_use`,
+`command_interpreter` and the `raw_kill`/`death_cry` path are all touched), the i386 battery, the
+six blocking CI jobs, the controller's one `--check`-derived lowering of `MAXIMUM_TODO_COUNT`
+585 → 579, and the dual adversarial whole-branch review. Merge is the owner's call.

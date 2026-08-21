@@ -35,15 +35,29 @@
 //     one-room ScopedTestWorld (test_world.h) because both read
 //     world[ch->in_room].room_flags (the same PEACEROOM check, verified
 //     identical in act_offe.cpp and clerics.cpp) before anything else.
-//   - do_stand/do_wake: their cheapest branches ARE a state mutation
-//     (GET_POS(ch) flips), so these assert on that field directly, no
-//     output capture needed. Both call act(..., TO_ROOM, ...) on the chosen
-//     branch; character.in_room = NOWHERE keeps that call a proven no-op
-//     (comm.cpp's act_impl() only walks world[] for TO_ROOM when
-//     ch->in_room != NOWHERE -- verified by reading act_impl(), the same
-//     precedent weapon_master_handler_tests.cpp's
-//     SwordProcRegainsEnergyWhenSlashProcSucceeds documents), so neither
-//     needs ScopedTestWorld.
+//   - do_stand/do_wake (and do_sit/do_rest/do_sleep below them): their
+//     cheapest branches ARE a state mutation (GET_POS(ch) flips), so these
+//     assert on that field directly, no output capture needed. Each calls
+//     act(..., TO_ROOM, ...) on the chosen branch.
+//
+// LOCATION FIXTURE, and why it changed (RR Wave R3 Task 1b). Those five
+// state-mutation pairs originally left the character at NOWHERE and needed
+// no ScopedTestWorld at all: comm.cpp's act_impl() only walks world[] for
+// TO_ROOM when the actor has a location, so the TO_ROOM half was a proven
+// no-op (the same precedent weapon_master_handler_tests.cpp's
+// SwordProcRegainsEnergyWhenSlashProcSucceeds documents). That was a
+// CONVENIENCE, not the property under test -- and issue_command() now
+// carries a dispatch-invariant tripwire (combat_hooks.cpp, owner ruling
+// R3-O-1) that refuses to dispatch an unplaced actor, so a NOWHERE fixture
+// would have quietly stopped exercising the very bodies these tests exist
+// to reach. All ten now stand up a one-room ScopedTestWorld and place the
+// character in room 0 -- exactly the fixture the do_hit/do_mental pairs
+// above already use. The TO_ROOM walk stays a no-op for a different, still
+// deterministic reason: ScopedTestWorld hands every test an empty room,
+// and set_location() does not link the character into the occupant chain,
+// so there is no recipient to render to. None of the five bodies reads the
+// room itself (verified by reading each in act_move.cpp), so nothing else
+// about their branches moves.
 #include "../combat_hooks.h"
 #include "../comm.h"
 #include "../db.h"
@@ -444,13 +458,15 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenGenComIsUnregistered)
 // unconditional `GET_POS(ch) = POSITION_STANDING` (character.specials.fighting
 // is null, so the non-fighting arm of that branch's inner if/else runs) -- a
 // real state mutation, distinct from a no-op default, that needs no output
-// capture. See this file's header comment for why NOWHERE keeps the
-// branch's act(..., TO_ROOM, ...) calls a safe no-op.
+// capture. See this file's header comment ("LOCATION FIXTURE") for why the
+// character is placed in an empty room 0 and why that keeps the branch's
+// act(..., TO_ROOM, ...) calls a safe no-op.
 
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoStandWhenRegistered)
 {
+    ScopedTestWorld test_world(1);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_SITTING;
     character.specials.fighting = nullptr;
 
@@ -463,9 +479,10 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoStandWhenRegistered)
 
 TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenStandIsUnregistered)
 {
+    ScopedTestWorld test_world(1);
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::stand);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_SITTING;
     character.specials.fighting = nullptr;
 
@@ -478,13 +495,14 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenStandIsUnregistered)
 
 // do_wake (act_move.cpp) -- DISCRIMINATOR: the empty-argument/already-asleep
 // branch's unconditional `GET_POS(ch) = POSITION_SITTING` -- another real
-// state mutation, same NOWHERE rationale as do_stand above (this branch
+// state mutation, same empty-room rationale as do_stand above (this branch
 // also fires an act(..., TO_ROOM, ...) call).
 
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoWakeWhenRegistered)
 {
+    ScopedTestWorld test_world(1);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_SLEEPING;
 
     rots::combat::issue_command(
@@ -496,9 +514,10 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoWakeWhenRegistered)
 
 TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWakeIsUnregistered)
 {
+    ScopedTestWorld test_world(1);
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::wake);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_SLEEPING;
 
     rots::combat::issue_command(
@@ -625,16 +644,18 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWearIsUnregistered)
 
 // do_sit/do_rest/do_sleep (act_move.cpp) -- DISCRIMINATOR: each one's
 // POSITION_STANDING case, the same state-mutation shape as do_stand/do_wake
-// above (GET_POS(ch) flips unconditionally; NOWHERE keeps each branch's
-// act(..., TO_ROOM, ...) calls a safe no-op, needing no ScopedTestWorld).
+// above (GET_POS(ch) flips unconditionally; an empty room 0 keeps each
+// branch's act(..., TO_ROOM, ...) calls a safe no-op -- see the header
+// comment's "LOCATION FIXTURE" note).
 // do_sleep's body also checks IS_RIDING(ch) before the switch -- false for
 // a zero-initialized character, so the switch is reached directly.
 // (behavior wave Task 2 gap-fill, see do_assist's comment above.)
 
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSitWhenRegistered)
 {
+    ScopedTestWorld test_world(1);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -646,9 +667,10 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSitWhenRegistered)
 
 TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSitIsUnregistered)
 {
+    ScopedTestWorld test_world(1);
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::sit);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -660,8 +682,9 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSitIsUnregistered)
 
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoRestWhenRegistered)
 {
+    ScopedTestWorld test_world(1);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -673,9 +696,10 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoRestWhenRegistered)
 
 TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenRestIsUnregistered)
 {
+    ScopedTestWorld test_world(1);
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::rest);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -687,8 +711,9 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenRestIsUnregistered)
 
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSleepWhenRegistered)
 {
+    ScopedTestWorld test_world(1);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -700,9 +725,10 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSleepWhenRegistered)
 
 TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSleepIsUnregistered)
 {
+    ScopedTestWorld test_world(1);
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::sleep);
     char_data character {};
-    set_location(&character, NOWHERE);
+    set_location(&character, 0);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(

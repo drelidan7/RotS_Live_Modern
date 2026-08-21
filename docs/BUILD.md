@@ -1496,9 +1496,17 @@ docs commit, not copied from a task report.
   here because `do_cast`, `do_use`, `command_interpreter` and `raw_kill`/`death_cry` are all
   touched. The i386 battery at `607c787d` is measured (ctest 1890 total / 0 failed / 7 skips;
   monolithic 1877 ran / 1853 passed / 24 skipped, exit 0; boot golden matches). **The T5-fix
-  round added production C++ (`do_use`'s two adjacency tripwires), so the `rots64` leg, the
-  smoke-account run, the i386 battery and the six blocking CI jobs are RE-RUN at the post-fix
-  HEAD; the controller fills those measurements in at T5 close, before merge.**
+  round added production C++ (`do_use`'s two adjacency tripwires), so every leg re-ran at the
+  production-final commit `b5158d15` and is measured there: `rots64` 0 warnings, 1894/1894,
+  boot golden matches; `make smoke-account` PASSED (full flow, host-side method above); i386
+  battery (`log/i386-battery/step1-20260821T211243Z.log` / `step2-20260821T214056Z.log` /
+  `step3-20260821T220757Z.log`): ctest 1894 total / 0 failed / 7 skips, monolithic 1881 ran /
+  1857 passed / 24 skipped, exit 0 (1894 − 1881 = 13 CMake-ctest-only checks; 24 − 17
+  `PerRace/ConvertEquivalence.*` = 7 both ways), boot golden matches. The T5-fix2 round
+  (`6f2ec99e`..`04ccc2d1`) is tool + ledger + docs only — `git diff --name-only
+  b5158d15..04ccc2d1 -- src/` is empty — so those legs certify the binary at HEAD (the LS-1
+  doc-only-after-battery precedent); macOS ctest 1894/1894 and all three censuses +
+  `--self-test` re-confirmed at `04ccc2d1`. The six blocking CI jobs are measured on the PR.**
 
 See `docs/superpowers/specs/2026-08-21-rr3-combat-design.md`'s as-built sections 5-11 for the
 per-task chain, the six deviations from that document's own plan, the 29-row/56-site stayed-`TODO`

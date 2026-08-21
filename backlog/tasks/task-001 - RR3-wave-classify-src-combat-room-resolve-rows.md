@@ -1,10 +1,10 @@
 ---
 id: TASK-001
 title: 'RR3 wave: classify src/combat/ room-resolve rows'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-19 02:06'
-updated_date: '2026-08-21 19:29'
+updated_date: '2026-08-21 22:30'
 labels: []
 milestone: m-0
 dependencies: []
@@ -28,9 +28,9 @@ Source: docs/superpowers/specs/2026-07-31-room-resolve-retirement-design.md and 
 <!-- AC:BEGIN -->
 - [x] #1 Task-0-style read-only mini-census of src/combat/ rows written before any classification, with advisory-overturn discipline (premises verified against code, not the census's own guesses)
 - [x] #2 Every in-scope row classified PROVEN/GUARDED or stayed-TODO with an enumerated reason in docs/superpowers/room-resolve-ledger.md; no medium-confidence proofs land
-- [ ] #3 MAXIMUM_TODO_COUNT lowered by the measured (--check-derived, not hand-computed) drained-site count
+- [x] #3 MAXIMUM_TODO_COUNT lowered by the measured (--check-derived, not hand-computed) drained-site count
 - [x] #4 Any GUARDED behavior change lands red-first-tested with boot goldens byte-identical before and after
-- [ ] #5 Standing gates green both hosts (macOS native + rots64), censuses exit 0; AGENTS.md/BUILD.md fold-ins and the playbook cost-table row updated
+- [x] #5 Standing gates green both hosts (macOS native + rots64), censuses exit 0; AGENTS.md/BUILD.md fold-ins and the playbook cost-table row updated
 <!-- AC:END -->
 
 ## Implementation Notes

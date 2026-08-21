@@ -1,10 +1,10 @@
 ---
 id: TASK-002
 title: ACMD-argument dispatch-pattern policy design
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-19 02:06'
-updated_date: '2026-08-21 19:29'
+updated_date: '2026-08-21 22:30'
 labels: []
 milestone: m-0
 dependencies: []
@@ -27,7 +27,7 @@ Source: owner ruling recorded in Wave R2 (see AGENTS.md's RR Wave R2 paragraph a
 <!-- AC:BEGIN -->
 - [x] #1 Dedicated mini-census enumerating the dispatch-pattern class tree-wide (not just the R2 leftovers)
 - [x] #2 Policy designed and owner-ruled: either a proof kind with a standing invariant test, or a recorded permanent disposition
-- [ ] #3 The R2-deferred 6 rows / 8 sites dispositioned under the new policy; ledger and MAXIMUM_TODO_COUNT updated accordingly
+- [x] #3 The R2-deferred 6 rows / 8 sites dispositioned under the new policy; ledger and MAXIMUM_TODO_COUNT updated accordingly
 <!-- AC:END -->
 
 ## Implementation Notes

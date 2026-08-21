@@ -82,3 +82,4 @@ proof, a guard, or a crash at the defect.
     can relocate the actor between guard and dispatch). The playbook's R2-derived projection
     that R2's 13% stayed-TODO rate was "very likely a floor" for combat is superseded by the
     measured 30%; its warning that the dispatch policy was a PREREQUISITE for R3 held exactly.
+- 2026-08-21 (close): all legs measured at `b5158d15` (macOS 1894/1894 + ASan, `rots64` 1894/1894, i386 battery 1894/0/7 with monolithic 1881/1857/24 reconciling, smoke-account PASSED); two review fix rounds closed every gating finding; TASK-001/TASK-002 Done at `04ccc2d1`. Merge pending owner.

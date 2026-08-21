@@ -186,3 +186,15 @@ only: the final-HEAD `rots64` leg, `make smoke-account` (mandatory — `do_cast`
 `command_interpreter` and the `raw_kill`/`death_cry` path are all touched), the i386 battery, the
 six blocking CI jobs, the controller's one `--check`-derived lowering of `MAXIMUM_TODO_COUNT`
 585 → 579, and the dual adversarial whole-branch review. Merge is the owner's call.
+
+## 2026-08-21 — RR Wave R3 closed (TASK-001 + TASK-002 Done)
+Finalization measured at the production-final commit `b5158d15` on all three hosts (macOS
+native, `rots64`, i386 battery — see AGENTS.md's RR Wave R3 chain entry) plus `make
+smoke-account`; the dual adversarial reviews (Opus, Fable) and a bounded re-verification each
+returned NOT-MERGE-SAFE on gate-closure findings, all closed in two fix rounds (`c57e6216`..
+`b5158d15` production+tool; `6f2ec99e`..`04ccc2d1` tool+docs only). Both tasks' acceptance
+criteria are met at `04ccc2d1`; the six CI jobs are measured on the PR, and merge is the
+owner's call. Follow-ups filed: TASK-018 (`spell_fireball` NPC self-fumble use-after-free);
+R4 design inputs recorded in the spec §11 (SPECIAL host not covered by the
+`activate_char_special` entry; the 7-key direct-door STOP inventory; `do_sense_magic`'s
+CON_PLYNG premise; the APPLY_SPELL-window rows bundled with RR-O-1).

@@ -3332,10 +3332,14 @@ deliberately: a literal of just `if (location_of(ch) == NOWHERE) {` is
 satisfied by ANY absence test anywhere in the function, so deleting the
 tripwire and leaving some unrelated NOWHERE check behind would pass. The
 full statement -- condition, `mudlog()` call, and the exit keyword, which
-differs per site (`return` / `return 0` / `continue`, and
-`command_interpreter`'s `} else {`, which refuses the dispatch without
-returning because its argument cleanup below is not optional) -- pins the
-whole shape. The globally unique message TEXT is the separate half of the
+differs per site (`return` / `return 0` / `continue`) -- pins the
+whole shape. (`command_interpreter`'s entry was an `if/else` refusal in Task
+1b, because at that placement -- immediately above the ACMD dispatch -- an
+early `return` would have skipped the parsed targets' cleanup. Task 1c moved
+the guard to the top of the position-check `else` block so it also dominates
+`target_parser`, whose `target_from_word` resolves `room_of(ch)`/`EXIT(ch, ..)`
+from the same actor (T3d finding O-2); nothing is parsed yet at that point, so
+the entry is now an ordinary `return`.) The globally unique message TEXT is the separate half of the
 contract: it is what R-final's measured-zero sweep greps for, and it lives
 in production, not here.
 

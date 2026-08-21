@@ -1084,6 +1084,44 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
         if (GET_POS(ch) < cmd_info[cmd].minimum_position)
             report_wrong_position(ch);
         else {
+            /* RR Wave R3 Task 1c (T3d finding O-2) -- the `dispatch-invariant`
+             * tripwire (owner ruling R3-O-1) for everything this block does.
+             * Task 1b originally placed it immediately above the ACMD dispatch
+             * below; that placement did not dominate `target_parser(ch, ...)`,
+             * which runs first and resolves rooms from the SAME `ch` inside
+             * `target_from_word` -- `room_of(ch)->contents` (the TAR_OBJ_ROOM
+             * arm, visibility.cpp:1123) and `EXIT(ch, tmp)` (the TAR_DIR_NAME
+             * arm, :1164). `room_of` is total and degrades silently to
+             * world[0], so an unplaced actor's target parse used to resolve
+             * against room 0 while the guard sat 40 lines downstream doing
+             * nothing about it. It now dominates the parse, the two special()
+             * calls, and the dispatch alike -- one guard, at the top of the
+             * only block that reads a room from `ch`.
+             * Why the block needs it at all: every `do_*` body reached from
+             * the dispatch below resolves rooms from `ch` without validating
+             * it; command_interpreter checks position (just above), never
+             * placement, and special()'s own NOWHERE rejection at :1331 is
+             * consumed as `may_not_perform |= special(...)` -- FALSE
+             * contributes nothing, so it has never protected a single ACMD
+             * body (dispatch census M-1). Census P7 found no live path
+             * delivering an unplaced actor here, so this is expected to be
+             * unreachable in production.
+             * A plain `return` releases nothing, unlike an early return from
+             * the old site would have: no target has been parsed yet.
+             * `interp_argument_info` is memset to 0 at the top of this
+             * function, so in `!mode` both of its targets are TARGET_NONE and
+             * the `targ1.cleanup()`/`targ2.cleanup()` pair below is a no-op
+             * (target_data::cleanup releases a pooled txt_block only for
+             * TARGET_TEXT); in `mode` that pair is skipped anyway and the
+             * caller owns its own waiting_type.
+             * The two shape_center bypasses at :987/:996 are deliberately NOT
+             * covered here -- shape_center carries its own registry entry. */
+            if (location_of(ch) == NOWHERE) {
+                mudlog("command_interpreter: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                    NRM, LEVEL_IMPL, TRUE);
+                return;
+            }
+
             may_not_perform = 0;
             if (!mode) { /* Parse the target into ch->delay */
                 argument_info->wait_value = 0;
@@ -1111,26 +1149,9 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
              */
 
             if (!may_not_perform) {
-                /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the
-                 * `dispatch-invariant` tripwire for the ACMD dispatch below.
-                 * Every `do_*` body reached from here resolves rooms from
-                 * `ch` without validating it; command_interpreter checks
-                 * position (above), never placement, and special()'s own
-                 * NOWHERE rejection at :1263 is consumed as `may_not_perform
-                 * |= special(...)` -- FALSE contributes nothing, so it has
-                 * never protected a single ACMD body (dispatch census M-1).
-                 * Census P7 found no live path delivering an unplaced actor
-                 * here, so this is expected to be unreachable in production.
-                 * It REFUSES the dispatch rather than returning, because the
-                 * targ1/targ2 cleanup below is not optional. */
-                if (location_of(ch) == NOWHERE) {
-                    mudlog("command_interpreter: dispatch refused for an unplaced actor (RR dispatch-invariant)",
-                        NRM, LEVEL_IMPL, TRUE);
-                } else {
-                    /* execute the command */
-                    ((*cmd_info[cmd].command_pointer)(ch, argument + begin + look_at, argument_info, cmd,
-                        mode ? subcmd : cmd_info[cmd].subcmd));
-                }
+                /* execute the command */
+                ((*cmd_info[cmd].command_pointer)(ch, argument + begin + look_at, argument_info, cmd,
+                    mode ? subcmd : cmd_info[cmd].subcmd));
             }
         }
         if (!mode) {

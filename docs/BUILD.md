@@ -1358,6 +1358,100 @@ measured account and `docs/superpowers/room-resolve-playbook.md` for the classif
 recipe (per-proof-kind worked examples, pitfalls, the `GUARDED` procedure, the
 stayed-TODO taxonomy) that R3+ (`src/combat/`, `src/script/`) reuses.
 
+**Wave R3 (`src/combat/` + the dispatch-pattern policy)** is the program's first wave to mint a
+proof KIND and the first whose classification work required production code changes to make its
+proofs true. Every figure below was re-derived from `parse_ledger()`/`ctest -N`/`git show` at the
+docs commit, not copied from a task report.
+
+- **The policy (owner ruling R3-O-1).** `PROOF_KINDS` gains a sixth entry, `dispatch-invariant`
+  (citation-required), for the pattern that dominates `src/combat/` and `src/script/`: a body
+  resolves the room of an actor it never validated because that actor arrived through a
+  dispatcher. The proof is that the DISPATCHER guards the actor. A row cites three mandatory
+  parts — the registry entry's specific guard line, the actor parameter BY NAME (ruling R3-C-5:
+  the tree's `location_of(A) == location_of(B)` equality tests all pass when BOTH are NOWHERE, so
+  a target-derived id is classified on its own merits), and the body's exhaustive direct-caller
+  list with every non-dispatcher door proven or the row split.
+- **The guards: 12 tripwire statements across 9 entry-point names.** All share the
+  `db_world.cpp:2083` idiom (`if (location_of(<actor>) == NOWHERE) { mudlog("<entry>: dispatch
+  refused for an unplaced actor (RR dispatch-invariant)", NRM, LEVEL_IMPL, TRUE); <exit>; }`) with
+  one globally unique message per entry NAME, so R-final's measured-zero sweep greps per entry and
+  is unaffected by the doubled statements: `command_interpreter` `src/app/interpre.cpp:1119`
+  (entry) **and** `:1175` (pre-dispatch, dispatch at `:1180`); `activate_char_special` `:1280`
+  (actor `victim`, NOT the host `character`); `activate_obj_special` `:1325`;
+  `rots::combat::issue_command` `src/combat/combat_hooks.cpp:81`; `do_cast`
+  `src/combat/spell_pa.cpp:499` (entry) **and** `:928` (pre-dispatch, dispatch at `:933`);
+  `do_use` `src/app/act_othe.cpp:806` (one guard dominating both the STAFF arm `:819` and the WAND
+  arm `:839`); `cast_mass_spell` `src/combat/mystic.cpp:1010` (entry) **and** `:1046` (per loop
+  iteration, `break`); `shape_center` `src/olc/shapemob.cpp:2374`; `mobile_activity`
+  `src/script/mobact.cpp:76` (`continue`, PC/virt arm only). Three entries carry two statements
+  because of ruling **R3-C-7**: a row inherits a guard only if nothing between it and the dispatch
+  can run code with the actor as a participant, and the structural way to satisfy that is
+  ADJACENCY. Zero live paths reach any of the twelve — measured, not assumed. T1b temporarily
+  rewrote all nine of its guards to `abort()` and rebuilt: the only failures in the whole
+  pre-existing suite were the `CombatHooksDispatch` fixtures that had been dispatching at NOWHERE
+  purely as a test convenience (re-placed in their own commit, `ae0c1c92`, landed before the
+  guards) — no other test in the tree reached any guard — and the native boot golden MATCHED under
+  that same abort build, so a real boot against real world data reaches none of them either. The
+  boot golden has stayed byte-identical at every commit since.
+- **The registry, and what closes it.** A marker-anchored
+  `<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->` table in `docs/superpowers/room-resolve-ledger.md`
+  lists all **12** entry points (9 with the new tripwires; `special`, `one_mobile_activity` and
+  `affect_update_room` as `GUARDED-PRIOR`), with `MINIMUM_DISPATCH_ENTRY_ROWS = 12` and zero
+  headroom. `--check` asserts two directions, the `check_registry_consistency` precedent:
+  DOWNWARD, every listed guard literal must still appear in that function's comment/string-MASKED
+  body (which is why the literals are written masked, `mudlog( , NRM, LEVEL_IMPL, TRUE);` — a
+  literal of just the `if` would be satisfied by any absence test in the function), and a
+  multi-literal cell requires EVERY literal, parsed structurally on the wrapping backticks because
+  `one_mobile_activity`'s single literal contains a real C `||` operator; UPWARD, every occurrence
+  of a pinned dispatch spelling must lie inside a registered entry.
+- **Tokens and pins.** `DISPATCH_SPELLING_TOKENS` is a **separate surface of 7**
+  (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`, `.spell_pointer(`,
+  `activate_char_special(`, `activate_obj_special(`, `shape_center(`) and does **not** count
+  toward the resolver-token surface, which stays at **17** — R3 added no resolver token.
+  File-scope occurrences are skipped (declarations and definition heads) and exactly two real
+  sites are pinned in `DISPATCH_TOKEN_EXEMPT_SITES`: `combat_hooks.cpp:56`'s registration WRITE,
+  and `affect_modify`'s APPLY_SPELL arm (`entity_lifecycle.cpp:2440`/`:2442`), which is
+  DELIBERATELY not an entry — it runs at NOWHERE by design in the login/rent-load window, so a
+  tripwire there would fire on every login of a character carrying an `APPLY_SPELL` affect.
+  Separately, `PINNED_CALLER_COUNTS` pins the tree-wide production caller counts of
+  `CAN_SEE(` (**86**) and `get_char_room_vis(` (**41**) — owner ruling R3-O-3's deliberate
+  deviation, since pinning those NAMES as tokens would have minted ~127 rows and raised the
+  ceiling by the same amount for zero proof value. `--self-test` grew **28 → 52** named
+  directions (44 at T1a, +8 at T1d for the multi-literal grammar).
+- **The ceiling chain, every step `--check`-derived.** **716 → 717** (T1a, ruling R3-C-3 reopens
+  the `report_zone_power` row, whose Wave R2 proof enumerated "the SOLE FOUR"
+  `skills[].spell_pointer` doors when there are six) → **636** (integration after T2p+T3p) →
+  **585** (integration after T2d+T3d). At the docs commit the `--check`-derived TODO site-sum is
+  **579** (T1c −1, T3e −5) with `MAXIMUM_TODO_COUNT` still 585; the controller lowers it once at
+  finalization. **138 sites drained**: 130 in `src/combat/` (95 rows / 186 sites in scope, 100
+  rows after five mixed-class splits, 29 rows / 56 sites still `TODO`), 5 in `src/olc/` (the four
+  R2-deferred rows, taking that tier to zero `TODO`) and 3 in `src/world/weather.cpp` (the two
+  R2-deferred `weather_to_char` rows, ruling R3-C-4). Ledger classes move **TODO 271/716 →
+  200/579**, **PROVEN 38/83 → 111/215**, **GUARDED 1/3 → 4/8**; `dispatch-invariant` alone carries
+  **30 rows / 56 sites**, immediately the second-largest kind after `entry-guard` (45/85).
+- **ctest 1865 → 1890 (+25)**, not 1862 → : Wave R1's own 1862 measurement predates three tests
+  that entered master afterwards, and the wave spec's header carried the stale figure. T1b +18
+  (one unplaced/placed pair per entry point), T2p +1 (`spell_blink`'s `GUARDED` fix), T3p +2 (the
+  `raw_kill`-rooted `death_cry`/`get_corpse_desc` `GUARDED` pair), T1c +1 (the guard-dominates-
+  `target_parser` test), T1d +3 (one adjacency test per new tripwire). Skips **76** (macOS)
+  throughout.
+- **Gates.** Per this wave's cadence, macOS-native at every commit: build clean, `ctest --preset
+  macos-arm64`, `room_resolve_census.py --check`/`--self-test`, `location_read_census.py --check`,
+  `string_view_census.py --check`, and the native boot golden (byte-identical at every commit —
+  the guards are unreachable on every live path). ASan at every task that touched a test file
+  (T1b, T2p, T3p, T1c, T1d) and the seed42 characterization golden unchanged throughout. The
+  `rots64` container leg ran at the T2p/T3p integration commit (`f4336565`: 0 warnings,
+  1886/1886, boot golden matches). **`make smoke-account` is OWED and NOT YET RUN** — `do_cast`,
+  `do_use`, `command_interpreter` and `raw_kill`/`death_cry` are all touched — as are the final-HEAD
+  `rots64` leg, the i386 battery and the six blocking CI jobs; all four run once at T5
+  finalization, before the dual adversarial whole-branch review.
+
+See `docs/superpowers/specs/2026-08-21-rr3-combat-design.md`'s as-built sections 5-11 for the
+per-task chain, the six deviations from that document's own plan, the 29-row/56-site stayed-`TODO`
+inventory by category, and the five recorded design inputs for R4 (chief among them: a SPECIAL
+**host** is never covered by the `activate_char_special` entry, which guards `victim` — one guard
+on `SPECIAL(shop_keeper)`'s host would drain 3 rows / 10 sites).
+
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
 Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling

@@ -4720,7 +4720,28 @@ directions over it, the same bidirectional shape
   `g_command_table`), and the SPECIAL fn-ptr slots the tree already dispatches
   through (`.func)(`, `->func)(`, `.funct)(`, `->funct)(`,
   `mob_index[].func`, `obj_index[].func`). Each of the six added shapes was a
-  demonstrated evasion in one or both whole-branch reviews. A file-scope
+  demonstrated evasion in one or both whole-branch reviews. The Task 5-fix2
+  round took it to **twenty-six**: the two member-CALL forms
+  (`mob_index[].func(`, `obj_index[].func(`) split out of the address-read
+  tokens above, and the five SPECIAL-body doors the tree already uses in
+  production that no earlier spelling named (`virt_program_number(`,
+  `virt_obj_program_number(`, `dispatch_virt_program_number(`,
+  `get_special_function(`, `intelligent(`).
+
+**The spelling set is itself pinned, in both directions.** Listing the
+spellings in prose is not a closure: the re-verification showed that 13 of
+the 19 could be DELETED from `DISPATCH_SPELLING_TOKENS` with `--check` AND
+`--self-test` both staying green, because only the six some hermetic
+direction happened to exercise were pinned at all. The full set now lives in
+a marker-anchored table at the end of this file
+(`<!-- ROOM-RESOLVE-DISPATCH-SPELLINGS -->`, the same M10 rule the other
+tables follow), and `--check` compares it to the script's constant in BOTH
+directions -- a token the code scans for but the table does not declare, and
+a spelling the table declares but the code no longer scans for, are each an
+error. `MINIMUM_DISPATCH_SPELLING_ROWS` (self-test-pinned as a literal, the
+`MINIMUM_SCANNED_FILE_COUNT` discipline) is what makes deleting both sides in
+one edit cost a third, self-test-reddening edit. Measured after the change:
+all 26 single-token deletions redden both gates. A file-scope
   occurrence is admitted only when it sits at brace depth 0 on its own line --
   a declaration, a definition head or a brace-init definition; an occurrence
   inside braces on a file-scope line is a ONE-LINE function body (the other
@@ -4823,26 +4844,66 @@ ruling R3-O-2). The original companion exemption is
 `src/combat/combat_hooks.cpp:56`'s `g_command_table[i] = handler;` -- a
 registration WRITE, at which no actor exists at all.
 
-**The Task 5-fix exemptions.** Widening the token surface to catch
+**The exemptions, and their census.** Widening the token surface to catch
 address-reads (above) necessarily surfaces every ordinary presence TEST,
 comparison and registration WRITE of the same fn-ptr slots. Each is
 dispositioned in `DISPATCH_TOKEN_EXEMPT_SITES`, once per
-`(file, function, token)` key, with a one-line reason: nine registration
-writes (the `COMMANDO`/`ASSIGNMOB`/`ASSIGNOBJ` families, `assign_spell_pointers`,
-`assign_command_pointers`, `load_mobiles`/`load_objects`) and eleven presence
-tests or comparisons. The key includes the TOKEN, so exempting a function's
-address-reads does not exempt a real call newly added to it.
+`(file, function, token)` key, carrying an occurrence COUNT, a
+closed-vocabulary CATEGORY and a one-line reason. **The census is
+re-derivable by importing the module** -- `len(DISPATCH_TOKEN_EXEMPT_SITES)`
+and a `Counter` over the category field -- and is stated the same way here,
+in `AGENTS.md` and in `docs/BUILD.md` because it used to be stated four
+different ways with no figure right (re-verification M-1): **32** keys =
+**1** design exclusion (`affect_modify`'s APPLY_SPELL arm) + **10**
+registration WRITEs (the `COMMANDO`/`ASSIGNMOB`/`ASSIGNOBJ` families,
+`assign_spell_pointers`, `assign_command_pointers`,
+`load_mobiles`/`load_objects`, `set_combat_command`) + **2** registration
+LOOKUPs (`virt_assignmob`/`virt_assignobj` fetching a spec-proc address for
+the `ASSIGNREAL*` macro on the next line) + **12** presence tests or
+comparisons + **7** STOPs.
 
-**Three exemptions are STOPs, not category errors** -- the direct SPECIAL
-doors review-1's B-3 named: `src/app/comm.cpp:2829`/`:2830`
-(`complete_delay_impl`'s `(*mob_index[ch->nr].func)(...)`) and
-`src/app/delayed_command_interpreter.cpp:45` (`func_pointer =
-mob_index[index].func;`, called at `:47`). Both really do dispatch a spec proc
-with an actor nothing on that path validated. They are NOT registered, because
-a registry row asserts the entry HAS a guard and Wave R3 lands none for them;
-they are R4 design input, alongside `src/app/shop.cpp`'s direct ACMD host
+**The COUNT is part of the pin, and the count is what closes the key.** This
+paragraph used to claim that "the key includes the TOKEN, so exempting a
+function's address-reads does not exempt a real call newly added to it". That
+was false as written, twice over, and both halves are now fixed rather than
+reworded (re-verification BLOCKER B-1). A member call
+(`mob_index[ch->nr].func(...)`) carried the SAME token as the presence test
+`if (mob_index[ch->nr].func)`, so the exemption really did cover a real
+dispatch -- demonstrated at `--check` exit 0 inside `do_block` and
+`load_mobiles`; the call forms are separate tokens now. And where the
+exemption legitimately covers real CALLS -- `affect_modify`'s two
+`.spell_pointer(` sites -- a third arm added beside them would have been
+absorbed silently; the pinned count is what makes it surface. `--check` fails
+closed on drift in either direction, and a key that matches nothing at all is
+a STALE-KEY error rather than a silent no-op (re-verification m-1: a
+pre-planted key for a function that did not exist used to pass, and so did
+creating that function later with a real unguarded dispatch inside it).
+
+**Seven exemptions are STOPs, not category errors** -- the direct SPECIAL
+doors review-1's B-3 named, now inventoried in full. There are TWO such
+functions and SIX dispatch arms between them:
+
+- `src/app/comm.cpp` `complete_delay_impl` -- `(*mob_index[ch->nr].func)(...)`
+  at `:2830` behind its presence test at `:2829`; `tmpfunc =
+  (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);` at `:2832`
+  called at `:2833`; and `intelligent(ch, 0, -1, ..., SPECIAL_DELAY, ...)` at
+  `:2835`.
+- `src/app/delayed_command_interpreter.cpp`
+  `game_types::delayed_command_interpreter::run` -- `func_pointer =
+  mob_index[index].func;` at `:45` called at `:47`; `func_pointer =
+  get_special_function(function_number);` at `:50` called at `:51`; and
+  `intelligent(m_character, victim, -1, ..., SPECIAL_DELAY, delay)` at `:53`.
+
+Every one of the six dispatches a spec proc with an actor nothing on that
+path validated. The Task 5-fix round recorded each FUNCTION by its
+`mob_index[].func` arm alone, which left two thirds of the real doors
+unnamed in a list that ships as R4 DESIGN INPUT -- a defect in the
+deliverable, not only in the gate (re-verification M-5). They are NOT
+registered, because a registry row asserts the entry HAS a guard and Wave R3
+lands none for them; they are R4 design input, alongside
+`src/app/shop.cpp`'s direct ACMD host
 calls, which are plain calls rather than dispatch spellings and are already
-recorded there. No Wave R3 row cites either of them.
+recorded there. No Wave R3 row cites any of them.
 
 ## Caller-count pins (R3-O-3)
 
@@ -4979,16 +5040,28 @@ callee name and its `(` on two different physical lines, e.g.
 shape (`grep -rnE "room_of\\s*$" src --include="*.cpp"`) found **zero
 matches** at this commit -- the shape does not exist in production today.
 
-**The same limit applies to `DISPATCH_SPELLING_TOKENS`**, and review-1's E2
-probe demonstrated it: `cmd_info[5].command_pointer)` on one physical line
-with its `(ch, ...)` on the next defeats every dispatch spelling, exactly as
-it defeats every resolver token. So does a slot copy taken in an expression
-position none of the pinned spellings names (`helper(cmd_info[5].command_pointer)`
-reads the address with a `)` after it, which the bare-identifier patterns
-exclude because that is also how every presence test is written). These are
-the residual limits of a line-based gate, recorded rather than papered over --
-and the reason the closure paragraph above says citation part (iii), not the
-token check, is what actually closes a `dispatch-invariant` row.
+**The limit applies to `DISPATCH_SPELLING_TOKENS` too, but NOT in the two
+places this note used to claim** (re-verification m-2, which measured both).
+Review-1's E2 probe -- `cmd_info[5].command_pointer)` on one physical line
+with its `(ch, ...)` on the next -- is CAUGHT, and so is a slot copy taken in
+an expression position (`helper(cmd_info[5].command_pointer)`): the
+bare-identifier patterns exclude only the `(`, `[` and `)(` spellings, so a
+name followed by a lone `)` still matches. Both were shipped as "documented
+residual limits" here and in `docs/BUILD.md` while being no such thing.
+
+The residual that IS real is the NAME-form tokens. Eight spellings match only
+a name immediately followed by `(` on one physical line --
+`activate_char_special(`, `activate_obj_special(`, `shape_center(`,
+`virt_program_number(`, `virt_obj_program_number(`,
+`dispatch_virt_program_number(`, `get_special_function(`, `intelligent(` --
+and unlike the slot spellings they have no bare-identifier twin. So a
+genuinely split spelling (`activate_char_special` and its `(` on two lines)
+and an ADDRESS-OF read called later through the copy
+(`auto f = &activate_char_special;`) are both invisible to them. Minting the
+bare twins would cost an exemption for every declaration and definition head,
+which is why this is recorded rather than closed -- and why the closure
+paragraph above says citation part (iii), not the token check, is what
+actually closes a `dispatch-invariant` row.
 
 ## An `LS1-ALLOW` annotation is NOT a proof
 
@@ -5053,6 +5126,41 @@ later (review-1 F-5/F-6/F-7/W-12):
   contiguously, so for those two the substring check *is* an ordering check
   (moving either guard below its dispatch fails `--check`). Extending that
   shape to the other entries is R4 work.
+- **Never-true `#if` regions are recognized by CONSTANT spellings only.** A
+  guard wrapped in `#if 0` is blanked before either check reads the text, so
+  compiling a registered guard out fails `--check` rather than passing it
+  silently -- and the Task 5-fix2 round widened that from the literal
+  `#if 0` to the never-true constant forms the re-verification demonstrated
+  (`#if 00`, `#if (0)`, `#if 0L`, `#if !1`, `#if 1 - 1`, `#if 0 - 0`,
+  whitespace-tolerant, parentheses peeled). **`#ifdef ROTS_NEVER_DEFINED` and
+  `#if defined(ROTS_NEVER)` cannot be decided textually at all** -- whether
+  they are never-true depends on what the translation unit defined, which
+  only a preprocessor knows -- so a guard hidden behind one of those is still
+  `--check` exit 0. That is the residual: it is caught by review and by the
+  per-entry discriminator tests, not by this gate. The tree has zero
+  `#if`-disabled regions today.
+- **The brace-depth-0 rule is a heuristic, and it is wrong in both
+  directions** (re-verification M-7). A file-scope occurrence is admitted
+  only when it sits at brace depth 0 on its own physical line, because a
+  declaration, a wrapped definition header, a struct-member fn-ptr and a
+  brace-init definition all read their token there, while a ONE-LINE function
+  definition puts its body at depth >= 1. Two consequences are recorded
+  rather than fixed:
+  - *It admits executable code.* A namespace-scope DYNAMIC INITIALIZER reads
+    its token at depth 0 (`int g_x = ((*cmd_info[5].command_pointer)(...), 0);`
+    and `int g_v = CAN_SEE(a, b);` both pass), and both run at static-init
+    time. Implausible style for this tree, which is why it is disclosed
+    rather than closed.
+  - *It rejects ordinary declarations.* A ONE-LINE `struct`/`namespace`
+    declaration of a slot named `command_pointer`/`spell_pointer` puts its
+    token inside braces on a file-scope line and is reported as a one-line
+    function body; so is a PARAMETER or LOCAL named like one of the
+    bare-identifier tokens in any unregistered function. The fix in both
+    cases is to split the declaration across lines -- which the tree's own
+    formatter already does -- and the error message says so.
+  Tightening either half needs real brace-context tracking (a nesting stack
+  that knows namespace/struct/function scope), which is a scanner rewrite,
+  not a cheap self-tested change; the gate deliberately stays line-based.
 - **Recorded scan-scope limits.** The scan is `<root>/src` only (via
   `_resolve_scan_targets`'s default) -- nothing outside `src/` is ever
   scanned or can carry a ledger row. `collect_define_bodies` keeps

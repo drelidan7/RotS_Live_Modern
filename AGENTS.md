@@ -181,47 +181,70 @@
   lie inside a registered entry. **What actually closes a row is mandatory citation part
   (iii)** — its exhaustive direct-caller list, read by a human. The upward check is a
   LINE-BASED BACKSTOP over that, not a proof that no eighth dispatcher exists: both
-  whole-branch reviews demonstrated re-spellings that evaded the original token set, and
-  two residual limits (a call split across two physical lines at the `)`/`(` boundary; a
-  slot address read in an expression shape none of the patterns names) remain, recorded in
-  the ledger's "line-split-call note". Read the claim as "a new dispatcher written in one
+  whole-branch reviews demonstrated re-spellings that evaded the original token set, and a
+  residual limit remains, recorded in the ledger's "line-split-call note": the NAME-form
+  tokens (`activate_char_special(` and its seven siblings) have no bare-identifier twin, so
+  a call split across two physical lines at the name/`(` boundary, or an address-of read
+  called later through a copy, is invisible to them. (The two limits this bullet used to
+  name — review-1's E2 line-split and an expression-position slot read — are in fact CAUGHT
+  by the bare-identifier tokens, which exclude only the `(`, `[` and `)(` call spellings;
+  re-verification m-2.) Read the claim as "a new dispatcher written in one
   of the pinned spellings is a build failure". **On the token surface, precisely:** the
   dispatch spellings live in their own constant, `DISPATCH_SPELLING_TOKENS`, and are
-  **19** after the Task 5-fix widening (7 as first landed: `command_pointer)(`,
+  **26** after the Task 5-fix and 5-fix2 widenings (7 as first landed: `command_pointer)(`,
   `g_command_table[`, `spell_pointer)(`, `.spell_pointer(`, `activate_char_special(`,
   `activate_obj_special(`, `shape_center(`; plus the member-call forms
   `->spell_pointer(`/`->command_pointer(`/`.command_pointer(`, the bare address-read forms
   `command_pointer`/`spell_pointer`/`g_command_table` a hoisted copy or table alias
   produces, and the SPECIAL fn-ptr slots `.func)(`/`->func)(`/`.funct)(`/`->funct)(`/
-  `mob_index[].func`/`obj_index[].func`) — and they do **NOT**
+  `mob_index[].func`/`obj_index[].func`; plus the Task 5-fix2 additions — the member-CALL
+  forms `mob_index[].func(`/`obj_index[].func(`, split out of the two address-read tokens
+  because sharing one token let a presence-test exemption admit a real dispatch, and the
+  five SPECIAL-body doors the tree already uses and no earlier spelling named:
+  `virt_program_number(`, `virt_obj_program_number(`, `dispatch_virt_program_number(`,
+  `get_special_function(`, `intelligent(`). The whole set is mirrored into the ledger's
+  marker-anchored `<!-- ROOM-RESOLVE-DISPATCH-SPELLINGS -->` table and cross-checked in
+  both directions with a self-test-pinned row floor, so a token silently dropped from the
+  code fails `--check` — before Task 5-fix2, 13 of the 19 could be deleted with both gates
+  green. They do **NOT**
   count toward the resolver-token surface described above, which R3 leaves at **17**
   (`token_patterns()` is unchanged; verified by running it at both the wave base and
   HEAD). A file-scope occurrence is admitted only at brace depth 0 (a declaration or
   definition head); inside braces on a file-scope line it is a one-line function body and
   an ERROR — review-1's demonstrated bypass of both this check and the caller pin.
-  **24** real dispatch sites are pinned as reviewed exemptions in
-  `DISPATCH_TOKEN_EXEMPT_SITES` (the `RESOLVER_IMPL_KEYS` discipline), each with a
-  one-line reason: the original two —
+  **32** real sites carrying a pinned spelling are pinned as reviewed exemptions in
+  `DISPATCH_TOKEN_EXEMPT_SITES` (the `RESOLVER_IMPL_KEYS` discipline), each with an
+  OCCURRENCE COUNT, a closed-vocabulary category and a one-line reason — the census is
+  re-derived by importing the module (`len(...)` and a `Counter` over the category field),
+  not counted by hand. **1** design exclusion, **10** registration WRITEs, **2**
+  registration LOOKUPs, **12** presence tests/comparisons, **7** load-bearing STOPs. The
+  count is part of the pin: `--check` fails on drift in either direction, and a key that
+  matches nothing at all is a stale-key error (before Task 5-fix2 an extra occurrence under
+  an exempted key was invisible, and a key for a function that did not exist passed).
+  The two originals were —
   `combat_hooks.cpp:56`'s `g_command_table[i] = handler;` registration WRITE, at which no
   actor exists, and `affect_modify`'s APPLY_SPELL arm
   (`entity_lifecycle.cpp:2440`/`:2442`), which is deliberately NOT an entry because it
   runs at NOWHERE by design inside the login/rent-load window — a tripwire there would
   fire on every login of a character carrying an `APPLY_SPELL` affect, so the rows
   reachable through it stay `TODO` under the new `APPLY_SPELL-window` category (owner
-  ruling R3-O-2) — plus nine registration WRITEs, ten presence tests/comparisons the
-  widened tokens surface, and **three load-bearing STOPs**: the direct SPECIAL doors at
-  `comm.cpp:2829`/`:2830` (`complete_delay_impl`) and
-  `delayed_command_interpreter.cpp:45` (`game_types::delayed_command_interpreter::run`),
+  ruling R3-O-2). The **7 STOPs** are the two direct-door functions' SIX dispatch arms:
+  `complete_delay_impl` (`comm.cpp:2829`/`:2830`, `:2832`/`:2833`, `:2835`) and
+  `game_types::delayed_command_interpreter::run`
+  (`delayed_command_interpreter.cpp:45`/`:47`, `:50`/`:51`, `:53`),
   which really do dispatch a spec proc with an unvalidated actor and are R4 design input,
-  not registered entries. There is no exempt registry STATUS: `PENDING-T1b` was retired at
+  not registered entries. Task 5-fix2 completed that inventory: the Task 5-fix round had
+  recorded each function by its `mob_index[].func` arm ALONE, leaving the
+  `store_prog_number` and `special_prog_number` arms of both unnamed. There is no exempt registry STATUS: `PENDING-T1b` was retired at
   the Task 5-fix round after both reviews demonstrated it licensing an unguarded
   dispatcher at exit 0. A **third** new pin, `PINNED_CALLER_COUNTS`, carries the tree-wide
   production caller counts of `CAN_SEE(` (**86**) and `get_char_room_vis(` (**41**) and
   fails `--check` on drift in EITHER direction — owner ruling R3-O-3's deliberate
   deviation, since pinning those two NAMES as scanned tokens would have minted roughly
   127 new ledger rows and raised the ceiling by the same amount for zero proof value.
-  `--self-test` grew **28 → 63** named directions (44 at Task 1a, +8 at Task 1d for the
-  multi-literal grammar, +11 at Task 5-fix for the two reviews' demonstrated evasions),
+  `--self-test` grew **28 → 76** named directions (44 at Task 1a, +8 at Task 1d for the
+  multi-literal grammar, +11 at Task 5-fix for the two reviews' demonstrated evasions, +13
+  at Task 5-fix2 for the re-verification's),
   measured as calls to
   `run_case`/`expect_parse_ledger_systemexit`/`run_dispatch_case`/`run_caller_case` inside
   `run_self_test` (re-derivable by counting those four call sites; the script contains
@@ -242,7 +265,8 @@
   (`mage.cpp:944`'s `!fail` term in `spell_blink`; `fight.cpp:927` in `death_cry` and
   `fight.cpp:567` in `get_corpse_desc`, the `raw_kill`-rooted pair), each red-first with
   an in-body positive control. The Task 5-fix round added **two more tripwire statements**
-  (14 across the same 9 names): `do_use`'s two R3-C-7 ADJACENCY tripwires immediately
+  (**14** across the same **9** names, re-derived by grepping the message string at HEAD:
+  four entries now carry two or more): `do_use`'s two R3-C-7 ADJACENCY tripwires immediately
   before its ITEM_STAFF and ITEM_WAND `spell_pointer` dispatches, whose registry literals
   quote guard-and-dispatch contiguously and so make that one entry's guard ORDER
   mechanically checked — the only such witness in the registry (review-1 M-4, review-2

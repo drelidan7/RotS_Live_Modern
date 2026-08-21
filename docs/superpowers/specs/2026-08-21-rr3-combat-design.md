@@ -331,18 +331,25 @@ not close.
    `keeper = host;` (`:555`). `shop_keeper` has no guard of its own. **Cost/benefit measured:
    one guard on `shop_keeper`'s host would drain 3 rows / 10 sites** (`find_door` +
    `generic_find` + `get_obj_vis`) — the cheapest remaining ratio in this tier.
-2. **M-4's direct doors bypass both SPECIAL invokers.**
-   `rots::app::delayed_command_interpreter::run` reads `mob_index[index].func`
-   (`delayed_command_interpreter.cpp:45`) and calls it at `:46` and `:51` with
-   `m_character` as the host and `victim = NULL` — never routing through
-   `activate_char_special` at all (`intelligent(...)` at `:53` is a third arm of the same
-   shape). Any R4 policy for spec-proc bodies has to name this door explicitly.
-   `src/app/comm.cpp:2829`/`:2830` (`complete_delay_impl`'s
-   `(*mob_index[ch->nr].func)(...)`) is a second door of the same class, found by the Task
-   5-fix token widening. Both are now VISIBLE to the gate rather than invisible to it: they
-   carry pinned entries in `DISPATCH_TOKEN_EXEMPT_SITES` whose reason text reads "M-4 direct
+2. **M-4's direct doors bypass both SPECIAL invokers — TWO functions, SIX arms.**
+   `game_types::delayed_command_interpreter::run` dispatches a spec-proc body three ways,
+   always with `m_character` as the host and `victim = NULL`, never routing through
+   `activate_char_special` at all: the fn-ptr read at `delayed_command_interpreter.cpp:45`
+   and called at `:47`; the `get_special_function(function_number)` lookup at `:50` called
+   at `:51`; and `intelligent(...)` at `:53`. `complete_delay_impl`
+   (`src/app/comm.cpp`) is the same class, also three ways: `(*mob_index[ch->nr].func)(...)`
+   at `:2830` behind its `:2829` presence test, the `virt_program_number(...)` lookup at
+   `:2832` called at `:2833`, and `intelligent(...)` at `:2835`. Any R4 policy for spec-proc
+   bodies has to name every one of them. All six are now VISIBLE to the gate rather than
+   invisible to it: they
+   carry seven pinned keys in `DISPATCH_TOKEN_EXEMPT_SITES` (category `STOP`) whose reason
+   text reads "M-4 direct
    door, R4 design input", so a reviewer meets them in the script instead of having to
    rediscover them. Registering them instead would assert they have a guard; R3 wrote none.
+   **Recorded correction (Task 5-fix2, re-verification M-5):** the Task 5-fix round named
+   each function by its `mob_index[].func` arm alone — the `store_prog_number` and
+   `special_prog_number` arms of both, four dispatches in total, were unnamed here and
+   untokened by the gate until this round.
 3. **`do_sense_magic`'s CON_PLYNG premise.** `spell_pa.cpp:132`'s two sites read
    `character = player->character` for every `CON_PLYNG` descriptor in
    `get_descriptor_list_head()`'s list. "A `CON_PLYNG` descriptor has a placed character" is

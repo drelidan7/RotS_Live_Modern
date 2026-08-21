@@ -211,10 +211,17 @@ dispatch-entry registry in `docs/superpowers/room-resolve-ledger.md`, and
 `tools/room_resolve_census.py --check` asserts both directions over it (every
 registered guard literal must still be present in that function's masked body;
 every occurrence of a pinned dispatch spelling must lie inside a registered
-entry). Both directions are LINE-BASED, so a call split across two physical
-lines at the `)`/`(` boundary, and a fn-ptr address read in an expression shape
-no pattern names, both slip past — R3's own dual whole-branch review
-demonstrated six such spellings and the gate was widened to catch them, which
+entry). Both directions are LINE-BASED, and the review-fix rounds measured
+exactly where that bites: a slot spelling split across two physical lines, or
+read in an expression position, IS caught (the bare-identifier tokens exclude
+only the `(`, `[` and `)(` call forms), but the eight NAME-form tokens
+(`activate_char_special(` and its siblings) have no bare twin, so a split
+spelling or an address-of read called later through a copy slips past them.
+So does a guard compiled out by `#ifdef ROTS_NEVER` — the gate blanks
+never-true CONSTANT `#if` conditions (`0`, `00`, `(0)`, `0L`, `!1`, `1 - 1`,
+`0 - 0`) but cannot decide an identifier one without a preprocessor. R3's own
+dual whole-branch review and its re-verification demonstrated eleven evading
+spellings between them and the gate was widened each time, which
 is precisely the evidence for treating it as a backstop. Read the ledger's own
 "`dispatch-invariant` proofs and the dispatch-entry registry" section before
 writing one of these rows — this playbook records the recipe, that section is
@@ -915,19 +922,30 @@ For **R4 (`src/script/`, ~44 rows / 118 sites)**, R3's measurements say:
   `do_use` itself, whose two T5-fix literals quote guard-and-dispatch
   contiguously so the substring check doubles as an ordering check. Copy that
   shape when you add an entry, and lean on the per-entry TESTS for the rest.
-- **Three direct SPECIAL doors are R4's, exempted rather than registered.**
-  `src/app/comm.cpp:2829`/`:2830` (`complete_delay_impl`'s
-  `(*mob_index[ch->nr].func)(...)`) and
-  `src/app/delayed_command_interpreter.cpp:45` (the hoisted-copy shape) each
-  dispatch a spec proc with an actor nothing validated. They carry pinned
-  reasons in `DISPATCH_TOKEN_EXEMPT_SITES` reading "M-4 direct door, R4 design
-  input"; registering them means writing a guard, which R3 did not.
+- **TWO direct-door functions, SIX dispatch arms, are R4's — exempted rather
+  than registered.** `complete_delay_impl` (`src/app/comm.cpp`) dispatches at
+  `:2830` (`(*mob_index[ch->nr].func)(...)`, behind its `:2829` presence
+  test), at `:2833` (through the `virt_program_number(...)` address fetched at
+  `:2832`) and at `:2835` (`intelligent(...)`);
+  `game_types::delayed_command_interpreter::run`
+  (`src/app/delayed_command_interpreter.cpp`) does the same three ways at
+  `:47` (address fetched at `:45`), `:51` (address fetched by
+  `get_special_function(...)` at `:50`) and `:53` (`intelligent(...)`). Every
+  one hands a spec-proc body an actor nothing validated. They carry seven
+  pinned keys in `DISPATCH_TOKEN_EXEMPT_SITES` reading "M-4 direct door, R4
+  design input"; registering them means writing a guard, which R3 did not.
+  **The Task 5-fix round listed each function by its `mob_index[].func` arm
+  ALONE** — two thirds of the real doors were missing from a list that ships
+  as R4 design input, which the re-verification's M-5 caught and Task 5-fix2
+  completed. When you inherit this list, re-derive it from the gate
+  (`DISPATCH_TOKEN_EXEMPT_SITES` filtered to `category == "STOP"`), never
+  from prose.
 - **The known gap is the SPECIAL host.** `activate_char_special`'s tripwire
   guards `victim`, not `character`, and `src/app/shop.cpp`'s
   `SPECIAL(shop_keeper)` calls four ACMD bodies directly with a HOST. R3
   measured the fix at **one guard for 3 rows / 10 sites** — the cheapest
   remaining ratio in that tier, and squarely R4/app-tier shaped.
-  `delayed_command_interpreter.cpp:46`/`:51` is a second host-passing door that
+  `delayed_command_interpreter.cpp:47`/`:51` is a second host-passing door that
   bypasses both SPECIAL invokers entirely.
 - Expect the `APPLY_SPELL-window` and `intervening-relocation` categories to
   recur, and expect the same advisory overturn rate: `src/script/` is

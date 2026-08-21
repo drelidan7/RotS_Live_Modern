@@ -56,9 +56,11 @@ proof, a guard, or a crash at the defect.
   re-derived from the tool and the ledger rather than from any task report:
   - **Policy.** Owner ruling R3-O-1 adopted `dispatch-invariant`, the program's sixth proof kind
     and the first whose evidence lives entirely outside the row's own function: the DISPATCHER
-    guards the actor. 12 tripwire statements across 9 entry-point names, closed by a 12-row
-    dispatch-entry registry the gate checks in two directions, 18 standing discriminator tests
-    (one unplaced/placed pair per entry) and 24 new self-test directions (28 → 52).
+    guards the actor. 14 tripwire statements across 9 entry-point names (12 as the wave first
+    landed; the Task 5-fix round added `do_use`'s two R3-C-7 adjacency tripwires), closed by a
+    12-row dispatch-entry registry the gate checks in two directions, 18 standing discriminator
+    tests (one unplaced/placed pair per entry) and 24 new self-test directions at the time
+    (28 → 52; the two review-fix rounds took it to 76).
   - **Drain.** 138 sites: 130 of `src/combat/`'s 186, plus the 5 OLC sites and 3
     `weather_to_char` sites Wave R2 had deferred pending exactly this policy — `src/olc/` is now
     at zero TODO. Ledger-wide TODO 716 → 579 sites (271 → 200 rows); `MAXIMUM_TODO_COUNT`

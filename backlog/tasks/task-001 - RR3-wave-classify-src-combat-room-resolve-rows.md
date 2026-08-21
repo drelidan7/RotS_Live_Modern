@@ -1,9 +1,10 @@
 ---
 id: TASK-001
 title: 'RR3 wave: classify src/combat/ room-resolve rows'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-19 02:06'
+updated_date: '2026-08-21 15:14'
 labels: []
 milestone: m-0
 dependencies: []

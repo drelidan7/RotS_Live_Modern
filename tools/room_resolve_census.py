@@ -169,6 +169,55 @@ def mask_comments_and_string_literals(source_text, mask_comments=True):
     return "".join(masked)
 
 
+# RR Wave R3 Task 5-fix (review-1 B-3b). The masker above understands
+# comments and literals but not the preprocessor, so wrapping a registered
+# guard in `#if 0 ... #endif` leaves its literal textually present: the
+# registry's DOWNWARD check passes while the guard is compiled out. This
+# blanks every INACTIVE `#if 0` region -- line count and every line's length
+# preserved, so line numbers stay valid -- before either R3 check reads the
+# text.
+#
+# "Simple balanced scan", deliberately: `#if 0` opens a region, any nested
+# `#if`/`#ifdef`/`#ifndef` deepens it, `#endif` closes it, and an `#else` or
+# `#elif` at the region's OWN depth ends the inactive part (that branch is
+# live code and must keep being scanned). Anything cleverer would be a C
+# preprocessor, which this gate is not; `#if 0` is the only inactive form it
+# claims to see, and there are ZERO `#if 0` regions in the tree today
+# (verified by grep at this commit), so nothing real changes.
+INACTIVE_IF_ZERO_PATTERN = re.compile(r"^\s*#\s*if\s+0\s*(?://.*|/\*.*)?$")
+PREPROCESSOR_IF_PATTERN = re.compile(r"^\s*#\s*(if|ifdef|ifndef)\b")
+PREPROCESSOR_ENDIF_PATTERN = re.compile(r"^\s*#\s*endif\b")
+PREPROCESSOR_ELSE_PATTERN = re.compile(r"^\s*#\s*(else|elif)\b")
+
+
+def strip_inactive_preprocessor_blocks(masked_text):
+    """Blank `#if 0 ... #endif` regions in already-masked text, in place.
+
+    Returns text with the same number of lines, each of the same length, so
+    every line number and column the callers already computed stays valid."""
+    lines = masked_text.split("\n")
+    depth = 0            # nesting depth INSIDE an inactive region (0 = active)
+    for index, line in enumerate(lines):
+        if depth == 0:
+            if INACTIVE_IF_ZERO_PATTERN.match(line):
+                depth = 1
+                lines[index] = " " * len(line)
+            continue
+        # Inside an inactive region: blank this line, then adjust the depth.
+        blanked = " " * len(line)
+        if PREPROCESSOR_IF_PATTERN.match(line):
+            depth += 1
+        elif PREPROCESSOR_ENDIF_PATTERN.match(line):
+            depth -= 1
+        elif depth == 1 and PREPROCESSOR_ELSE_PATTERN.match(line):
+            # The `#else`/`#elif` arm of an `#if 0` is LIVE code: end the
+            # inactive region here (the directive line itself is blanked, the
+            # code after it is not).
+            depth = 0
+        lines[index] = blanked
+    return "\n".join(lines)
+
+
 # The six non-macro resolver-reaching spellings (spec section 1). world[ is
 # the operator[] invocation itself -- ~30 live production sites survive the
 # LS waves under LS1-ALLOW annotations, which license REPRESENTATION access,
@@ -626,6 +675,40 @@ def attribute_lines(masked_lines):
     return attributions
 
 
+def _brace_depth_before(line, index):
+    """Brace nesting depth at `index` on one physical (masked) line."""
+    prefix = line[:index]
+    return prefix.count("{") - prefix.count("}")
+
+
+def file_scope_occurrence_is_admissible(line, match_start):
+    """Is a pinned-token occurrence on a FILE-SCOPE line a declaration head?
+
+    RR Wave R3 Task 5-fix, review-1 B-1. Both R3 checks used to SKIP every
+    `file-scope`-attributed line outright, on the (documented, and for the
+    real tree correct) grounds that such lines are declarations and
+    non-brace-attached definition headers, never calls. The reviewer
+    demonstrated the hole: a ONE-LINE function definition --
+
+        void rogue(struct char_data* ch, char* arg) { ((*cmd_info[5].command_pointer)(ch, ...)); }
+
+    -- puts the entire body on a line `attribute_lines` reports as
+    `file-scope` (there is no separate brace line to open a function scope),
+    so an unregistered dispatcher, or an 87th `CAN_SEE(` caller, passed both
+    checks silently. This is the same brace-boundary attribution fragility
+    the sibling census's W-1 `} ACMD(do_x) {` hardening dealt with.
+
+    The discriminator is the occurrence's own BRACE DEPTH on its line. A
+    declaration (`int CAN_SEE(char_data* sub);`), a wrapped definition header
+    (`int activate_char_special(char_data* character,`), a struct-member
+    fn-ptr (`void (*command_pointer)(struct char_data* ch,`) and a brace-init
+    definition (`std::array<...> g_command_table {};`) all read the token at
+    depth 0. An inline body puts it at depth >= 1. Verified against the real
+    tree at this commit: all 8 file-scope dispatch-spelling occurrences and
+    all 5 file-scope pinned-caller occurrences sit at depth 0."""
+    return _brace_depth_before(line, match_start) == 0
+
+
 def scan_file_full(source_path, repository_root):
     """One masking+attribution pass over a file, yielding all three of the
     gate's per-file measurements:
@@ -638,17 +721,22 @@ def scan_file_full(source_path, repository_root):
       * `caller_counts` -- per-token occurrence counts for the R3-O-3
         caller-count pins, measured by the method recorded verbatim beside
         `PINNED_CALLER_COUNTS`.
+      * `attribution_errors` -- Task 5-fix (review-1 B-1): file-scope lines
+        carrying a pinned token at brace depth >= 1, i.e. an inline function
+        body masquerading as a declaration. Both checks used to SKIP these.
 
-    All three ride the SAME pass deliberately: `attribute_lines` is the
+    All four ride the SAME pass deliberately: `attribute_lines` is the
     expensive step, and re-walking 316 files twice more would triple the
     gate's `ctest` runtime for measurements that need exactly the same masked
     text and attributions the site scan already computed."""
     text = source_path.read_text(encoding="utf-8", errors="replace")
-    masked = mask_comments_and_string_literals(text).splitlines()
+    masked = strip_inactive_preprocessor_blocks(
+        mask_comments_and_string_literals(text)).splitlines()
     attributions = attribute_lines(masked)
     sites = []
     dispatch_occurrences = []
     caller_counts = {}
+    attribution_errors = []
     rel = source_path.relative_to(repository_root).as_posix()
     is_test_tier = rel == "src/tests" or rel.startswith("src/tests/")
     for i, line in enumerate(masked):
@@ -661,11 +749,39 @@ def scan_file_full(source_path, repository_root):
                 sites.append({"file": rel, "function": name,
                               "attribution": kind, "token": token_name})
         # The dispatch registry and the caller-count pins are both
-        # PRODUCTION-scoped claims, and both skip file-scope lines
-        # (declarations and non-brace-attached definition heads -- never
-        # calls). See DISPATCH_SPELLING_TOKENS / PINNED_CALLER_COUNTS for the
-        # full rationale of each exclusion.
-        if is_test_tier or kind == "file-scope":
+        # PRODUCTION-scoped claims.
+        if is_test_tier:
+            continue
+        # A file-scope line is admitted for either check only when the
+        # occurrence sits at brace depth 0 -- a declaration or a definition
+        # HEAD. At depth >= 1 it is an inline function body, which is
+        # review-1 B-1's demonstrated bypass of BOTH checks, and is an ERROR
+        # rather than a skip. See file_scope_occurrence_is_admissible.
+        if kind == "file-scope":
+            for token_name, pattern in DISPATCH_SPELLING_TOKENS:
+                for match in pattern.finditer(line):
+                    if file_scope_occurrence_is_admissible(line, match.start()):
+                        continue
+                    attribution_errors.append(
+                        f"file-scope dispatch spelling {rel}:{i + 1} -- token `{token_name}` "
+                        "occurs inside braces on a line the scanner attributes to FILE SCOPE, "
+                        "which means an inline (one-line) function body, not a declaration or "
+                        "definition head. The dispatch-entry registry's closed world cannot see "
+                        "such a site: split the definition across lines so the body attributes "
+                        "to its function, then register it (with a guard) or pin it in "
+                        "DISPATCH_TOKEN_EXEMPT_SITES."
+                    )
+            for token_name, pattern in PINNED_CALLER_PATTERNS.items():
+                for match in pattern.finditer(line):
+                    if file_scope_occurrence_is_admissible(line, match.start()):
+                        continue
+                    attribution_errors.append(
+                        f"file-scope pinned caller {rel}:{i + 1} -- token `{token_name}` occurs "
+                        "inside braces on a line the scanner attributes to FILE SCOPE, which "
+                        "means an inline (one-line) function body, not a declaration. "
+                        "PINNED_CALLER_COUNTS would not count it, so the R3-O-3 pin would not "
+                        "see the new caller: split the definition across lines."
+                    )
             continue
         for token_name, pattern in DISPATCH_SPELLING_TOKENS:
             for _ in pattern.finditer(line):
@@ -676,7 +792,7 @@ def scan_file_full(source_path, repository_root):
             hits = len(pattern.findall(line))
             if hits:
                 caller_counts[token_name] = caller_counts.get(token_name, 0) + hits
-    return sites, dispatch_occurrences, caller_counts
+    return sites, dispatch_occurrences, caller_counts, attribution_errors
 
 
 def scan_file(source_path, repository_root):
@@ -891,26 +1007,33 @@ LEDGER_DISPATCH_ENTRIES_HEADER = (
     "| Entry point (file · function) | Actor parameter | Guard literal | Status |"
 )
 
-# The closed status vocabulary.
+# The closed status vocabulary. EVERY status in it requires a guard literal;
+# there is no exempt status any more.
 #
-# `PENDING-T1b` is the ONLY status exempt from check (a): it marks an entry
-# whose guard Task 1a has SPECIFIED but Task 1b has not yet LANDED, so the
-# row legitimately carries no guard literal yet. The exemption is deliberately
-# removable -- T1b flips each row to `GUARDED` with the real literal and the
-# exemption evaporates row by row -- and `--check` WARNS (loudly, on every
-# run) while any `PENDING-T1b` row remains, so the wave cannot finish with
-# one still standing. A `PENDING-T1b` row is still required to name a real
-# file and a real, scanner-findable function (a typo'd entry must not sit
-# there unnoticed until T1b), and is required to leave its guard-literal cell
-# at the empty marker (a PENDING row must not carry an unchecked literal that
-# LOOKS like a landed guard).
+# `PENDING-T1b` USED to be a third member: a transitional spelling for an
+# entry whose guard Task 1a had SPECIFIED but Task 1b had not yet LANDED, so
+# the row legitimately carried no guard literal and was exempt from check (a),
+# with `--check` printing a loud WARNING while any such row remained.
+# **RETIRED** at the Task 5-fix round, on the convergent finding of both
+# whole-branch reviews (review-2 B-1 / review-1 B-2), each of which
+# DEMONSTRATED the same evasion: append an entirely unguarded dispatcher to
+# production, add one `PENDING-T1b` registry row naming it, and `--check`
+# exits 0 -- because the status satisfied the UPWARD closed-world check
+# (`key in registered` is status-blind) while being exempt from the DOWNWARD
+# literal check, and the warning was printed but never counted as an error.
+# `dispatch-invariant` is sound only while every registered entry actually
+# guards its actor, so a status that turns off the only mechanism enforcing
+# that is a hole, not a convenience. T1b landed long ago and every live row is
+# `GUARDED`/`GUARDED-PRIOR`, so retiring it costs nothing; an unknown status
+# is now the ordinary closed-vocabulary SystemExit in
+# `_parse_dispatch_entry_row`, which is what the reviews asked for.
 #
 # `GUARDED-PRIOR` is `GUARDED` for an entry whose guard predates this program
 # entirely (`special()`, `one_mobile_activity`, `affect_update_room`): check
 # (a) treats the two identically; the distinct spelling is what keeps the
 # ledger honest about which guards this wave actually wrote.
-DISPATCH_ENTRY_STATUSES = ("PENDING-T1b", "GUARDED", "GUARDED-PRIOR")
-DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES = frozenset({"GUARDED", "GUARDED-PRIOR"})
+DISPATCH_ENTRY_STATUSES = ("GUARDED", "GUARDED-PRIOR")
+DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES = frozenset(DISPATCH_ENTRY_STATUSES)
 
 # RR Wave R3 Task 1d (coordinator ruling R3-C-7): an entry may carry MORE
 # THAN ONE guard literal, because one tripwire per entry point is not always
@@ -946,18 +1069,37 @@ MINIMUM_DISPATCH_ENTRY_ROWS = 12
 
 # The dispatch spellings themselves (design doc section 2's "Closure"
 # bullet). Every one of these is a fn-ptr invocation through a dispatch
-# table or a `skills[]`/`cmd_info[]` slot, or a direct call to one of the two
-# SPECIAL invokers -- i.e. the exact syntactic shapes by which a body is
-# entered with an actor it never validated. Matched per PHYSICAL LINE against
+# table or a `skills[]`/`cmd_info[]`/`mob_index[]`/`obj_index[]` slot, a
+# COPY of such a slot into a local (the call then happens through a name the
+# token scan cannot recognise), or a direct call to one of the two SPECIAL
+# invokers -- i.e. the exact syntactic shapes by which a body is entered with
+# an actor it never validated. Matched per PHYSICAL LINE against
 # comment/string-MASKED text, exactly like `token_patterns()` above.
 #
-# Occurrences attributed to FILE SCOPE are skipped: those are the
-# declarations and (non-brace-attached) definition headers of the dispatch
-# machinery itself -- `interpre.h:157`'s `command_pointer` struct member,
-# `spells.h:360`'s `spell_pointer` member, `protos.h:229`/`interpre.h:139`'s
-# prototypes, and `interpre.cpp:1197`/`:1230`/`shapemob.cpp:2364`'s own
-# definition heads -- never calls. Everything else (a function body OR a
-# macro body) must be registered or exempt.
+# WIDENED at the Task 5-fix round (review-2 B-2 / review-1 B-3, convergent).
+# The original seven spellings were the ones THIS WAVE happened to write, and
+# both reviewers demonstrated the same class of evasion against them: an
+# arrow-form member call (`sk->spell_pointer(...)`), a plain member call with
+# no `(*...)` wrapper (`cmd_info[cmd].command_pointer(...)`), a hoisted copy
+# (`auto fp = skills[i].spell_pointer;` then `fp(...)`), a table alias
+# (`auto& tbl = g_command_table;`), and the `->funct)(` / `.func)(` family
+# that `special()` and the mob-AI driver already use in production. All of
+# those now have tokens. Two residual line-based limits remain and are
+# DOCUMENTED rather than papered over (ledger, "The line-split-call note"):
+# a call split across two physical lines at the `)`/`(` boundary, and a copy
+# taken in an expression position this pattern set does not spell.
+#
+# Occurrences attributed to FILE SCOPE are NOT skipped any more (review-1
+# B-1): they are admitted only when the occurrence itself sits at brace
+# depth 0 on its physical line, which is what a declaration, a
+# (non-brace-attached) definition header and a brace-init definition all look
+# like -- `interpre.h:157`'s `command_pointer` struct member, `spells.h:360`'s
+# `spell_pointer` member, `protos.h:229`/`interpre.h:139`'s prototypes,
+# `interpre.cpp:1263`/`:1314`/`shapemob.cpp:2364`'s own definition heads, and
+# `combat_hooks.cpp:39`'s `g_command_table {};`. A ONE-LINE function
+# definition puts its whole body on a file-scope line, so its tokens sit at
+# depth >= 1 and are an ERROR -- that was the demonstrated bypass. Everything
+# else (a function body OR a macro body) must be registered or exempt.
 DISPATCH_SPELLING_TOKENS = (
     ("command_pointer)(", re.compile(r"command_pointer\s*\)\s*\(")),
     ("g_command_table[", re.compile(r"\bg_command_table\s*\[")),
@@ -966,14 +1108,54 @@ DISPATCH_SPELLING_TOKENS = (
     ("activate_char_special(", re.compile(r"\bactivate_char_special\s*\(")),
     ("activate_obj_special(", re.compile(r"\bactivate_obj_special\s*\(")),
     ("shape_center(", re.compile(r"\bshape_center\s*\(")),
+    # Task 5-fix additions. Member-call forms (no `(*...)` wrapper):
+    ("->spell_pointer(", re.compile(r"->\s*spell_pointer\s*\(")),
+    ("->command_pointer(", re.compile(r"->\s*command_pointer\s*\(")),
+    (".command_pointer(", re.compile(r"\.\s*command_pointer\s*\(")),
+    # Bare-identifier forms: the slot's ADDRESS is being read rather than
+    # called, which is the hoisted-copy / table-alias evasion. `(`, `[` and
+    # `)(` are excluded because those spellings are the call forms already
+    # tokenised above (and the struct-member declarations).
+    ("command_pointer", re.compile(r"\bcommand_pointer\b(?!\s*(?:\)\s*\(|\(|\[))")),
+    ("spell_pointer", re.compile(r"\bspell_pointer\b(?!\s*(?:\)\s*\(|\(|\[))")),
+    ("g_command_table", re.compile(r"\bg_command_table\b(?!\s*(?:\)\s*\(|\(|\[))")),
+    # The SPECIAL fn-ptr slots the two invokers, `complete_delay_impl` and
+    # the mob-AI driver already dispatch through in production.
+    (".func)(", re.compile(r"\.\s*func\s*\)\s*\(")),
+    ("->func)(", re.compile(r"->\s*func\s*\)\s*\(")),
+    (".funct)(", re.compile(r"\.\s*funct\s*\)\s*\(")),
+    ("->funct)(", re.compile(r"->\s*funct\s*\)\s*\(")),
+    # ... and the same two slots read as an ADDRESS (the `(*...)` call form
+    # is excluded, being the `.func)(` token above).
+    ("mob_index[].func", re.compile(r"\bmob_index\s*\[[^\]]*\]\s*\.\s*func\b(?!\s*\)\s*\()")),
+    ("obj_index[].func", re.compile(r"\bobj_index\s*\[[^\]]*\]\s*\.\s*func\b(?!\s*\)\s*\()")),
 )
 
-# The two sites that carry a dispatch spelling but are NOT dispatch entry
-# points, pinned as a `(file, function, token)` -> reason map so adding a
-# third is a review-visible SCRIPT edit rather than a ledger-only one (the
-# `RESOLVER_IMPL_KEYS` precedent). Both were enumerated directly from the
-# real tree by this task's own masked scan; neither can be expressed as a
-# registry row without a category error.
+# The sites that carry a dispatch spelling but are NOT dispatch entry
+# points, pinned as a `(file, function, token)` -> reason map so adding one
+# is a review-visible SCRIPT edit rather than a ledger-only one (the
+# `RESOLVER_IMPL_KEYS` precedent). Every one was enumerated directly from the
+# real tree by a masked scan; none can be expressed as a registry row without
+# a category error.
+#
+# Two of them were the original pair. The rest arrived with the Task 5-fix
+# token widening above, which deliberately admits shapes that are NOT calls
+# (a slot's address read as a value) precisely so a hoisted-copy evasion
+# cannot hide -- the price is that every ordinary presence TEST, comparison
+# and registration WRITE of the same slots now surfaces too, and each is
+# dispositioned here, once per (file, function, token) key rather than once
+# per line. Note the key includes the TOKEN: exempting a function's
+# `spell_pointer` address reads does NOT exempt a real `.spell_pointer(`
+# call newly added to that same function.
+#
+# THREE keys are load-bearing STOPs rather than category errors -- the two
+# direct SPECIAL doors review-1's B-3 named (`complete_delay_impl` and
+# `delayed_command_interpreter::run`). They really do dispatch a spec proc
+# with an actor nothing on that path validated. They are NOT registered here
+# because registering an entry asserts it HAS a guard, and this wave adds
+# none for them (the wave's scope ends at the twelve entries in the ledger's
+# registry). They are R4 design input, recorded in the spec's section 11
+# alongside shop.cpp's direct ACMD host calls.
 DISPATCH_TOKEN_EXEMPT_SITES = {
     ("src/combat/combat_hooks.cpp", "rots::combat::set_combat_command", "g_command_table["):
         "registration WRITE (`g_command_table[i] = handler;`, combat_hooks.cpp:56), not a "
@@ -984,6 +1166,79 @@ DISPATCH_TOKEN_EXEMPT_SITES = {
         "window (producer P1), so a tripwire there would fire on every login of a character "
         "carrying an APPLY_SPELL affect. The rows reachable through it stay TODO under the "
         "`APPLY_SPELL-window` category (owner ruling R3-O-2)",
+
+    # --- Task 5-fix: the three direct SPECIAL doors (M-4 direct door, R4
+    # design input). Real dispatches, deliberately unregistered because this
+    # wave lands no guard for them.
+    ("src/app/comm.cpp", "complete_delay_impl", ".func)("):
+        "M-4 direct door, R4 design input -- `(*mob_index[ch->nr].func)(...)` at comm.cpp:2830 "
+        "dispatches a mob spec proc directly, outside every registered entry",
+    ("src/app/comm.cpp", "complete_delay_impl", "mob_index[].func"):
+        "M-4 direct door, R4 design input -- the presence test at comm.cpp:2829 guarding the "
+        "direct dispatch on the next line",
+    ("src/app/delayed_command_interpreter.cpp",
+     "game_types::delayed_command_interpreter::run", "mob_index[].func"):
+        "M-4 direct door, R4 design input -- `func_pointer = mob_index[index].func;` at "
+        "delayed_command_interpreter.cpp:45, then called at :47 (the hoisted-copy shape)",
+
+    # --- Task 5-fix: registration WRITEs. No actor exists at any of these
+    # statements; they populate the tables the entries later dispatch through
+    # (the combat_hooks.cpp:56 exemption above is the same category).
+    ("src/app/interpre.cpp", "COMMANDO", "command_pointer"):
+        "registration WRITE -- `cmd_info[(number)].command_pointer = (pointer);`, the COMMANDO "
+        "macro body (interpre.cpp:59)",
+    ("src/app/interpre.cpp", "assign_command_pointers", "command_pointer"):
+        "registration WRITE -- `cmd_info[position].command_pointer = 0;` (interpre.cpp:1467)",
+    ("src/combat/spell_pa.cpp", "assign_spell_pointers", "spell_pointer"):
+        "registration WRITE -- the 69 `skills[N].spell_pointer = spell_x;` lines that populate "
+        "the spell table (spell_pa.cpp:1120-1188)",
+    ("src/interpre.h", "ASSIGNMOB", "mob_index[].func"):
+        "registration WRITE -- `mob_index[real_mobile(mob)].func = fname;` (interpre.h:66)",
+    ("src/interpre.h", "ASSIGNREALMOB", "mob_index[].func"):
+        "registration WRITE -- `mob_index[mob->nr].func = fname;` (interpre.h:72)",
+    ("src/interpre.h", "ASSIGNOBJ", "obj_index[].func"):
+        "registration WRITE -- `obj_index[real_object(obj)].func = fname;` (interpre.h:84)",
+    ("src/interpre.h", "ASSIGNREALOBJ", "obj_index[].func"):
+        "registration WRITE -- `obj_index[obj->item_number].func = fname;` (interpre.h:78)",
+    ("src/world/db_world.cpp", "load_mobiles", "mob_index[].func"):
+        "registration WRITE -- `mob_index[i].func = 0;`, the boot-time table clear "
+        "(db_world.cpp:1209)",
+    ("src/world/db_world.cpp", "load_objects", "obj_index[].func"):
+        "registration WRITE -- `obj_index[i].func = 0;`, the boot-time table clear "
+        "(db_world.cpp:1426)",
+
+    # --- Task 5-fix: presence TESTS and comparisons. The slot is read as a
+    # boolean or compared against a known function; no call is made and no
+    # copy escapes the expression.
+    ("src/app/act_info.cpp", "show_char_to_char", "mob_index[].func"):
+        "presence TEST -- `!mob_index[i->nr].func && MOB_FLAGGED(...)` (act_info.cpp:993)",
+    ("src/app/act_info.cpp", "sort_commands", "command_pointer"):
+        "presence TEST + comparison -- the table-length loop condition (act_info.cpp:3181) and "
+        "`... .command_pointer == do_action` (:3183); neither calls anything",
+    ("src/app/act_othe.cpp", "do_block", "mob_index[].func"):
+        "presence TEST -- `IS_NPC(ch) && mob_index[ch->nr].func` (act_othe.cpp:1905)",
+    ("src/app/act_wiz.cpp", "do_stat_character", "mob_index[].func"):
+        "presence TEST -- the `stat`-output ternary that prints whether a spec proc exists "
+        "(act_wiz.cpp:976)",
+    ("src/app/act_wiz.cpp", "do_stat_object", "obj_index[].func"):
+        "presence TEST -- the same ternary for objects (act_wiz.cpp:587)",
+    ("src/app/objsave.cpp", "gen_receptionist", "mob_index[].func"):
+        "comparison -- `mob_index[tch->nr].func == receptionist` (objsave.cpp:1307)",
+    ("src/combat/fight.cpp", "exp_with_modifiers", "mob_index[].func"):
+        "presence TEST -- `mob_index[dead_man->nr].func || dead_man->special_prog_number` "
+        "(fight.cpp:1227)",
+    ("src/combat/spell_pa.cpp", "<anon>::can_cast_spell", "spell_pointer"):
+        "presence TEST -- `!spell.spell_pointer` rejects an unimplemented spell "
+        "(spell_pa.cpp:396)",
+    ("src/combat/spell_pa.cpp", "do_prepare", "spell_pointer"):
+        "presence TEST -- `!skills[spl].spell_pointer` (spell_pa.cpp:1060)",
+    ("src/entity/entity_lifecycle.cpp", "affect_modify", "spell_pointer"):
+        "presence TEST -- `!skills[tmp].spell_pointer` at entity_lifecycle.cpp:2436, the guard "
+        "for the APPLY_SPELL arm already exempted above",
+    ("src/script/spec_ass.cpp", "virt_assignmob", "mob_index[].func"):
+        "presence TEST -- refuses to overwrite an already-assigned mob spec (spec_ass.cpp:512)",
+    ("src/script/spec_ass.cpp", "virt_assignobj", "obj_index[].func"):
+        "presence TEST -- the same refusal for objects (spec_ass.cpp:527)",
 }
 
 # ---------------------------------------------------------------------------
@@ -1345,29 +1600,25 @@ def _parse_dispatch_entry_row(cells):
         )
     actor = actor_match.group(1).strip()
 
-    if status in DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES:
-        if re.fullmatch(DISPATCH_GUARD_CELL_PATTERN, guard_cell) is None:
+    # Every surviving status requires a guard literal (the PENDING-T1b
+    # exemption was retired at the Task 5-fix round -- see
+    # DISPATCH_ENTRY_STATUSES), so there is no `else` arm any more: a row that
+    # leaves the cell at the empty marker fails the grammar below, which is
+    # exactly the "registered but unguarded" shape both reviews demonstrated.
+    if re.fullmatch(DISPATCH_GUARD_CELL_PATTERN, guard_cell) is None:
+        raise SystemExit(
+            f"error: ledger: {status} dispatch entry {entry_text!r} must carry one or more "
+            f"backtick-wrapped guard literals, separated by {DISPATCH_GUARD_SEPARATOR!r} "
+            f"(got {guard_cell!r})"
+        )
+    guards = re.findall(r"`([^`]*)`", guard_cell)
+    for literal in guards:
+        if not literal.strip():
             raise SystemExit(
-                f"error: ledger: {status} dispatch entry {entry_text!r} must carry one or more "
-                f"backtick-wrapped guard literals, separated by {DISPATCH_GUARD_SEPARATOR!r} "
-                f"(got {guard_cell!r})"
+                f"error: ledger: {status} dispatch entry {entry_text!r} carries an EMPTY "
+                f"guard literal in {guard_cell!r} -- every listed literal must be a real, "
+                "non-empty statement the downward check can look for"
             )
-        guards = re.findall(r"`([^`]*)`", guard_cell)
-        for literal in guards:
-            if not literal.strip():
-                raise SystemExit(
-                    f"error: ledger: {status} dispatch entry {entry_text!r} carries an EMPTY "
-                    f"guard literal in {guard_cell!r} -- every listed literal must be a real, "
-                    "non-empty statement the downward check can look for"
-                )
-    else:
-        if guard_cell != LEDGER_EMPTY_MARKER:
-            raise SystemExit(
-                f"error: ledger: {status} dispatch entry {entry_text!r} must leave its guard "
-                f"literal at the empty marker {LEDGER_EMPTY_MARKER!r} (got {guard_cell!r}) -- a "
-                "not-yet-landed entry must not carry a literal that LOOKS like a checked guard"
-            )
-        guards = []
 
     return {"file": entry_file, "function": entry_function, "actor": actor,
             "guards": guards, "status": status}
@@ -1398,17 +1649,20 @@ def parse_dispatch_entries(text, *, minimum_rows=_UNSET):
 def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
     """The registry's two closed-world directions. Returns (errors, warnings).
 
-    Direction (a), DOWNWARD: every GUARDED/GUARDED-PRIOR entry names a real
-    file and a real, scanner-findable function whose MASKED body still
-    contains that entry's guard literal (whitespace-normalized). A
-    PENDING-T1b entry is exempt from the literal half only -- it must still
-    name a real file and a real function.
+    Direction (a), DOWNWARD: every entry names a real file and a real,
+    scanner-findable function whose MASKED body still contains EVERY guard
+    literal that entry lists (whitespace-normalized). No status is exempt --
+    the PENDING-T1b exemption was retired at the Task 5-fix round.
 
     Direction (b), UPWARD: every production occurrence of a
     DISPATCH_SPELLING_TOKENS spelling (already filtered to non-file-scope
     lines by the scanner) lies inside a registered entry's function, or is
     one of the pinned DISPATCH_TOKEN_EXEMPT_SITES."""
     errors = []
+    # Retained as the second return value even though the PENDING-T1b
+    # retirement (Task 5-fix) left it always empty: it is the shape `main()`
+    # prints through, and a future advisory belongs here rather than in the
+    # error list. An empty warnings list is the correct state today.
     warnings = []
 
     seen = set()
@@ -1423,14 +1677,6 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
         seen.add(key)
         registered.add(key)
 
-        if entry["status"] == "PENDING-T1b":
-            warnings.append(
-                f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} is still PENDING-T1b "
-                f"(actor `{entry['actor']}`) -- its guard has been SPECIFIED but not LANDED, so "
-                "every `dispatch-invariant` row citing it is unproven until Task 1b flips it to "
-                "GUARDED. The wave must not finish while this warning stands."
-            )
-
         source_path = repository_root / entry["file"]
         if not source_path.is_file():
             errors.append(
@@ -1438,8 +1684,8 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
                 f"exist under {repository_root}"
             )
             continue
-        masked = mask_comments_and_string_literals(
-            source_path.read_text(encoding="utf-8", errors="replace")).splitlines()
+        masked = strip_inactive_preprocessor_blocks(mask_comments_and_string_literals(
+            source_path.read_text(encoding="utf-8", errors="replace"))).splitlines()
         attributions = attribute_lines(masked)
         body_lines = [line for line, attribution in zip(masked, attributions)
                       if attribution == ("function", entry["function"])]
@@ -1448,8 +1694,6 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
                 f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} names a function the "
                 "scanner cannot find in that file (renamed, moved, or mis-spelled)"
             )
-            continue
-        if entry["status"] not in DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES:
             continue
         # EVERY listed literal must still be there. An entry with two
         # tripwires (Task 1d's adjacency rule, R3-C-7) is only as strong as
@@ -1484,6 +1728,39 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
         )
 
     return errors, warnings
+
+
+def check_pinned_caller_macro_aliases(source_texts, pinned_counts):
+    """Refuse a `#define` that ALIASES a pinned caller name. Error list.
+
+    RR Wave R3 Task 5-fix (review-2 m-5). `PINNED_CALLER_COUNTS` pins the
+    number of times a literal spelling appears, so `#define RR_CS CAN_SEE`
+    followed by `RR_CS(a, b)` adds a caller the pin cannot see: the alias
+    definition mentions `CAN_SEE` once (raising nothing, because the
+    definition is not a call) and the call site spells `RR_CS`. Reviewer
+    demonstrated `--check` exit 0 on exactly that.
+
+    The rule is narrow on purpose: a `#define` body containing a pinned name
+    NOT followed by `(` is an alias (`#define RR_CS CAN_SEE`), while a body
+    that CALLS the name (`#define VIS(a, b) CAN_SEE(a, b)`) is an ordinary
+    macro whose call the scanner already counts on its own line, under its
+    `macro` attribution -- which is exactly why the measurement method keeps
+    macro-body lines. Measured at this commit: zero `#define` bodies
+    anywhere under `src/` mention either pinned name at all."""
+    errors = []
+    for path_text in sorted(source_texts):
+        for macro_name, body in sorted(collect_define_bodies(source_texts[path_text]).items()):
+            for pinned in sorted(pinned_counts):
+                bare = pinned.rstrip("(")
+                if re.search(r"\b" + re.escape(bare) + r"\b(?!\s*\()", body):
+                    errors.append(
+                        f"pinned-caller alias macro `{macro_name}` (in {path_text}) -- its body "
+                        f"names `{bare}` without calling it, which makes every use of "
+                        f"`{macro_name}` a caller PINNED_CALLER_COUNTS cannot count (owner "
+                        "ruling R3-O-3's pin is a literal-spelling count). Call the name "
+                        "directly, or retire the pin in favour of a real ledger row."
+                    )
+    return errors
 
 
 def check_caller_counts(measured_counts, pinned_counts):
@@ -2179,6 +2456,90 @@ DISPATCH_PROBE_SOURCE_DISJUNCTIVE_GUARD_TORN = """void dispatcher_fn(char_data* 
 """
 
 
+# RR Wave R3 Task 5-fix fixtures (review-1 B-1/B-3/B-3b, review-2 B-2).
+#
+# Every one of these is a spelling of the SAME unregistered dispatch that the
+# original seven-token surface let through. They are separate constants (not
+# one probe with six functions) so each self-test direction names exactly the
+# spelling it pins.
+DISPATCH_PROBE_SOURCE_ONE_LINE_DEFINITION = DISPATCH_PROBE_SOURCE + """
+void rogue_one_liner(char_data* ch, char* arg) { ((*cmd_info[5].command_pointer)(ch, arg, 0)); }
+"""
+
+# The admissible file-scope shapes, all in one probe: a prototype, a
+# struct-member fn-ptr declaration, a WRAPPED definition header, and a
+# brace-init definition. Every pinned token here sits at brace depth 0 and
+# must NOT raise -- this is the direction that keeps the B-1 fix from simply
+# banning file scope.
+DISPATCH_PROBE_SOURCE_FILE_SCOPE_DECLARATIONS = DISPATCH_PROBE_SOURCE + """
+void shape_center(char_data* ch, char* argument);
+void (*command_pointer)(char_data* ch, char* argument, int cmd);
+void (*spell_pointer)(char_data* caster, char* arg, int type);
+std::array<acmd_fn, 3> g_command_table {};
+int activate_char_special(char_data* host, char_data* victim, int cmd,
+    char* argument, int callflag);
+"""
+
+DISPATCH_PROBE_SOURCE_ARROW_MEMBER_CALL = DISPATCH_PROBE_SOURCE + """
+void rogue_arrow(char_data* ch, skill_data* sk)
+{
+    sk->spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+DISPATCH_PROBE_SOURCE_HOISTED_COPY = DISPATCH_PROBE_SOURCE + """
+void rogue_hoist(char_data* ch, char* arg)
+{
+    auto fp = cmd_info[5].command_pointer;
+    fp(ch, arg, 0);
+}
+"""
+
+DISPATCH_PROBE_SOURCE_TABLE_ALIAS = DISPATCH_PROBE_SOURCE + """
+void rogue_alias(char_data* ch, char* arg)
+{
+    auto& tbl = g_command_table;
+    tbl[3](ch, arg, 0);
+}
+"""
+
+DISPATCH_PROBE_SOURCE_FUNCT_SLOT = DISPATCH_PROBE_SOURCE + """
+void rogue_funct(char_data* ch, int room)
+{
+    ((*room_by_id_total(room)->funct)(ch, ch, 0, mutable_arg(""), 0, 0));
+}
+"""
+
+# review-1 B-3b: the guard is still TEXTUALLY present, so the downward
+# literal check used to pass -- while the compiler saw no guard at all.
+DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO = """void dispatcher_fn(char_data* ch)
+{
+#if 0
+    if (location_of(ch) == NOWHERE) {
+        return;
+    }
+#endif
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+# ... and the mirror: an `#if 0` whose `#else` arm carries the REAL guard.
+# That arm is live code, so the region must end at the `#else` and the gate
+# must still find the literal.
+DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO_ELSE = """void dispatcher_fn(char_data* ch)
+{
+#if 0
+    ignore_placement_entirely(ch);
+#else
+    if (location_of(ch) == NOWHERE) {
+        return;
+    }
+#endif
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+
 def _dispatch_ledger(*entry_rows):
     """SELF_TEST_LEDGER_OK with the empty dispatch table filled in."""
     filled = EMPTY_DISPATCH_TABLE.rstrip("\n") + "".join(
@@ -2201,6 +2562,34 @@ void looks_around(char_data* ch, char_data* other)
 
 CALLER_COUNT_PROBE_SOURCE_DECLARATION_ONLY = PROBE_SOURCE_OK + """
 int CAN_SEE(char_data* sub);
+"""
+
+# RR Wave R3 Task 5-fix (review-1 B-1), the caller-pin half of the one-line
+# bypass: the call lives in a brace-attached one-line definition, so its line
+# attributes to FILE SCOPE and the pin never counted it.
+CALLER_COUNT_PROBE_SOURCE_ONE_LINE_DEFINITION = PROBE_SOURCE_OK + """
+int peek_at(char_data* a, char_data* b) { return CAN_SEE(a, b); }
+"""
+
+# review-2 m-5: an alias macro. `RR_CS(a, b)` is a CAN_SEE caller the pinned
+# literal-spelling count cannot see.
+CALLER_COUNT_PROBE_SOURCE_ALIAS_MACRO = PROBE_SOURCE_OK + """
+#define RR_CS CAN_SEE
+
+void looks_around(char_data* ch, char_data* other)
+{
+    if (RR_CS(ch, other)) {
+        return;
+    }
+}
+"""
+
+# ... and the shape the alias rule must NOT reject: a macro that CALLS the
+# pinned name. Its call site spells `VIS(`, but the macro BODY's `CAN_SEE(`
+# is itself on a `macro`-attributed line and is already counted, which is
+# exactly why the measurement method keeps macro lines.
+CALLER_COUNT_PROBE_SOURCE_CALLING_MACRO = PROBE_SOURCE_OK + """
+#define VIS(a, b) CAN_SEE(a, b)
 """
 
 
@@ -3103,22 +3492,29 @@ def run_self_test():
             ledger_text=fenced_dispatch_ledger,
             expected_output=("must appear exactly once",))
 
-        # (g) a PENDING-T1b entry passes the gate but WARNS -- loudly, every
-        # run -- so the wave cannot finish with one standing.
+        # (g) Task 5-fix (review-2 B-1 / review-1 B-2): `PENDING-T1b` is
+        # RETIRED. It used to pass with a warning, which is exactly how both
+        # reviewers walked an entirely unguarded dispatcher through the gate:
+        # the status satisfied the UPWARD closed-world check while being
+        # exempt from the DOWNWARD literal one. It is now an unknown status.
         run_dispatch_case(
-            "dispatch-pending-warns", 0,
+            "dispatch-pending-status-retired", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_SECOND_DISPATCHER,
+            ledger_text=_dispatch_ledger(
+                DISPATCH_ENTRY_ROW_GUARDED,
+                "| `src/app/dispatch_probe.cpp · sneaky_new_dispatcher` | `ch` | "
+                f"{LEDGER_EMPTY_MARKER} | PENDING-T1b |"),
+            expected_output=("unknown dispatch-entry status", "PENDING-T1b"))
+
+        # (h) ... and with the status word gone, a registry row can no longer
+        # leave its guard cell at the empty marker under ANY status: the cell
+        # grammar rejects it. This is the "registered but unguarded" shape.
+        run_dispatch_case(
+            "dispatch-entry-with-an-empty-guard-cell", 1,
             ledger_text=_dispatch_ledger(
                 "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
-                f"{LEDGER_EMPTY_MARKER} | PENDING-T1b |"),
-            expected_output=("WARNING", "PENDING-T1b"))
-
-        # (h) a PENDING-T1b entry must NOT carry a guard literal (an unchecked
-        # literal that LOOKS like a landed guard).
-        run_dispatch_case(
-            "dispatch-pending-with-a-guard-literal", 1,
-            ledger_text=_dispatch_ledger(
-                DISPATCH_ENTRY_ROW_GUARDED.replace("| GUARDED |", "| PENDING-T1b |")),
-            expected_output=("empty marker",))
+                f"{LEDGER_EMPTY_MARKER} | GUARDED |"),
+            expected_output=("must carry one or more",))
 
         # (i) the status vocabulary is closed.
         run_dispatch_case(
@@ -3128,13 +3524,11 @@ def run_self_test():
             expected_output=("unknown dispatch-entry status",))
 
         # (j) a registry row naming a function that does not exist fails
-        # closed -- including for a PENDING-T1b row, which is exempt from the
-        # guard-literal half only, never from naming something real.
+        # closed, even with a perfectly well-formed guard literal.
         run_dispatch_case(
             "dispatch-entry-names-a-missing-function", 1,
             ledger_text=_dispatch_ledger(
-                "| `src/app/dispatch_probe.cpp · no_such_function` | `ch` | "
-                f"{LEDGER_EMPTY_MARKER} | PENDING-T1b |",
+                DISPATCH_ENTRY_ROW_GUARDED.replace("dispatcher_fn", "no_such_function"),
                 DISPATCH_ENTRY_ROW_GUARDED),
             expected_output=("cannot find",))
 
@@ -3231,6 +3625,62 @@ def run_self_test():
             expected_output=("guard literal",))
 
         # ------------------------------------------------------------------
+        # RR Wave R3 Task 5-fix, direction 24: the two whole-branch reviews'
+        # demonstrated evasions of the UPWARD closed-world check. Each
+        # sub-direction below is a spelling of the SAME unregistered
+        # dispatcher; before this round every one of them exited 0.
+        # ------------------------------------------------------------------
+
+        # (t) review-1 B-1: a ONE-LINE function definition. Its whole body
+        # sits on a line attributed to FILE SCOPE, which both R3 checks used
+        # to skip outright.
+        run_dispatch_case(
+            "dispatch-one-line-definition-is-an-error", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_ONE_LINE_DEFINITION,
+            expected_output=("file-scope dispatch spelling", "command_pointer)("))
+
+        # (u) ... and the direction that keeps (t) from being a blanket ban on
+        # file scope: the REAL declarations, wrapped definition headers,
+        # struct-member fn-ptrs and brace-init definitions must still pass.
+        run_dispatch_case(
+            "dispatch-file-scope-declarations-still-pass", 0,
+            probe_text=DISPATCH_PROBE_SOURCE_FILE_SCOPE_DECLARATIONS)
+
+        # (v)-(y) review-2 B-2 / review-1 B-3: four ordinary re-spellings of a
+        # fn-ptr dispatch that the original seven tokens did not cover.
+        run_dispatch_case(
+            "dispatch-arrow-member-call", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_ARROW_MEMBER_CALL,
+            expected_output=("unregistered dispatch site", "->spell_pointer("))
+        run_dispatch_case(
+            "dispatch-hoisted-fn-ptr-copy", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_HOISTED_COPY,
+            expected_output=("unregistered dispatch site", "rogue_hoist"))
+        run_dispatch_case(
+            "dispatch-table-alias", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_TABLE_ALIAS,
+            expected_output=("unregistered dispatch site", "rogue_alias"))
+        run_dispatch_case(
+            "dispatch-room-funct-slot", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_FUNCT_SLOT,
+            expected_output=("unregistered dispatch site", "->funct)("))
+
+        # (z) review-1 B-3b: a registered guard wrapped in `#if 0`. The
+        # literal is still textually present, so the downward check passed
+        # while the compiler saw no guard at all.
+        run_dispatch_case(
+            "dispatch-guard-compiled-out-by-if-zero", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO,
+            expected_output=("guard literal",))
+
+        # (aa) ... and the mirror: an `#if 0` whose `#else` arm carries the
+        # real guard. That arm is LIVE, so the stripper must stop at the
+        # `#else` and the gate must still find the literal.
+        run_dispatch_case(
+            "dispatch-guard-in-the-else-arm-of-if-zero", 0,
+            probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO_ELSE)
+
+        # ------------------------------------------------------------------
         # RR Wave R3 Task 1a, direction 23: the R3-O-3 caller-count pins, both
         # drift directions plus the declaration-does-not-count claim the
         # measurement method rests on.
@@ -3273,6 +3723,28 @@ def run_self_test():
         run_caller_case(
             "caller-count-ignores-declarations", 0,
             CALLER_COUNT_PROBE_SOURCE_DECLARATION_ONLY, "CAN_SEE(=0")
+
+        # Task 5-fix, review-1 B-1's caller-pin half: a ONE-LINE definition
+        # hides its call on a file-scope line, so the pin never counted it.
+        # It is now an ERROR rather than an invisible miss -- note the pin is
+        # set to 0 here, which the OLD behaviour would have satisfied.
+        run_caller_case(
+            "caller-count-one-line-definition-is-an-error", 1,
+            CALLER_COUNT_PROBE_SOURCE_ONE_LINE_DEFINITION, "CAN_SEE(=0",
+            expected_output=("file-scope pinned caller", "CAN_SEE("))
+        # Task 5-fix, review-2 m-5: an ALIAS macro. `RR_CS(a, b)` is a real
+        # CAN_SEE caller that the literal-spelling count cannot see -- the pin
+        # of 0 below would otherwise be satisfied.
+        run_caller_case(
+            "caller-alias-macro-is-an-error", 1,
+            CALLER_COUNT_PROBE_SOURCE_ALIAS_MACRO, "CAN_SEE(=0",
+            expected_output=("alias macro", "RR_CS"))
+        # ... and the shape the alias rule must NOT reject: a macro that CALLS
+        # the pinned name. Its body line is `macro`-attributed and counted, so
+        # pinning 1 passes.
+        run_caller_case(
+            "caller-macro-that-calls-the-pinned-name-is-fine", 0,
+            CALLER_COUNT_PROBE_SOURCE_CALLING_MACRO, "CAN_SEE(=1")
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
@@ -3496,9 +3968,19 @@ The in-range half is cited exactly as "The in-range half's standing citation"
 above states it -- the entry guard, like any `location_of()` test, excludes
 only the sentinel.
 
-**The closure.** The kind is sound only while the entry set is CLOSED, so the
-entry points are enumerated in the marker-anchored **dispatch-entry registry**
-at the end of this file (`<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->`, exactly
+**The closure, and exactly what enforces it.** The kind is sound only while
+the entry set is CLOSED. **What closes a row is mandatory citation part (iii)
+-- its exhaustive direct-caller list, read and re-grepped by a human.** The
+mechanical check below is a BACKSTOP over that: it catches every occurrence of
+the dispatch spellings pinned in `DISPATCH_SPELLING_TOKENS`, which is the set
+of shapes this tree actually uses plus the re-spellings two adversarial
+reviews demonstrated, and it is line-based. It is not, and cannot be, a proof
+that no eighth dispatcher exists -- see "The line-split-call note" for the two
+residual spellings it cannot see. Read the two directions below as "a new
+dispatcher written in any of the pinned spellings is a build failure", not as
+"a new dispatcher is impossible". With that said, the entry points are
+enumerated in the marker-anchored **dispatch-entry registry** at the end of
+this file (`<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->`, exactly
 once, outside any fence -- the M10 rule the classification and token-counts
 tables already follow). `tools/room_resolve_census.py --check` asserts two
 directions over it, the same bidirectional shape
@@ -3512,22 +3994,36 @@ directions over it, the same bidirectional shape
   silent proof rot -- and deleting ONE of an entry's two guards is the same
   failure, since a two-tripwire entry is only as strong as its weakest (see
   "An entry may carry MORE THAN ONE guard literal" below).
-- **Upward:** every occurrence of a pinned dispatch spelling
-  (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`,
-  `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
-  `shape_center(`) in production code lies inside a registered entry's
-  function. An eighth dispatcher is a gate ERROR naming the unregistered
-  site, not a free inheritance of the proof. Occurrences attributed to file
-  scope are skipped -- those are the dispatch machinery's own declarations
-  and definition heads, never calls -- and exactly two real sites are pinned
-  as reviewed exemptions in the script's `DISPATCH_TOKEN_EXEMPT_SITES` (see
-  below).
+- **Upward:** every occurrence of a pinned dispatch spelling in production
+  code lies inside a registered entry's function. An eighth dispatcher
+  *written in one of those spellings* is a gate ERROR naming the unregistered
+  site, not a free inheritance of the proof. The spellings are pinned in the
+  script's `DISPATCH_SPELLING_TOKENS`; the Task 5-fix round widened them from
+  the original seven (`command_pointer)(`, `g_command_table[`,
+  `spell_pointer)(`, `.spell_pointer(`, `activate_char_special(`,
+  `activate_obj_special(`, `shape_center(`) to **nineteen**, adding the
+  member-call forms (`->spell_pointer(`, `->command_pointer(`,
+  `.command_pointer(`), the bare address-read forms that a hoisted copy or a
+  table alias produces (`command_pointer`, `spell_pointer`,
+  `g_command_table`), and the SPECIAL fn-ptr slots the tree already dispatches
+  through (`.func)(`, `->func)(`, `.funct)(`, `->funct)(`,
+  `mob_index[].func`, `obj_index[].func`). Each of the six added shapes was a
+  demonstrated evasion in one or both whole-branch reviews. A file-scope
+  occurrence is admitted only when it sits at brace depth 0 on its own line --
+  a declaration, a definition head or a brace-init definition; an occurrence
+  inside braces on a file-scope line is a ONE-LINE function body (the other
+  demonstrated bypass) and is an ERROR. The real sites that carry a pinned
+  spelling without being an entry point are pinned as reviewed exemptions in
+  the script's `DISPATCH_TOKEN_EXEMPT_SITES`, each with its own one-line
+  reason (see below).
 
-`PENDING-T1b` is a transitional status: the entry's guard is SPECIFIED but not
-yet LANDED, so the row carries no guard literal and is exempt from the
-downward direction only (it must still name a real file and a real function).
-`--check` prints a loud WARNING for every `PENDING-T1b` row that remains, so
-the wave cannot finish with one standing.
+There is **no** exempt status. `PENDING-T1b` used to be one -- a transitional
+spelling for an entry whose guard was specified but not yet landed, carrying
+no guard literal and warning rather than failing. Both whole-branch reviews
+independently demonstrated the same evasion through it (add an unguarded
+dispatcher plus one `PENDING-T1b` row; `--check` exits 0), so it was retired
+at the Task 5-fix round. Every registry row now carries at least one guard
+literal, and an unknown status is a hard parse error.
 
 **How a guard literal is SPELLED, and why it looks masked.** The downward
 check runs against the function's comment/string-MASKED body, so a
@@ -3591,9 +4087,30 @@ calls `affect_total` on the next line; `src/app/objsave.cpp:506`'s
 on every login of a character carrying an `APPLY_SPELL` affect. It is pinned
 in `DISPATCH_TOKEN_EXEMPT_SITES` with that reason, and every row reachable
 through it stays `TODO` under the `APPLY_SPELL-window` category below (owner
-ruling R3-O-2). The other pinned exemption is
+ruling R3-O-2). The original companion exemption is
 `src/combat/combat_hooks.cpp:56`'s `g_command_table[i] = handler;` -- a
 registration WRITE, at which no actor exists at all.
+
+**The Task 5-fix exemptions.** Widening the token surface to catch
+address-reads (above) necessarily surfaces every ordinary presence TEST,
+comparison and registration WRITE of the same fn-ptr slots. Each is
+dispositioned in `DISPATCH_TOKEN_EXEMPT_SITES`, once per
+`(file, function, token)` key, with a one-line reason: nine registration
+writes (the `COMMANDO`/`ASSIGNMOB`/`ASSIGNOBJ` families, `assign_spell_pointers`,
+`assign_command_pointers`, `load_mobiles`/`load_objects`) and eleven presence
+tests or comparisons. The key includes the TOKEN, so exempting a function's
+address-reads does not exempt a real call newly added to it.
+
+**Three exemptions are STOPs, not category errors** -- the direct SPECIAL
+doors review-1's B-3 named: `src/app/comm.cpp:2829`/`:2830`
+(`complete_delay_impl`'s `(*mob_index[ch->nr].func)(...)`) and
+`src/app/delayed_command_interpreter.cpp:45` (`func_pointer =
+mob_index[index].func;`, called at `:47`). Both really do dispatch a spec proc
+with an actor nothing on that path validated. They are NOT registered, because
+a registry row asserts the entry HAS a guard and Wave R3 lands none for them;
+they are R4 design input, alongside `src/app/shop.cpp`'s direct ACMD host
+calls, which are plain calls rather than dispatch spellings and are already
+recorded there. No Wave R3 row cites either of them.
 
 ## Caller-count pins (R3-O-3)
 
@@ -3730,6 +4247,17 @@ callee name and its `(` on two different physical lines, e.g.
 shape (`grep -rnE "room_of\\s*$" src --include="*.cpp"`) found **zero
 matches** at this commit -- the shape does not exist in production today.
 
+**The same limit applies to `DISPATCH_SPELLING_TOKENS`**, and review-1's E2
+probe demonstrated it: `cmd_info[5].command_pointer)` on one physical line
+with its `(ch, ...)` on the next defeats every dispatch spelling, exactly as
+it defeats every resolver token. So does a slot copy taken in an expression
+position none of the pinned spellings names (`helper(cmd_info[5].command_pointer)`
+reads the address with a `)` after it, which the bare-identifier patterns
+exclude because that is also how every presence test is written). These are
+the residual limits of a line-based gate, recorded rather than papered over --
+and the reason the closure paragraph above says citation part (iii), not the
+token check, is what actually closes a `dispatch-invariant` row.
+
 ## An `LS1-ALLOW` annotation is NOT a proof
 
 `tools/location_read_census.py`'s `LS1-ALLOW` annotation licenses
@@ -3781,6 +4309,18 @@ later (review-1 F-5/F-6/F-7/W-12):
   the precedent: pinning the dispatch alias itself as a token is what lets a
   future SECOND registered target surface as its own new site instead of
   silently inheriting the first target's proof.
+- **The gate cannot see guard ORDER.** The registry's downward direction is a
+  SUBSTRING check over the function's masked body: it asserts the guard
+  literal is still *present*, never that it still runs *before* the dispatch.
+  Both whole-branch reviews found this (review-2 M-2, review-1 M-4's tail);
+  review-2 demonstrated it by moving `do_use`'s entire guard block below both
+  of its dispatches with `--check` still exiting 0. R3-C-7's ADJACENCY rule is
+  therefore witnessed by the per-entry TESTS, not by the gate -- with one
+  exception introduced at the Task 5-fix round: `do_use`'s two pre-dispatch
+  literals each quote the guard AND the dispatch statement it protects,
+  contiguously, so for those two the substring check *is* an ordering check
+  (moving either guard below its dispatch fails `--check`). Extending that
+  shape to the other entries is R4 work.
 - **Recorded scan-scope limits.** The scan is `<root>/src` only (via
   `_resolve_scan_targets`'s default) -- nothing outside `src/` is ever
   scanned or can carry a ledger row. `collect_define_bodies` keeps
@@ -3788,6 +4328,7 @@ later (review-1 F-5/F-6/F-7/W-12):
   `#define NAME(...)` silently overwrites an earlier one in the body map
   `derive_macro_family` closes over) -- two files defining the same macro
   name differently is a latent blind spot this gate does not detect.
+
 """
 
 
@@ -4155,10 +4696,13 @@ def main(argv=None):
     sites = []
     dispatch_occurrences = []
     measured_caller_counts = {}
+    attribution_errors = []
     for path in scanned_files:
-        file_sites, file_dispatch, file_callers = scan_file_full(path, repository_root)
+        file_sites, file_dispatch, file_callers, file_attribution_errors = scan_file_full(
+            path, repository_root)
         sites.extend(file_sites)
         dispatch_occurrences.extend(file_dispatch)
+        attribution_errors.extend(file_attribution_errors)
         for token_name, count in file_callers.items():
             measured_caller_counts[token_name] = measured_caller_counts.get(token_name, 0) + count
 
@@ -4197,6 +4741,8 @@ def main(argv=None):
     errors = reconcile(sites, rows, token_counts, todo_ceiling=todo_ceiling)
     errors.extend(dispatch_errors)
     errors.extend(caller_count_errors)
+    errors.extend(attribution_errors)
+    errors.extend(check_pinned_caller_macro_aliases(source_texts, pinned_caller_counts))
     for warning in dispatch_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     if unknown_macros:

@@ -198,9 +198,19 @@ The in-range half is cited exactly as "The in-range half's standing citation"
 above states it -- the entry guard, like any `location_of()` test, excludes
 only the sentinel.
 
-**The closure.** The kind is sound only while the entry set is CLOSED, so the
-entry points are enumerated in the marker-anchored **dispatch-entry registry**
-at the end of this file (`<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->`, exactly
+**The closure, and exactly what enforces it.** The kind is sound only while
+the entry set is CLOSED. **What closes a row is mandatory citation part (iii)
+-- its exhaustive direct-caller list, read and re-grepped by a human.** The
+mechanical check below is a BACKSTOP over that: it catches every occurrence of
+the dispatch spellings pinned in `DISPATCH_SPELLING_TOKENS`, which is the set
+of shapes this tree actually uses plus the re-spellings two adversarial
+reviews demonstrated, and it is line-based. It is not, and cannot be, a proof
+that no eighth dispatcher exists -- see "The line-split-call note" for the two
+residual spellings it cannot see. Read the two directions below as "a new
+dispatcher written in any of the pinned spellings is a build failure", not as
+"a new dispatcher is impossible". With that said, the entry points are
+enumerated in the marker-anchored **dispatch-entry registry** at the end of
+this file (`<!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->`, exactly
 once, outside any fence -- the M10 rule the classification and token-counts
 tables already follow). `tools/room_resolve_census.py --check` asserts two
 directions over it, the same bidirectional shape
@@ -214,22 +224,36 @@ directions over it, the same bidirectional shape
   silent proof rot -- and deleting ONE of an entry's two guards is the same
   failure, since a two-tripwire entry is only as strong as its weakest (see
   "An entry may carry MORE THAN ONE guard literal" below).
-- **Upward:** every occurrence of a pinned dispatch spelling
-  (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`,
-  `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
-  `shape_center(`) in production code lies inside a registered entry's
-  function. An eighth dispatcher is a gate ERROR naming the unregistered
-  site, not a free inheritance of the proof. Occurrences attributed to file
-  scope are skipped -- those are the dispatch machinery's own declarations
-  and definition heads, never calls -- and exactly two real sites are pinned
-  as reviewed exemptions in the script's `DISPATCH_TOKEN_EXEMPT_SITES` (see
-  below).
+- **Upward:** every occurrence of a pinned dispatch spelling in production
+  code lies inside a registered entry's function. An eighth dispatcher
+  *written in one of those spellings* is a gate ERROR naming the unregistered
+  site, not a free inheritance of the proof. The spellings are pinned in the
+  script's `DISPATCH_SPELLING_TOKENS`; the Task 5-fix round widened them from
+  the original seven (`command_pointer)(`, `g_command_table[`,
+  `spell_pointer)(`, `.spell_pointer(`, `activate_char_special(`,
+  `activate_obj_special(`, `shape_center(`) to **nineteen**, adding the
+  member-call forms (`->spell_pointer(`, `->command_pointer(`,
+  `.command_pointer(`), the bare address-read forms that a hoisted copy or a
+  table alias produces (`command_pointer`, `spell_pointer`,
+  `g_command_table`), and the SPECIAL fn-ptr slots the tree already dispatches
+  through (`.func)(`, `->func)(`, `.funct)(`, `->funct)(`,
+  `mob_index[].func`, `obj_index[].func`). Each of the six added shapes was a
+  demonstrated evasion in one or both whole-branch reviews. A file-scope
+  occurrence is admitted only when it sits at brace depth 0 on its own line --
+  a declaration, a definition head or a brace-init definition; an occurrence
+  inside braces on a file-scope line is a ONE-LINE function body (the other
+  demonstrated bypass) and is an ERROR. The real sites that carry a pinned
+  spelling without being an entry point are pinned as reviewed exemptions in
+  the script's `DISPATCH_TOKEN_EXEMPT_SITES`, each with its own one-line
+  reason (see below).
 
-`PENDING-T1b` is a transitional status: the entry's guard is SPECIFIED but not
-yet LANDED, so the row carries no guard literal and is exempt from the
-downward direction only (it must still name a real file and a real function).
-`--check` prints a loud WARNING for every `PENDING-T1b` row that remains, so
-the wave cannot finish with one standing.
+There is **no** exempt status. `PENDING-T1b` used to be one -- a transitional
+spelling for an entry whose guard was specified but not yet landed, carrying
+no guard literal and warning rather than failing. Both whole-branch reviews
+independently demonstrated the same evasion through it (add an unguarded
+dispatcher plus one `PENDING-T1b` row; `--check` exits 0), so it was retired
+at the Task 5-fix round. Every registry row now carries at least one guard
+literal, and an unknown status is a hard parse error.
 
 **How a guard literal is SPELLED, and why it looks masked.** The downward
 check runs against the function's comment/string-MASKED body, so a
@@ -293,9 +317,30 @@ calls `affect_total` on the next line; `src/app/objsave.cpp:506`'s
 on every login of a character carrying an `APPLY_SPELL` affect. It is pinned
 in `DISPATCH_TOKEN_EXEMPT_SITES` with that reason, and every row reachable
 through it stays `TODO` under the `APPLY_SPELL-window` category below (owner
-ruling R3-O-2). The other pinned exemption is
+ruling R3-O-2). The original companion exemption is
 `src/combat/combat_hooks.cpp:56`'s `g_command_table[i] = handler;` -- a
 registration WRITE, at which no actor exists at all.
+
+**The Task 5-fix exemptions.** Widening the token surface to catch
+address-reads (above) necessarily surfaces every ordinary presence TEST,
+comparison and registration WRITE of the same fn-ptr slots. Each is
+dispositioned in `DISPATCH_TOKEN_EXEMPT_SITES`, once per
+`(file, function, token)` key, with a one-line reason: nine registration
+writes (the `COMMANDO`/`ASSIGNMOB`/`ASSIGNOBJ` families, `assign_spell_pointers`,
+`assign_command_pointers`, `load_mobiles`/`load_objects`) and eleven presence
+tests or comparisons. The key includes the TOKEN, so exempting a function's
+address-reads does not exempt a real call newly added to it.
+
+**Three exemptions are STOPs, not category errors** -- the direct SPECIAL
+doors review-1's B-3 named: `src/app/comm.cpp:2829`/`:2830`
+(`complete_delay_impl`'s `(*mob_index[ch->nr].func)(...)`) and
+`src/app/delayed_command_interpreter.cpp:45` (`func_pointer =
+mob_index[index].func;`, called at `:47`). Both really do dispatch a spec proc
+with an actor nothing on that path validated. They are NOT registered, because
+a registry row asserts the entry HAS a guard and Wave R3 lands none for them;
+they are R4 design input, alongside `src/app/shop.cpp`'s direct ACMD host
+calls, which are plain calls rather than dispatch spellings and are already
+recorded there. No Wave R3 row cites either of them.
 
 ## Caller-count pins (R3-O-3)
 
@@ -432,6 +477,17 @@ callee name and its `(` on two different physical lines, e.g.
 shape (`grep -rnE "room_of\s*$" src --include="*.cpp"`) found **zero
 matches** at this commit -- the shape does not exist in production today.
 
+**The same limit applies to `DISPATCH_SPELLING_TOKENS`**, and review-1's E2
+probe demonstrated it: `cmd_info[5].command_pointer)` on one physical line
+with its `(ch, ...)` on the next defeats every dispatch spelling, exactly as
+it defeats every resolver token. So does a slot copy taken in an expression
+position none of the pinned spellings names (`helper(cmd_info[5].command_pointer)`
+reads the address with a `)` after it, which the bare-identifier patterns
+exclude because that is also how every presence test is written). These are
+the residual limits of a line-based gate, recorded rather than papered over --
+and the reason the closure paragraph above says citation part (iii), not the
+token check, is what actually closes a `dispatch-invariant` row.
+
 ## An `LS1-ALLOW` annotation is NOT a proof
 
 `tools/location_read_census.py`'s `LS1-ALLOW` annotation licenses
@@ -483,6 +539,18 @@ later (review-1 F-5/F-6/F-7/W-12):
   the precedent: pinning the dispatch alias itself as a token is what lets a
   future SECOND registered target surface as its own new site instead of
   silently inheriting the first target's proof.
+- **The gate cannot see guard ORDER.** The registry's downward direction is a
+  SUBSTRING check over the function's masked body: it asserts the guard
+  literal is still *present*, never that it still runs *before* the dispatch.
+  Both whole-branch reviews found this (review-2 M-2, review-1 M-4's tail);
+  review-2 demonstrated it by moving `do_use`'s entire guard block below both
+  of its dispatches with `--check` still exiting 0. R3-C-7's ADJACENCY rule is
+  therefore witnessed by the per-entry TESTS, not by the gate -- with one
+  exception introduced at the Task 5-fix round: `do_use`'s two pre-dispatch
+  literals each quote the guard AND the dispatch statement it protects,
+  contiguously, so for those two the substring check *is* an ordering check
+  (moving either guard below its dispatch fails `--check`). Extending that
+  shape to the other entries is R4 work.
 - **Recorded scan-scope limits.** The scan is `<root>/src` only (via
   `_resolve_scan_targets`'s default) -- nothing outside `src/` is ever
   scanned or can carry a ledger row. `collect_define_bodies` keeps

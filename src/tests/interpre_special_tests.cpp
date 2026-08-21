@@ -23,6 +23,7 @@
 #include "../interpre.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/types.h"
 #include "test_placement.h"
@@ -183,6 +184,19 @@ struct SpecialDispatchContext {
     }
 };
 
+// Mirrors act_othe_tests.cpp:45 / comm_act_tests.cpp (duplicated, not shared --
+// each copy lives in a different TU's anonymous namespace). Needed by the
+// Task 1c dominance test below, which reads what command_interpreter did or
+// did not send back to the actor.
+void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character) {
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = 0; // CON_PLYNG
+    descriptor.character = character;
+}
+
 } // namespace
 
 TEST(InterpreSpecial, DispatchesBothTheRoomFunctAndTheRoomOccupantMobSpec) {
@@ -329,6 +343,56 @@ TEST(CommandInterpreterDispatchInvariant, DispatchesTheAcmdForAPlacedActor) {
     EXPECT_EQ(GET_POS(&ch), POSITION_STANDING)
         << "Expected the identical fixture with a PLACED actor to reach the real do_stand body "
            "and stand the character up -- the guard must not block a normal dispatch.";
+}
+
+TEST(CommandInterpreterDispatchInvariant, RefusesBeforeTheTargetParserResolvesTheActorsRoom) {
+    // RR Wave R3 Task 1c (T3d finding O-2). The pair above proves the guard
+    // stops the ACMD DISPATCH; this one proves it also dominates
+    // `target_parser(ch, ...)`, which runs ~40 lines earlier in the same block
+    // and resolves rooms from the same actor. Task 1b's placement did not:
+    // `target_from_word` reached `get_obj_in_list(word, room_of(ch)->contents)`
+    // (visibility.cpp:1123) with an unplaced `ch`, silently degrading to
+    // world[0] (db_world.cpp:2082's negative-index arm), while the guard sat
+    // downstream doing nothing about it.
+    //
+    // `pull` (cmd 178, interpre.cpp's COMMANDO(178, ...)) is the discriminator
+    // because its ENTIRE first-target mask is TAR_OBJ_ROOM. With that one bit
+    // set and a non-empty argument, `target_from_word` has no branch that can
+    // return before the room read -- so reaching `report_wrong_target`'s
+    // TAR_OBJ_ROOM arm ("Nothing here by that name.") is a WITNESS that
+    // `room_of(ch)->contents` was consulted, not merely that the parse ran.
+    // Room 0 holds no object, so the parse fails and nothing is dispatched in
+    // either half; the only difference between the two runs is whether the
+    // room was read at all.
+    ScopedTestWorld test_world;
+    assign_command_pointers();
+
+    char_data ch{};
+    descriptor_data descriptor{};
+    reset_capturing_descriptor(descriptor, &ch);
+    ch.desc = &descriptor;
+    ch.specials.position = POSITION_STANDING;
+
+    set_location(&ch, NOWHERE);
+    char unplaced_line[] = "pull lever";
+    command_interpreter(&ch, unplaced_line, nullptr);
+
+    EXPECT_STREQ(descriptor.output, "")
+        << "Expected the dispatch-invariant guard to refuse BEFORE target_parser ran, so "
+           "target_from_word never resolved room_of(ch) and never reported a wrong target.";
+
+    reset_capturing_descriptor(descriptor, &ch);
+    set_location(&ch, 0);
+    char placed_line[] = "pull lever";
+    command_interpreter(&ch, placed_line, nullptr);
+
+    EXPECT_STREQ(descriptor.output, "Nothing here by that name.\n\r")
+        << "Expected the identical fixture with a PLACED actor to run target_parser, read "
+           "room_of(ch)->contents, find no `lever` there, and say so -- the guard must not block "
+           "a normal target parse.";
+
+    set_location(&ch, NOWHERE);
+    ch.desc = nullptr;
 }
 
 TEST(ActivateCharSpecialDispatchInvariant, RefusesToDispatchForAnUnplacedActor) {

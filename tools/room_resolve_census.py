@@ -1033,7 +1033,6 @@ LEDGER_DISPATCH_ENTRIES_HEADER = (
 # (a) treats the two identically; the distinct spelling is what keeps the
 # ledger honest about which guards this wave actually wrote.
 DISPATCH_ENTRY_STATUSES = ("GUARDED", "GUARDED-PRIOR")
-DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES = frozenset(DISPATCH_ENTRY_STATUSES)
 
 # RR Wave R3 Task 1d (coordinator ruling R3-C-7): an entry may carry MORE
 # THAN ONE guard literal, because one tripwire per entry point is not always

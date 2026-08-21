@@ -177,21 +177,73 @@ def mask_comments_and_string_literals(source_text, mask_comments=True):
 # preserved, so line numbers stay valid -- before either R3 check reads the
 # text.
 #
-# "Simple balanced scan", deliberately: `#if 0` opens a region, any nested
-# `#if`/`#ifdef`/`#ifndef` deepens it, `#endif` closes it, and an `#else` or
-# `#elif` at the region's OWN depth ends the inactive part (that branch is
-# live code and must keep being scanned). Anything cleverer would be a C
-# preprocessor, which this gate is not; `#if 0` is the only inactive form it
-# claims to see, and there are ZERO `#if 0` regions in the tree today
-# (verified by grep at this commit), so nothing real changes.
-INACTIVE_IF_ZERO_PATTERN = re.compile(r"^\s*#\s*if\s+0\s*(?://.*|/\*.*)?$")
+# "Simple balanced scan", deliberately: a never-true `#if` opens a region,
+# any nested `#if`/`#ifdef`/`#ifndef` deepens it, `#endif` closes it, and an
+# `#else` or `#elif` at the region's OWN depth ends the inactive part (that
+# branch is live code and must keep being scanned). Anything cleverer would
+# be a C preprocessor, which this gate is not; a literally-never-true
+# CONSTANT condition is the only inactive form it claims to see, and there
+# are ZERO such regions in the tree today (verified by grep at this commit),
+# so nothing real changes.
+#
+# Task 5-fix2 (re-verification M-3): the original pattern recognized only the
+# literal spelling `#if 0`, and the re-verifier walked a registered guard out
+# of the build past it six other ways -- `#if 00`, `#if (0)`, `#if 0L`,
+# `#if !1`, `#if 1 - 1`, `#if 0 - 0` -- each `--check` exit 0 with the guard
+# literal still textually present. The condition is now NORMALIZED (comment
+# stripped, all whitespace removed, whole-expression parentheses peeled) and
+# matched against the never-true constant forms.
+#
+# RESIDUAL, recorded rather than papered over (ledger blind-spot list,
+# playbook): `#ifdef ROTS_NEVER_DEFINED` and `#if defined(ROTS_NEVER)` are
+# NOT decidable textually -- whether they are never-true depends on what the
+# translation unit defined, which only a preprocessor knows. A guard hidden
+# behind one of those is still `--check` exit 0, and is caught by review and
+# by the per-entry discriminator tests, not by this gate.
+INACTIVE_IF_LINE_PATTERN = re.compile(r"^\s*#\s*if\s+(?P<condition>.*)$")
+NEVER_TRUE_CONDITION_PATTERN = re.compile(
+    r"^(?:0+[uUlL]*|0[xX]0+[uUlL]*|!1+[uUlL]*|1-1|0-0)$")
 PREPROCESSOR_IF_PATTERN = re.compile(r"^\s*#\s*(if|ifdef|ifndef)\b")
 PREPROCESSOR_ENDIF_PATTERN = re.compile(r"^\s*#\s*endif\b")
 PREPROCESSOR_ELSE_PATTERN = re.compile(r"^\s*#\s*(else|elif)\b")
 
 
+def _condition_is_never_true(condition):
+    """Is this `#if` condition a literally-never-true CONSTANT expression?
+
+    Normalizes first -- trailing comment dropped, ALL whitespace removed,
+    parentheses wrapping the WHOLE expression peeled -- so `#if ( 0 )`,
+    `#if 00` and `#if 1 - 1` read the same as `#if 0`. Anything with an
+    identifier in it (`#if defined(X)`, `#if DEBUG_LEVEL - 1`) is left alone:
+    deciding those needs a preprocessor, and a gate that GUESSED would either
+    blank live code or claim a closure it does not have."""
+    text = condition.split("//", 1)[0].split("/*", 1)[0]
+    text = "".join(text.split())
+    while len(text) > 2 and text.startswith("(") and text.endswith(")"):
+        inner = text[1:-1]
+        depth = 0
+        for character in inner:
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                depth -= 1
+                if depth < 0:
+                    break
+        if depth != 0:
+            # The outer parens are not a single wrapping pair (`(a)+(b)`).
+            break
+        text = inner
+    return bool(text) and NEVER_TRUE_CONDITION_PATTERN.match(text) is not None
+
+
+def line_opens_inactive_region(line):
+    """Does this physical line open a never-true `#if` region?"""
+    match = INACTIVE_IF_LINE_PATTERN.match(line)
+    return match is not None and _condition_is_never_true(match.group("condition"))
+
+
 def strip_inactive_preprocessor_blocks(masked_text):
-    """Blank `#if 0 ... #endif` regions in already-masked text, in place.
+    """Blank never-true `#if ... #endif` regions in already-masked text.
 
     Returns text with the same number of lines, each of the same length, so
     every line number and column the callers already computed stays valid."""
@@ -199,7 +251,7 @@ def strip_inactive_preprocessor_blocks(masked_text):
     depth = 0            # nesting depth INSIDE an inactive region (0 = active)
     for index, line in enumerate(lines):
         if depth == 0:
-            if INACTIVE_IF_ZERO_PATTERN.match(line):
+            if line_opens_inactive_region(line):
                 depth = 1
                 lines[index] = " " * len(line)
             continue
@@ -2638,6 +2690,18 @@ DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO = """void dispatcher_fn(char_data* ch)
 }
 """
 
+# Task 5-fix2 (re-verification M-3): the same probe in two of the six other
+# never-true spellings the reviewer walked a guard out of the build with.
+DISPATCH_PROBE_SOURCE_GUARD_IF_PAREN_ZERO = DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO.replace(
+    "#if 0", "#if (0)", 1)
+DISPATCH_PROBE_SOURCE_GUARD_IF_NOT_ONE = DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO.replace(
+    "#if 0", "#if !1", 1)
+
+# ... and the control that keeps the widening from becoming a blanket
+# "blank every #if region": a LIVE `#if 1` leaves the guard standing.
+DISPATCH_PROBE_SOURCE_GUARD_IF_ONE = DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO.replace(
+    "#if 0", "#if 1", 1)
+
 # ... and the mirror: an `#if 0` whose `#else` arm carries the REAL guard.
 # That arm is live code, so the region must end at the `#else` and the gate
 # must still find the literal.
@@ -3861,6 +3925,45 @@ def run_self_test():
         run_dispatch_case(
             "dispatch-guard-in-the-else-arm-of-if-zero", 0,
             probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO_ELSE)
+
+        # (aa2)/(aa3) Task 5-fix2 (M-3): two of the six other never-true
+        # spellings. Both were `--check` exit 0 before the condition was
+        # normalized rather than string-matched.
+        run_dispatch_case(
+            "dispatch-guard-compiled-out-by-parenthesised-zero", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_PAREN_ZERO,
+            expected_output=("guard literal",))
+        run_dispatch_case(
+            "dispatch-guard-compiled-out-by-not-one", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_NOT_ONE,
+            expected_output=("guard literal",))
+
+        # (aa4) ... and the control: a LIVE `#if 1` region must keep its
+        # guard, or the widening would be a blanket ban on `#if`.
+        run_dispatch_case(
+            "dispatch-guard-inside-a-live-if-one", 0,
+            probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_ONE)
+
+        # (aa5) the never-true condition vocabulary, in process: every
+        # spelling the reviewer demonstrated is recognized, every live or
+        # undecidable one is left alone. The last two rows are the RECORDED
+        # RESIDUAL -- `#ifdef`/`#if defined(...)` cannot be decided without a
+        # preprocessor, and the ledger's blind-spot list says so.
+        for condition_text, expected_never_true in (
+                ("0", True), ("00", True), ("(0)", True), ("0L", True),
+                ("!1", True), ("1 - 1", True), ("0 - 0", True), ("0x0", True),
+                ("1", False), ("0 && FOO", False), ("(a)+(b)", False),
+                ("defined(ROTS_NEVER)", False), ("ROTS_NEVER_DEFINED", False)):
+            if _condition_is_never_true(condition_text) != expected_never_true:
+                failures.append(
+                    f"inactive-if-condition-vocabulary: `#if {condition_text}` classified "
+                    f"{not expected_never_true} -- expected never-true={expected_never_true}"
+                )
+        if line_opens_inactive_region("#ifdef ROTS_NEVER_DEFINED"):
+            failures.append(
+                "inactive-if-condition-vocabulary: `#ifdef` must NOT be treated as never-true "
+                "(the recorded residual); blanking it would delete live code from the scan"
+            )
 
         # ------------------------------------------------------------------
         # RR Wave R3 Task 5-fix2, direction 25: the exemption map's own

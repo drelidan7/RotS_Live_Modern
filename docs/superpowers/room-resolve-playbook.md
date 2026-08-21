@@ -1,11 +1,17 @@
 # Room-resolve classification playbook
 
 **Status: covers RR Wave R2 (small tiers — `src/entity/`, `src/pathfind/`,
-`src/olc/`, `src/world/`), the first wave to apply the R1-shipped gate to real
-production rows.** Recorded factually from the ACTUAL recipe R2's tasks
-followed (Task 0's mini-census, Task 1's `entity`+`pathfind`+`olc` classification,
-Task 2's `world` classification including three red-first `GUARDED`
-conversions) — not a prescriptive design written in advance, mirroring how
+`src/olc/`, `src/world/`) and RR Wave R3 (`src/combat/` + the dispatch-pattern
+policy, TASK-001 + TASK-002).** R2 was the first wave to apply the R1-shipped
+gate to real production rows; R3 was the first to add a proof KIND
+(`dispatch-invariant`) and the first whose classification work required
+production code changes to make the proofs true. Recorded factually from the
+ACTUAL recipe each wave's tasks followed (R2: Task 0's mini-census, Task 1's
+`entity`+`pathfind`+`olc` classification, Task 2's `world` classification
+including three red-first `GUARDED` conversions; R3: three parallel censuses,
+the policy design, the guards, four classification tasks and two repair tasks
+the wave's own findings forced) — not a prescriptive design written in advance,
+mirroring how
 `docs/superpowers/combat-migration-playbook.md` records the combat-row
 migration's actual recipe rather than its original plan. This playbook is the
 one later waves (R3 — `src/combat/`, roughly 95 rows / 186 sites; R4 —
@@ -185,6 +191,116 @@ self-find-by-vnum) — the work was tracing that there really are only two
 callers tree-wide (re-grepped, not assumed) and that neither one's
 dominating construction could plausibly fail.
 
+### `dispatch-invariant` (Wave R3, owner ruling R3-O-1)
+
+The sixth and newest `PROOF_KINDS` entry, and the first whose evidence lives
+ENTIRELY OUTSIDE the row's own function. It covers the pattern that dominates
+`src/combat/` and `src/script/`: a body resolves the room of an actor
+(`ch`/`caster`) it never validated, because the actor arrived through a
+dispatch mechanism — a `cmd_info[].command_pointer` ACMD dispatch, the
+`combat_command` table, a `skills[].spell_pointer` door, one of the two SPECIAL
+invokers, the OLC `shape_center` fan-out, or the mob-AI driver. The proof is
+that the DISPATCHER guards the actor: one tripwire per entry point, on the
+actor argument, in the `db_world.cpp:2083` idiom.
+
+**The kind is only sound while the entry set is CLOSED**, so it does not stand
+on prose alone: the entry points live in a marker-anchored dispatch-entry
+registry in `docs/superpowers/room-resolve-ledger.md`, and
+`tools/room_resolve_census.py --check` asserts both directions over it (every
+registered guard literal must still be present in that function's masked body;
+every occurrence of a pinned dispatch spelling must lie inside a registered
+entry). Read the ledger's own "`dispatch-invariant` proofs and the
+dispatch-entry registry" section before writing one of these rows — this
+playbook records the recipe, that section is the contract.
+
+**The three mandatory citation parts. All three, or the row is not proven:**
+
+1. **The registry entry** — the `file:line` of the guard that covers this row's
+   actor, and (per R3-C-7 below) the SPECIFIC guard line, not merely the entry.
+2. **The actor parameter, BY NAME.** The guard covers one argument. Ruling
+   R3-C-5: the tree's `location_of(A) == location_of(B)` equality checks all
+   pass when BOTH are NOWHERE, so a target-derived id inherits the caster's
+   status and nothing more. A row whose id is `victim`-derived is classified on
+   its own merits and says so.
+3. **The body's exhaustive direct-caller list**, with every door that is NOT
+   the registered dispatcher proven separately, or the row split. This is the
+   part that fails most often — five of R3's eight stayed-`TODO` dispatch rows
+   failed on it.
+
+**Worked example, ACMD shape** (`src/combat/olog_hai.cpp · do_overrun ·
+room_of(`, landed by R3's Task 3d and re-pointed by Task 1d):
+
+> `for (auto* tmpch : rots::entity::occupants(room_of(ch)))` at
+> olog_hai.cpp:565. (i) ENTRY: guarded at interpre.cpp:1175, the
+> `command_interpreter` registry entry's PRE-DISPATCH tripwire. R3-C-7
+> ADJACENCY: nothing but the `may_not_perform` test lies between that guard and
+> the ACMD dispatch at interpre.cpp:1180... (ii) ACTOR: `ch` — the name the
+> registry's own actor column carries... no victim/target id is read here, so
+> R3-C-5 does not apply. (iii) DIRECT CALLERS: `do_overrun` is an `ACMD`
+> (olog_hai.cpp:524) and its ONLY door is the `cmd_info` table, `COMMANDO(245,
+> ... do_overrun, ...)` at interpre.cpp:1957 — re-grepped tree-wide at this
+> commit: no `set_combat_command` cell, no direct call from any other body, no
+> fn-ptr storage. INTERVENING RELOCATION: the site sits inside the `for (dis =
+> 0; dis <= total_moves; dis++)` loop whose tail relocates `ch` through
+> `issue_command(combat_command::move, ch, ...)` at olog_hai.cpp:572 — itself a
+> registry entry guarding the same `ch` — and `do_move`'s relocation is the
+> ADJACENT pair `char_from_room(ch); char_to_room(ch, to_room);` at
+> act_move.cpp:807-808, which re-places on the very next statement, so no later
+> iteration re-enters :565 unplaced.
+
+What landing it took: a tree-wide re-grep for every one of the five ACMDs in
+that file (each turned out to have exactly one door, its `COMMANDO` row), and
+the intervening-relocation clause — a guard at dispatch proves nothing about
+iteration 2 by itself.
+
+**Worked example, ASPELL shape** (`src/combat/mystic.cpp · spell_poison ·
+room_of(`, landed by R3's Task 2d):
+
+> Both sites sit in the room arm `if (!victim && !obj &&
+> !(caster->specials.fighting))` (mystic.cpp:1284) and resolve the CASTER's own
+> room... (i) REGISTRY ENTRIES: `spell_poison` is entered only through
+> `skills[].spell_pointer`; the rows cite `do_cast` (spell_pa.cpp:928) and
+> `do_use` (act_othe.cpp:806)... THE APPLY_SPELL DOOR IS BLOCKED: the landed
+> sites require `!victim`, and `affect_modify`'s APPLY_SPELL pair dispatches
+> with `victim == caster == ch`, so that door cannot enter this arm...
+> (iii) DIRECT CALLERS: one — `SPECIAL(snake)` at spec_pro.cpp:670, which
+> passes `host->specials.fighting` as `victim` under the
+> `host->specials.fighting &&` test at spec_pro.cpp:667, a NON-NULL victim, so
+> the `!victim` room arm is unreachable from it and the row does not split.
+
+What landing it took: reading each dispatch's ARGUMENT LIST to decide whether
+the deliberately-unguarded APPLY_SPELL arm can reach the row's specific sites.
+An ASPELL body is usually several mutually exclusive arms, and only some of
+them are reachable from each door — this is what separates the six ASPELL rows
+that landed from the ten that stayed `TODO` under `APPLY_SPELL-window`.
+
+**R3-C-7: adjacency, and the `do_cast` cautionary tale.** A row inherits an
+entry's guard ONLY if no statement between that guard and the dispatch can run
+code with the actor as a participant. R3's Task 1b put `do_cast`'s tripwire at
+`spell_pa.cpp:499`, near the top of the function, and justified it as
+"straight-line within the one function, with no other entry into the body" —
+which answers *entry*, not *relocation*. Task 2d landed six ASPELL rows on that
+entry and flagged the gap in its own report. Task 1c then read `:499`..the
+dispatch in full and found **two** statements that can move `ch`:
+`complete_delay(ch)` at `spell_pa.cpp:516` (mainline — every prepared-spell
+cast reaches it, and it re-enters `command_interpreter` at comm.cpp:2837 and
+from there arbitrary spec procs) and `appear(ch)` at `:721`
+(`affect_from_char` → `affect_total` → `affect_modify`'s APPLY_SPELL arm, an
+arbitrary further ASPELL). It STOPped rather than write the rows. Task 1d's own
+full read found a **third** the STOP had missed — `check_hallucinate(ch,
+tar_char)` at `spell_pa.cpp:895`, ONE STATEMENT above the dispatch.
+
+The lesson is the ruling: **do not close this by exhaustion.** Three readers of
+the same 430 lines found two, then three relocating calls; a fourth reader
+might find a fourth. The structural answer is ADJACENCY — the tripwire sits
+IMMEDIATELY before the dispatch statement, with only scalar/local work between,
+and an entry that must ALSO resolve or parse the actor earlier carries a SECOND
+tripwire there. Three of R3's nine entries needed two
+(`command_interpreter`, `do_cast`, `cast_mass_spell`); the registry's
+`Guard literal` cell therefore holds a ` || `-separated list and `--check`
+requires EVERY literal to be present, because a two-tripwire entry is only as
+strong as its weakest.
+
 ### `occupant-chain` — zero R2 instances
 
 R2 landed **zero** rows classified `occupant-chain`, and the whole ledger
@@ -216,9 +332,13 @@ in-range, and the invariant's second half does not hold inside a
 outside `rots_entity`'s own placement machinery, not force a site into it
 for lack of a better-fitting kind.
 
-## Pitfalls (measured from this wave's actual experience)
+## Pitfalls (measured from these waves' actual experience)
 
-### The advisory/premise overturn rate
+The first eight subsections are R2's; the ninth is Wave R3's own, and where
+the two disagree about a rate, R3's is the one a dispatch-heavy tier should
+plan against.
+
+### The advisory/premise overturn rate (R2)
 
 Counting precisely from the three reports (not "at least 4" — the exact
 tally): **5 distinct advisory or premise overturns** landed across the wave,
@@ -267,10 +387,15 @@ individual row would be a real risk, not a formality.
 Every `entry-guard`/`caller-contract` proof built on a `location_of()
 != NOWHERE` (or equivalent sentinel) test must state **both** halves: the
 sentinel exclusion (which line, which condition — the trivial half) AND the
-in-range justification (the ledger's M-1 precondition, `placement.cpp:
-369-395`, plus append-only room allocation — the half that is easy to
-forget because it isn't a local runtime check at all, but a program-wide
-invariant). Every clean R2 row above states this explicitly (e.g.
+in-range justification (plus append-only room allocation — the half that is
+easy to forget because it isn't a local runtime check at all, but a
+program-wide invariant). **Cite it as the ledger's "The in-range half's
+standing citation (R3-C-2)" section words it**, not as the `M-1
+(placement.cpp:369-395)` boilerplate every R1/R2 row carries: that span is
+`ScopedRenderLocation`'s banner and does not point at an in-range argument at
+all (see Wave R3's pitfalls below). R2's landed rows are deliberately not
+rewritten — the prose section supersedes their boilerplate — but no new row
+should reproduce it. Every clean R2 row above states this explicitly (e.g.
 `attach_equipment`: "Sentinel exclusion at :267; in-range via M-1
 (placement.cpp:369-395) + append-only allocation.") — this is not
 decoration, it is the ledger's own standing rule (see the ledger doc's "The
@@ -409,6 +534,91 @@ also needs formatting, or explicitly disclose in the commit message /
 report exactly which lines are formatter-only** — never let a
 behavior-change diff quietly include an undisclosed reformat pass.
 
+### Wave R3's own pitfalls (`src/combat/`)
+
+R3 measured a much harsher advisory regime than R2 did, and hit six defect
+classes R2 never saw. Ruling R3-C-6 states the headline: **in this tier
+`--advise` is a search hint only.**
+
+- **The advisory overturn rate is a coin flip, and the two censuses disagree
+  about how bad.** Census A overturned **14 of 42** advisories (**33%**);
+  census B overturned **11 of 14** (**79%**). R2's rate was 5 of 38 rows
+  (≈13%). Budget a falsification read for every single advisory in a
+  dispatch-heavy tier, not a sampling.
+- **`occupant-loop?` routinely flags the SITE ITSELF as its own proof.** The
+  recurring shape: the advisory points at an `occupants(room_of(ch))` loop that
+  IS the resolver site in question — the loop CONSUMES the room this call
+  resolves, so it cannot be its proof. R3 landed at least six rows that say so
+  in their own text (`send_magic_room_message` :69, `spell_word_of_shock`
+  :2033, `spell_flash` :689, `spell_terror`, `spell_reveal_life`,
+  `spell_word_of_sight`). R2 had already seen this twice
+  (`location_benchmark.cpp`); R3 shows it is the heuristic's dominant failure
+  mode, not an occasional one.
+- **`entry-guard?` names the nearest CASTER guard regardless of which id the
+  site resolves.** `group_gain`'s row is the clean example: the advisory named
+  a guard on `killer` while the site resolves `dead_man`'s room, and the
+  :1265 TRANSFER step that actually makes the proof
+  (`location_of(killer) != location_of(dead_man)` → return) appears in the
+  advisory not at all. A `location_of` test near the site is not evidence that
+  it is a test of the RIGHT variable.
+- **Line drift across a wave is not an edge case — it is the default.** Every
+  citation Task 1d checked was stale: the 19 ACMD rows' `interpre.cpp`
+  citations by **+49**, the six ASPELL rows' registration citations by **+35**.
+  Task 4's own pass then found more that Task 1d had missed or mis-diagnosed:
+  `mystic.cpp` rows by **+32** (Task 2d's, written before Task 1d's insertion)
+  and **+46** (Task 2p's, written before Task 1b's as well), `fight.cpp`
+  citations inside OTHER files' rows by **+33** (Task 3p re-pointed its own
+  rows and nobody else's), `act_othe.cpp` by **+14**, `mobact.cpp` by
+  **+15/+16**, `spell_pa.cpp` by **+17**, plus four regression-pin test-file
+  citations. **A task that inserts lines into a file must re-point every ledger
+  citation into that file, not only the rows it wrote** — and the docs task
+  must re-derive the lot anyway, because "unchanged" claims are themselves
+  wrong (Task 1d asserted `mystic.cpp`'s cited lines sat above its insertion
+  point; they sat below it, and it had missed a whole four-citation set).
+- **Mixed-CRLF files silently explode a diff.** `src/combat/mage.cpp` (2545 of
+  2558 lines CR-terminated) and `src/combat/mystic.cpp` (1896 of 1906) are
+  MIXED. Editing either with ordinary Python text I/O rewrites every line
+  ending and produces a whole-file diff; Task 1d hit exactly that and caught it
+  only because its `clang-format` drift-line count moved the WRONG WAY
+  (51 → 15) for an insertion. Edit these files at the byte level and check the
+  CR count before and after. Relatedly, `cd src && make format` churns
+  **126 files** tree-wide — the checked-in tree is NOT format-clean, so never
+  run it casually inside a behavior-change task (Task 2p ran it once and
+  reverted all of it).
+- **A SPECIAL *host* is not the guarded argument.** `activate_char_special`'s
+  parameters are `(char_data* character, char_data* victim, ...)` — the HOST
+  first, the ACTING character second — and R3's tripwire guards `victim`. Any
+  caller chain that passes a `host` (`SPECIAL(shop_keeper)`'s six direct
+  `do_open`/`do_close`/`do_lock`/`do_unlock` calls in `src/app/shop.cpp`) is
+  NOT covered, and cost three rows / ten sites that census B expected to drain.
+  Check which parameter your chain actually carries before citing the entry.
+- **The both-NOWHERE equality hole (R3-C-5).** `location_of(A) ==
+  location_of(B)` passes when both are NOWHERE. This is not theoretical: it
+  invalidated `spell_summon`'s victim half, it is why `different_zone` could
+  not land, and it made `cast_mass_spell`'s first guard test VACUOUS until the
+  fixture was rewritten to put both the caster and the group member at NOWHERE.
+  Any proof leaning on such a comparison excludes exactly one real room, not
+  the sentinel.
+- **Re-derive a census's arithmetic from its own tables, not its own summary
+  sentence.** Census A's summary said 11 rows / 16 sites were
+  APPLY_SPELL-window-reachable; counting the sub-table it wrote gives **10 rows
+  / 14 sites** (the eleventh row's own C-2 column reads "n/a"). The stayed-TODO
+  TOTAL was unaffected, which is exactly why nobody noticed until Task 2d
+  counted. The figure had by then been copied into the wave spec AND the ledger
+  prose.
+- **The in-range citation the whole program had been copying was wrong.** Every
+  R1/R2 proof spells the in-range half "in-range via M-1
+  (`placement.cpp:369-395`)"; that span is `ScopedRenderLocation`'s explanatory
+  banner, not an in-range argument (census A's finding L-4, ruling R3-C-2). The
+  honest citation names the WRITE side — `char_to_room` (`placement.cpp:548`,
+  its unconditional resolve at `:564`) and `would_break_the_absence_invariant`
+  (`:410-420`, enforced `:427`/`:440`) — plus append-only allocation, and says
+  plainly that the in-range half is INHERITED from the write side, which this
+  same program drains. **Cite the ledger's "The in-range half's standing
+  citation (R3-C-2)" section rather than re-typing the wording**; R3 itself
+  shipped two different spellings of it across four tasks and needed a docs
+  pass to normalize all 54 rows onto one.
+
 ## The GUARDED procedure
 
 `GUARDED` is the ledger's own class for "this site cannot be proven safe as
@@ -472,6 +682,28 @@ the procedure below.
    for the general rule); a test wired into only one build system is
    invisible to whichever verification path doesn't use it.
 
+**Wave R3's three GUARDED rows add one rule: guard at the POINT OF USE, and be
+willing to say the briefed shape is not implementable.** R3's brief specified
+"ONE guard at `raw_kill`'s entry on `dead_man`'s placement" covering both the
+`death_cry` and `get_corpse_desc` rows. Task 3p read it and refused: the
+`get_corpse_desc` read is two frames below `raw_kill` behind a REQUIRED RETURN
+VALUE (the corpse), so no guard inside `raw_kill` can reach it without a
+signature change, and an entry-evaluated flag would already be STALE by
+`fight.cpp:982` because `call_special`/`stop_riding`/the `affect_remove` loop
+run in between. It landed one guard per function instead —
+`if (was_in == NOWHERE) { return; }` at `fight.cpp:927` in `death_cry`, and a
+leading `location_of(ch) != NOWHERE &&` term at `fight.cpp:568` in
+`get_corpse_desc` (the `limits.cpp:813` idiom, which keeps the row's site count
+at 3 so no token count moves) — each red-first, each with an IN-BODY POSITIVE
+CONTROL (a PLACED character for whom the removed behavior must still happen)
+that passed in the same red run, so neither assertion can pass vacuously. The
+third R3 guard, `mage.cpp:944`'s `!fail &&` term in `spell_blink`, adds a
+different lesson: it was deliberately made LINE-COUNT-NEUTRAL and applied at
+the byte level, because `mage.cpp` is mixed-CRLF and because inserting an
+explanatory comment block would have invalidated ~40 verified `mage.cpp:NNN`
+ledger citations. The explanation went in the ledger row, the test header and
+the commit message instead.
+
 ## The stayed-TODO taxonomy
 
 Every row a task chose not to drain must stay `TODO` with an explicit,
@@ -530,7 +762,50 @@ count and the site count differ) fall into four named categories:
    medium-confidence proofs land." Task 1 chose the second option rather
    than land a proof it could not fully stand behind.
 
-**The rule underlying all four categories: a refusal to classify is not a
+Wave R3 added three more and widened one. All four are also recorded in
+`docs/superpowers/room-resolve-ledger.md`'s "Stayed-TODO taxonomy: the Wave R3
+additions" section, because R3's rows cite them by name.
+
+5. **`APPLY_SPELL-window`** (owner ruling R3-O-2). Rows reachable with an
+   UNPLACED caster through `affect_modify`'s APPLY_SPELL arm
+   (`entity_lifecycle.cpp:2440`/`:2442`) — the login/rent-load window, where
+   `store_to_char` sets NOWHERE (`db_players.cpp:1403`) and calls
+   `affect_total` on the next line, and `Crash_load` (`objsave.cpp:506`) does
+   the same before placement. That arm is DELIBERATELY not a dispatch entry: a
+   tripwire there would fire on every login of a character carrying an
+   `APPLY_SPELL` affect, so it is pinned in the script's
+   `DISPATCH_TOKEN_EXEMPT_SITES` with that reason instead. R3 left **10 rows /
+   14 sites** here, all in `mage.cpp`, to be ruled together with the program's
+   pending `RR-O-1` ruling — both are rulings about the same login window.
+6. **`intervening-relocation`** (Wave R3 Task 1c). A row whose every door IS a
+   registered dispatch entry, but where a statement between one entry's guard
+   and the site can MOVE the actor, so the guard's conclusion does not survive
+   to the site. Distinct from "the guard sits below the site" (that is textual
+   order, and R3 closed its one instance by moving the guard); this one is
+   about what runs in between. R3's single instance,
+   `visibility.cpp · target_from_word · EXIT(` (1 row / 2 sites), survives even
+   R3-C-7's adjacency answer, because its `do_cast` door
+   (`spell_pa.cpp:624`) sits BETWEEN that entry's two tripwires. Closing it
+   needs a third tripwire, which no ruling authorized.
+7. **`owner-punted`** (owner ruling R3-O-4). `olog_hai::get_random_target`
+   (1 row / 2 sites) has zero production callers; this repository's own
+   dead-code heuristic would delete it, but the owner ruled it is NOT deleted,
+   NOT proven, and NOT to be removed — intent unknown, disposition a future
+   design decision. **A row can stay `TODO` because the owner said so**, and
+   that is a category, not an omission.
+
+**`scale-flagged` widened** (owner ruling R3-O-3): alongside R2's `CAN_GO`
+(42 call sites) and `obj_to_room` (20), it now also covers
+`visibility.cpp`'s `CAN_SEE` (the `:578`/`:580` half — the `:121` entry-guard
+half drains, so the row SPLITS) and `get_char_room_vis`. These two carry a
+compensating control while they wait, and it is worth copying: pinning their
+NAMES as scanned tokens (the usual remedy for an id-taking function) would have
+minted ~127 new ledger rows and raised the ceiling by the same amount for zero
+proof value, so R3 pinned the tree-wide production CALLER COUNTS instead
+(`PINNED_CALLER_COUNTS`, measured `CAN_SEE(` **86** / `get_char_room_vis(`
+**41**), and `--check` fails on drift in EITHER direction.
+
+**The rule underlying all seven categories: a refusal to classify is not a
 gap in the work, it is a deliverable — every stayed-TODO row states, in the
 task report and (for the taxonomy above) in this playbook, exactly which
 category it falls into and why**, so a future reader never has to
@@ -569,7 +844,10 @@ face value into a later doc without independently re-summing it.
 | `src/pathfind/` | 4→5 (1 split) | 11 | T1 | shared, see below | 1 | 0 | 11 | 0 |
 | `src/olc/` | 5 | 6 | T1 | shared, see below | 1 | 0 | 1 | 5 |
 | `src/world/` | 13 | 35 | T2 | 2 (`4a7409d4`, `f9bd3d52`) | 1 | +3 | 32 (29 PROVEN + 3 GUARDED) | 3 |
-| **Total** | **38** | **83** | T1+T2 | **4** (T1: `19c96b2a`+`f502c909`; T2: `4a7409d4`+`f9bd3d52`) | **2** | **+3** | **72** | **11** |
+| **Total (R2)** | **38** | **83** | T1+T2 | **4** (T1: `19c96b2a`+`f502c909`; T2: `4a7409d4`+`f9bd3d52`) | **2** | **+3** | **72** | **11** |
+| `src/combat/` (**R3**) | 95 → 100 (5 splits) | 186 | T1a/T1b/T2p/T3p/T2d/T3d/T1c/T1d (+ T0 census, read-only) | 22 | **2 whole repair TASKS** (T1c, T1d) | +25 | 130 | 56 |
+| R2-deferred riders (**R3**) | 6 | 8 | T3p (`weather_to_char` ×2, inside its own commit), T3e (OLC ×4) | 1 | — | 0 | 8 | 0 |
+| **Total (R3)** | **101 → 106** | **194** | 11 task-units | **23** classification/production + 3 wave-admin + the T4 docs commits | **2** | **+25** | **138** | **56** |
 
 Additional measured figures: **5** distinct census advisory/premise overturns
 (2 at Task 0 census-writing, 1 at Task 1, 2 at Task 2 — see "Pitfalls"
@@ -583,7 +861,61 @@ standing instruction); ctest `1862 → 1865` (the +3 `ResetZoneTest.*` cases);
 ASan clean at the one task (T2) that touched a new test file; both boot
 goldens byte-identical at every commit that touched boot-path code.
 
-### Estimation note for R3 (`src/combat/`, ~95 rows / 186 sites) and R4 (`src/script/`, ~44 rows / 118 sites)
+### Estimation note: what R3 actually cost, and what that implies for R4
+
+**R3 is now measured, so R4 should be planned from R3's rates, not R2's.** The
+R2-derived projection that follows this block is kept verbatim as the
+historical record — it is worth reading BECAUSE it was wrong in an instructive
+direction, and the corrections are stated here first.
+
+What R2's projection got right: it called the dispatch-pattern deferral "the
+single biggest wildcard" and said designing that policy was a **prerequisite**
+for R3 draining anywhere near its row count. Both held. It also predicted "on
+the order of a dozen" advisory/premise corrections against R2's roughly five;
+the two censuses together overturned **25** advisories (14 of 42 in A, 11 of 14
+in B) before a single row was written, plus at least six further premise
+overturns during implementation.
+
+What it got wrong, and by how much:
+
+- **It predicted R2's 13% stayed-TODO rate was "very likely a floor" for
+  combat.** The measured rate is **56 of 186 sites, 30%** — more than double,
+  and that is WITH the dispatch policy landed. The residue is not one thing:
+  25% of it is the login window (`APPLY_SPELL-window`), 23% unproven extra
+  doors, 34% medium-confidence refusals the wave's own no-medium-proofs rule
+  forbade landing.
+- **The dispatch share was the tier, not a slice of it.** 45 of 95 combat rows
+  / 84 of 186 sites were DISPATCH-PATTERN at census time; `dispatch-invariant`
+  ended up carrying **56 of the 138 sites this wave drained (41%)**, and it is
+  now the second-largest proof kind in the whole ledger after `entry-guard`.
+- **Fix rounds are not per-task review cycles at this scale; they are whole
+  TASKS.** R2 budgeted "one fix round per task". R3 spent **two entire extra
+  tasks** repairing its own policy — T1c (moving `command_interpreter`'s guard
+  above `target_parser`, after T3d found it did not dominate) and T1d
+  (implementing R3-C-7's adjacency answer after T1c STOPped on `do_cast`) —
+  plus a citation-repair pass in the docs task. Budget a repair task, not a
+  review comment.
+
+For **R4 (`src/script/`, ~44 rows / 118 sites)**, R3's measurements say:
+
+- The `dispatch-invariant` machinery is BUILT and R4 inherits it — registry,
+  gate directions, self-tests, nine guarded entry points. R4's marginal cost
+  for a dispatch row is a caller re-grep plus an adjacency check, not a policy.
+- **The known gap is the SPECIAL host.** `activate_char_special`'s tripwire
+  guards `victim`, not `character`, and `src/app/shop.cpp`'s
+  `SPECIAL(shop_keeper)` calls four ACMD bodies directly with a HOST. R3
+  measured the fix at **one guard for 3 rows / 10 sites** — the cheapest
+  remaining ratio in that tier, and squarely R4/app-tier shaped.
+  `delayed_command_interpreter.cpp:46`/`:51` is a second host-passing door that
+  bypasses both SPECIAL invokers entirely.
+- Expect the `APPLY_SPELL-window` and `intervening-relocation` categories to
+  recur, and expect the same advisory overturn rate: `src/script/` is
+  `mudlle.cpp`/`mobact.cpp`/`spec_pro.cpp`/`spec_ass.cpp`/`script.cpp`, i.e.
+  dispatch machinery all the way down.
+
+---
+
+### (Historical) Estimation note for R3 (`src/combat/`, ~95 rows / 186 sites) and R4 (`src/script/`, ~44 rows / 118 sites), written at the end of R2
 
 **This is a projection from R2's measured rates, not a fresh census — a real
 Task-0-style census is still mandatory at the start of R3 and R4, and every

@@ -3620,13 +3620,13 @@ TEST(LoadWindowDeath, MakeCorpseEmptiesWornGearIntoTheCorpseBeforeExtractCharCan
 //
 // Two room-resolve ledger rows (docs/superpowers/room-resolve-ledger.md)
 // could not be proven and needed a real behavior change instead:
-//   `src/combat/fight.cpp . death_cry . room_by_id_total(`  (fight.cpp:913)
-//   `src/combat/fight.cpp . get_corpse_desc . room_of(`     (fight.cpp:554 x3)
+//   `src/combat/fight.cpp . death_cry . room_by_id_total(`  (fight.cpp:946)
+//   `src/combat/fight.cpp . get_corpse_desc . room_of(`     (fight.cpp:568 x3)
 // Both are reached from ONE raw_kill() invocation, one statement apart
-// (fight.cpp:949 death_cry(dead_man); :950 make_corpse(dead_man, ...) ->
-// make_physical_corpse:735 -> get_corpse_desc), and NONE of raw_kill()'s 14
+// (fight.cpp:982 death_cry(dead_man); :983 make_corpse(dead_man, ...) ->
+// make_physical_corpse:749 -> get_corpse_desc), and NONE of raw_kill()'s 14
 // production call sites tree-wide (act_move.cpp:400/:423/:830,
-// act_offe.cpp:262, fight.cpp:1093/:1118/:1147/:2104/:3251/:3317,
+// act_offe.cpp:262, fight.cpp:1126/:1151/:1180/:2137/:3284/:3350,
 // limits.cpp:1425/:1618, script.cpp:1653, spec_pro.cpp:3277) guards
 // `dead_man`'s placement. The tree documents the unplaced case as LEGITIMATE
 // rather than hypothetical: placement.cpp:396-399 and
@@ -3637,15 +3637,15 @@ TEST(LoadWindowDeath, MakeCorpseEmptiesWornGearIntoTheCorpseBeforeExtractCharCan
 // THE ABSENT BEHAVIOR, stated before the guards were written:
 //   * death_cry -- for an unplaced character, CAN_GO(ch, door)
 //     (environment_utils.cpp:139) resolves the room-0 fallback and can
-//     legitimately return 1 off ROOM 0's exits, after which :913 resolves
+//     legitimately return 1 off ROOM 0's exits, after which :946 resolves
 //     NOWHERE a second time and the render cursor is retargeted to one of room
 //     0's neighbours: the death cry is broadcast into an unrelated room, plus
 //     two negative-room mudlogs per passable door. The opening
-//     act(..., TO_ROOM) at :895 is ALREADY a no-op for an unplaced character
+//     act(..., TO_ROOM) at :909 is ALREADY a no-op for an unplaced character
 //     (comm.cpp's act_impl takes neither its `ch && location_of(ch) !=
 //     NOWHERE` nor its `obj` arm, and returns at `if (!to)`), so the per-door
 //     broadcast is the only delivery the guard removes.
-//   * get_corpse_desc -- for an unplaced character the three :554 reads take
+//   * get_corpse_desc -- for an unplaced character the three :568 reads take
 //     ROOM 0's sector_type, so the corpse is described as "floating here"
 //     whenever room 0 happens to be watery. The guard makes the wording fall
 //     to the default "lying here" instead.
@@ -3762,7 +3762,7 @@ TEST(DeathCryTest, SkipsThePerDoorBroadcastWhenTheDyingCharacterIsNowhere) {
 
 // RR Wave R3 Task 3p, GUARDED row 2 (`src/combat/fight.cpp . get_corpse_desc
 // . room_of(`). RED against the unguarded fight.cpp: the unplaced victim's
-// corpse was described "floating here", because the three :554 reads took
+// corpse was described "floating here", because the three :568 reads took
 // ROOM 0's SECT_WATER_SWIM sector_type.
 TEST(GetCorpseDescTest, UsesTheLyingHereWordingWhenTheDeadCharacterIsNowhere) {
     ScopedVnumWorld fixture_world;
@@ -3791,7 +3791,7 @@ TEST(GetCorpseDescTest, UsesTheLyingHereWordingWhenTheDeadCharacterIsNowhere) {
         // POSITIVE CONTROL: a PLACED victim really does get the water wording,
         // so the "lying here" assertion below cannot pass just because the
         // fixture never reaches the water branch. attack_type SPELL_POISON is
-        // required with a null killer: make_physical_corpse:783's
+        // required with a null killer: make_physical_corpse:797's
         // `attack_type == SPELL_POISON || !IS_NPC(killer)` would otherwise
         // dereference it.
         obj_data *placed_corpse = make_corpse(&victim, nullptr, SPELL_POISON);

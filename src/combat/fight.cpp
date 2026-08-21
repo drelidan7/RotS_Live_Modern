@@ -553,8 +553,8 @@ void get_corpse_desc(struct obj_data* corpse, struct char_data* ch,
     }
     // RR Wave R3 Task 3p GUARDED (room-resolve ledger row
     // `src/combat/fight.cpp . get_corpse_desc . room_of(`). The only call
-    // chain that reaches here is raw_kill():950 -> make_corpse ->
-    // make_physical_corpse:735, one statement after death_cry() -- so the same
+    // chain that reaches here is raw_kill():983 -> make_corpse ->
+    // make_physical_corpse:749, one statement after death_cry() -- so the same
     // character death_cry() may legitimately see at NOWHERE arrives here too,
     // and none of raw_kill()'s 14 call sites guards it. Unguarded, these three
     // reads take ROOM 0's sector_type (plus three negative-room mudlogs) and

@@ -3927,9 +3927,17 @@ differed), the other 19 only their trailing citation-provenance note. Together
 with Task 3e's four OLC rows the ledger now carries exactly ONE spelling of the
 in-range half across all **54** Wave R3 rows, and the drafted `:369-391` span
 survives nowhere in the classification table (it appears exactly once in this
-file, in the paragraph above that records what it was). **No Wave R1/R2 row was
+file, in the paragraph above that records what it was). **No Wave R1/R2 row's PROOF ARGUMENT was
 edited** -- those still carry the superseded `M-1` boilerplate this section
-fixes, deliberately (see the paragraph above).
+fixes, deliberately (see the paragraph above). Three R1/R2 rows did have
+their `file:line` CITATIONS re-derived, because this wave's own tripwire
+insertions moved the lines they point at: `src/entity/placement.cpp ·
+get_char_room` (whose proof argument was additionally repaired at the Task
+5-fix round -- see review-1's M-3, recorded in that row), `src/entity/
+containment.cpp · obj_from_room` and `src/entity/location_benchmark.cpp ·
+measure_lookup`. Re-pointing a citation at unchanged code is not editing the
+row's argument; the sentence above means the latter (whole-branch review-1,
+finding m-6).
 
 ## `dispatch-invariant` proofs and the dispatch-entry registry
 
@@ -4077,6 +4085,26 @@ merely the entry. A row whose site is reached through the dispatch cites the
 pre-dispatch line; a row whose site sits above the first relocating call
 cites the early one.
 
+
+**The `special` entry's actor column is narrower than the others** (both
+whole-branch reviews, review-2 M-1 / review-1 M-2). `special()`
+(interpre.cpp:1342-1360) tests its SIXTH PARAMETER, not its actor: it sets
+`remote_mode` from `in_room != location_of(ch)`, normalizes `in_room` to
+`location_of(ch)` **only** when the caller passed `NOWHERE`, and then refuses
+on `in_room`. Nine of the ten production call sites omit the argument (its
+default is `NOWHERE`), so for those nine the literal IS an actor test. The
+tenth -- `src/app/act_comm.cpp:660`, `do_gen_com`'s `SCMD_YELL` zone sweep --
+passes a real room for every room in the zone, and in that remote mode an
+unplaced `ch` passes the literal and reaches the room funct (`:1429`) and
+every object spec in that room (`:1451`); only the mob arm is caught, by this
+wave's own `activate_char_special` guard on `victim`. The row's actor column
+says so explicitly rather than claiming `ch`. **No Wave R3 row cites this
+entry** (checked: the entry citation of all 30 `dispatch-invariant` rows is
+one of `interpre.cpp:1175`, `spell_pa.cpp:928`, `act_othe.cpp:831`/`:862`,
+`shapemob.cpp:2374`, `combat_hooks.cpp:81`, `interpre.cpp:1119`), so nothing
+landed rests on it -- but R4 will read this registry as a contract, and the
+column must not over-claim. Closing the remote-mode half needs a real actor
+tripwire in `special()`, which is R4 work.
 
 **Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**
 (`src/entity/entity_lifecycle.cpp:2440`/`:2442`). That arm runs a real

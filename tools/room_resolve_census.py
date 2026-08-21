@@ -3655,8 +3655,17 @@ and this is the file those rows live in.
   `affect_modify`'s APPLY_SPELL arm, which runs an arbitrary ASPELL with
   `caster == victim == ch`). This is NOT the T3d "guard does not dominate" shape,
   which was about textual order and is now closed; it is about what runs in
-  between. It is the open question T2d's report flagged against the `do_cast`
-  entry, and it needs an owner/coordinator ruling, not a classification decision.
+  between. It WAS the open question T2d's report flagged against the `do_cast`
+  entry. Coordinator ruling **R3-C-7** answered it structurally, and Wave R3 Task
+  1d implemented the answer: `do_cast` now carries a SECOND tripwire immediately
+  before its dispatch (src/combat/spell_pa.cpp:928) and `command_interpreter` one
+  immediately before its ACMD dispatch (src/app/interpre.cpp:1175), so every row
+  whose site is reached THROUGH a dispatch now inherits an ADJACENT guard. This
+  row is not one of those, and stays `TODO`: its `do_cast` door is the
+  `target_from_word` call at src/combat/spell_pa.cpp:624, which sits BETWEEN the
+  two tripwires -- below `complete_delay(ch)` at :516 and above the pre-dispatch
+  guard at :928. Closing it would take a third tripwire immediately above :624,
+  a production change no ruling has authorized.
 - **`scale-flagged`** (widened by owner ruling R3-O-3) -- already carrying
   `CAN_GO` and `obj_to_room` from Wave R2, this category now also covers
   `src/combat/visibility.cpp`'s `CAN_SEE` (the `:578`/`:580` half; the `:121`

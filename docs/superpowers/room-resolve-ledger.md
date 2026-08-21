@@ -1103,3 +1103,33 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/app/interpre.cpp · special` | `in_room -- normalized from ch ONLY when the caller passes NOWHERE; act_comm.cpp:660 remote mode is NOT covered` | `if (in_room == NOWHERE) return FALSE;` | GUARDED-PRIOR |
 | `src/script/mobact.cpp · one_mobile_activity` | `ch` | `if ((location_of(ch) < 0) \|\| (location_of(ch) > top_of_world)) {` | GUARDED-PRIOR |
 | `src/combat/limits.cpp · affect_update_room` | `tmpch` | `for (tmpch = rots::entity::first_occupant(room); tmpch; tmpch = next_tmpch) {` | GUARDED-PRIOR |
+
+<!-- ROOM-RESOLVE-DISPATCH-SPELLINGS -->
+| Dispatch spelling | Shape |
+| --- | --- |
+| `command_pointer)(` | call through a `(*cmd_info[..].command_pointer)(...)` wrapper |
+| `g_command_table[` | call or write through the `combat_command` table |
+| `spell_pointer)(` | call through a `(*skills[..].spell_pointer)(...)` wrapper |
+| `.spell_pointer(` | member call on a `skills[..]` slot |
+| `activate_char_special(` | direct call of the mob/char SPECIAL invoker |
+| `activate_obj_special(` | direct call of the object SPECIAL invoker |
+| `shape_center(` | direct call of the OLC editor dispatcher |
+| `->spell_pointer(` | arrow-form member call on a skill slot |
+| `->command_pointer(` | arrow-form member call on a command slot |
+| `.command_pointer(` | member call on a `cmd_info[..]` slot |
+| `command_pointer` | ADDRESS read of a command slot (hoisted copy / alias) |
+| `spell_pointer` | ADDRESS read of a skill slot (hoisted copy / alias) |
+| `g_command_table` | ADDRESS read or alias of the `combat_command` table |
+| `.func)(` | call through a `(*mob_index[..].func)(...)` wrapper |
+| `->func)(` | arrow-form wrapped call of a SPECIAL fn-ptr slot |
+| `.funct)(` | call through a `(*room->funct)(...)` wrapper |
+| `->funct)(` | arrow-form wrapped call of a room funct slot |
+| `mob_index[].func` | ADDRESS read of a mob spec slot (presence test / copy) |
+| `obj_index[].func` | ADDRESS read of an object spec slot (presence test / copy) |
+| `mob_index[].func(` | member call on a mob spec slot |
+| `obj_index[].func(` | member call on an object spec slot |
+| `virt_program_number(` | SPECIAL-body address lookup by mob prog number |
+| `virt_obj_program_number(` | SPECIAL-body address lookup by object prog number |
+| `dispatch_virt_program_number(` | the `rots::script` hook form of the same lookup |
+| `get_special_function(` | SPECIAL-body address lookup by function number |
+| `intelligent(` | direct call of the mob-AI SPECIAL body |

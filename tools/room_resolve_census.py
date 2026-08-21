@@ -1059,6 +1059,26 @@ LEDGER_DISPATCH_ENTRIES_HEADER = (
     "| Entry point (file · function) | Actor parameter | Guard literal | Status |"
 )
 
+# RR Wave R3 Task 5-fix2 (re-verification M-4): the dispatch SPELLING set
+# itself, mirrored into a marker-anchored ledger table and cross-checked in
+# both directions -- the sibling census's Table A / `check_registry_
+# consistency` precedent, adopted here for the same reason it exists there.
+# The reviewer showed that 13 of the 19 shipped spellings could be DELETED
+# from `DISPATCH_SPELLING_TOKENS` with `--check` AND `--self-test` both
+# staying green: only the six that some hermetic direction happened to
+# exercise were pinned at all, and nothing compared the code's set to the
+# ledger's prose list. Now a one-sided edit fails closed either way -- a
+# token dropped from the code is a spelling the ledger still declares, and a
+# row dropped from the ledger is a spelling the code still scans for.
+#
+# Deleting BOTH sides in one edit is what `MINIMUM_DISPATCH_SPELLING_ROWS`
+# closes: the floor is a LITERAL, pinned by `--self-test` (the
+# MINIMUM_SCANNED_FILE_COUNT discipline), so silently shrinking the surface
+# takes a third edit that reddens the self-test.
+LEDGER_DISPATCH_SPELLINGS_MARKER = "<!-- ROOM-RESOLVE-DISPATCH-SPELLINGS -->"
+LEDGER_DISPATCH_SPELLINGS_HEADER = "| Dispatch spelling | Shape |"
+MINIMUM_DISPATCH_SPELLING_ROWS = 26
+
 # The closed status vocabulary. EVERY status in it requires a guard literal;
 # there is no exempt status any more.
 #
@@ -1210,6 +1230,40 @@ DISPATCH_SPELLING_TOKENS = (
     ("get_special_function(", re.compile(r"\bget_special_function\s*\(")),
     ("intelligent(", re.compile(r"\bintelligent\s*\(")),
 )
+
+# The SHAPE each spelling matches, in one line, for the ledger's
+# marker-anchored spelling table (M-4). Kept beside the patterns so the two
+# move together; `--self-test` pins the key sets equal, so a token added
+# without a shape (or a shape left behind by a retired token) is a failure
+# rather than a `KeyError` at ledger-generation time.
+DISPATCH_SPELLING_SHAPES = {
+    "command_pointer)(": "call through a `(*cmd_info[..].command_pointer)(...)` wrapper",
+    "g_command_table[": "call or write through the `combat_command` table",
+    "spell_pointer)(": "call through a `(*skills[..].spell_pointer)(...)` wrapper",
+    ".spell_pointer(": "member call on a `skills[..]` slot",
+    "activate_char_special(": "direct call of the mob/char SPECIAL invoker",
+    "activate_obj_special(": "direct call of the object SPECIAL invoker",
+    "shape_center(": "direct call of the OLC editor dispatcher",
+    "->spell_pointer(": "arrow-form member call on a skill slot",
+    "->command_pointer(": "arrow-form member call on a command slot",
+    ".command_pointer(": "member call on a `cmd_info[..]` slot",
+    "command_pointer": "ADDRESS read of a command slot (hoisted copy / alias)",
+    "spell_pointer": "ADDRESS read of a skill slot (hoisted copy / alias)",
+    "g_command_table": "ADDRESS read or alias of the `combat_command` table",
+    ".func)(": "call through a `(*mob_index[..].func)(...)` wrapper",
+    "->func)(": "arrow-form wrapped call of a SPECIAL fn-ptr slot",
+    ".funct)(": "call through a `(*room->funct)(...)` wrapper",
+    "->funct)(": "arrow-form wrapped call of a room funct slot",
+    "mob_index[].func": "ADDRESS read of a mob spec slot (presence test / copy)",
+    "obj_index[].func": "ADDRESS read of an object spec slot (presence test / copy)",
+    "mob_index[].func(": "member call on a mob spec slot",
+    "obj_index[].func(": "member call on an object spec slot",
+    "virt_program_number(": "SPECIAL-body address lookup by mob prog number",
+    "virt_obj_program_number(": "SPECIAL-body address lookup by object prog number",
+    "dispatch_virt_program_number(": "the `rots::script` hook form of the same lookup",
+    "get_special_function(": "SPECIAL-body address lookup by function number",
+    "intelligent(": "direct call of the mob-AI SPECIAL body",
+}
 
 # The closed category vocabulary every exemption below is filed under. It
 # exists so the exemption CENSUS is re-derivable by import rather than by
@@ -1824,6 +1878,77 @@ def parse_dispatch_entries(text, *, minimum_rows=_UNSET):
         live_lines, LEDGER_DISPATCH_ENTRIES_MARKER, LEDGER_DISPATCH_ENTRIES_HEADER,
         minimum_rows, "dispatch-entry registry")
     return [_parse_dispatch_entry_row(row_cells) for row_cells in cells]
+
+
+def parse_dispatch_spellings(text, *, minimum_rows=_UNSET):
+    """Parse the ledger's marker-anchored dispatch-spelling table.
+
+    Returns the declared spellings in table order. Late-bound floor, like
+    every other parser here."""
+    if minimum_rows is _UNSET:
+        minimum_rows = MINIMUM_DISPATCH_SPELLING_ROWS
+    live_lines = _strip_fences(text)
+    cells = _parse_marked_table(
+        live_lines, LEDGER_DISPATCH_SPELLINGS_MARKER, LEDGER_DISPATCH_SPELLINGS_HEADER,
+        minimum_rows, "dispatch-spelling table")
+    spellings = []
+    for row_cells in cells:
+        if len(row_cells) != 2:
+            raise SystemExit(
+                f"error: ledger: dispatch-spelling row has {len(row_cells)} cell(s), "
+                f"expected 2: {row_cells!r}"
+            )
+        spelling_cell, shape_cell = row_cells
+        spelling_match = re.fullmatch(r"`([^`]*)`", spelling_cell)
+        if spelling_match is None or not spelling_match.group(1).strip():
+            raise SystemExit(
+                "error: ledger: malformed dispatch-spelling cell (must be a non-empty, "
+                f"backtick-wrapped token name): {spelling_cell!r}"
+            )
+        if not shape_cell.strip() or shape_cell.strip() == LEDGER_EMPTY_MARKER:
+            raise SystemExit(
+                f"error: ledger: dispatch spelling {spelling_cell!r} must say what SHAPE it "
+                "matches (call form / address read / SPECIAL door); an empty cell declares "
+                "nothing a reviewer can check"
+            )
+        spellings.append(spelling_match.group(1))
+    return spellings
+
+
+def check_dispatch_spellings(declared_spellings, tokens=_UNSET):
+    """Both directions between the ledger's spelling table and the code.
+
+    Returns a list of error strings. A spelling in one and not the other is
+    an error whichever side it is missing from -- the one-sided-drift rule
+    `check_registry_consistency` states in the sibling census."""
+    if tokens is _UNSET:
+        tokens = DISPATCH_SPELLING_TOKENS
+    errors = []
+    declared = list(declared_spellings)
+    coded = [token_name for token_name, _ in tokens]
+    duplicates = sorted({name for name in declared if declared.count(name) > 1})
+    if duplicates:
+        errors.append(
+            f"dispatch-spelling table: duplicate row(s) for {duplicates} -- one row per "
+            "spelling, so a second row cannot pad the table's floor"
+        )
+    for missing in sorted(set(coded) - set(declared)):
+        errors.append(
+            f"dispatch-spelling table: `{missing}` is scanned for by "
+            "DISPATCH_SPELLING_TOKENS but is NOT declared in the ledger's "
+            f"{LEDGER_DISPATCH_SPELLINGS_MARKER} table. The token surface is a reviewed "
+            "contract: add the row (with the shape it matches) in the same commit that adds "
+            "the token."
+        )
+    for stale in sorted(set(declared) - set(coded)):
+        errors.append(
+            f"dispatch-spelling table: the ledger declares `{stale}`, which "
+            "DISPATCH_SPELLING_TOKENS no longer scans for. A spelling silently dropped from "
+            "the code is exactly the regression this cross-check exists to catch: restore the "
+            "token, or delete the row in the same commit that retires it (and lower "
+            "MINIMUM_DISPATCH_SPELLING_ROWS, which --self-test pins)."
+        )
+    return errors
 
 
 def check_dispatch_entries(entries, dispatch_occurrences, repository_root,
@@ -2480,6 +2605,17 @@ EMPTY_DISPATCH_TABLE = f"""
 | --- | --- | --- | --- |
 """
 
+# The dispatch-SPELLING table (Task 5-fix2, M-4) is a mirror of the module's
+# own token set, so every hermetic fixture builds it from the constants
+# rather than hard-coding rows: a fixture that froze a copy of the list would
+# have to be edited by hand on every future widening, which is exactly the
+# drift the table exists to prevent.
+SELF_TEST_SPELLINGS_TABLE = "\n".join(
+    [LEDGER_DISPATCH_SPELLINGS_MARKER, LEDGER_DISPATCH_SPELLINGS_HEADER, "| --- | --- |"]
+    + [f"| `{token_name}` | {DISPATCH_SPELLING_SHAPES[token_name]} |"
+       for token_name, _ in DISPATCH_SPELLING_TOKENS]
+) + "\n"
+
 SELF_TEST_LEDGER_OK = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | Key | Count | Class | Kind | Proof |
 | --- | --- | --- | --- | --- |
@@ -2494,7 +2630,8 @@ SELF_TEST_LEDGER_OK = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | `room_of(` | 2 |
 | `world[` | 1 |
 | `dispatch_room_vnum(` | 1 |
-{EMPTY_DISPATCH_TABLE}"""
+{EMPTY_DISPATCH_TABLE}
+{SELF_TEST_SPELLINGS_TABLE}"""
 
 # Task 3 raised MINIMUM_LEDGER_ROW_COUNT (above) to the real ledger's scale
 # (451) -- far larger than any hermetic self-test fixture in this file should
@@ -2573,7 +2710,8 @@ ATTRIBUTION_LEDGER = f"""<!-- ROOM-RESOLVE-CLASSIFICATION -->
 | `ASSIGNROOM(` | 1 |
 | `world[` | 1 |
 | `room_by_id_total(` | 1 |
-{EMPTY_DISPATCH_TABLE}"""
+{EMPTY_DISPATCH_TABLE}
+{SELF_TEST_SPELLINGS_TABLE}"""
 
 
 # RR Wave R3 Task 1a fixtures: one synthetic dispatcher carrying a real
@@ -2917,7 +3055,8 @@ def _run_gate(root, ledger=None, scan_path=None, *,
               minimum_ledger_rows_override=SELF_TEST_LEDGER_ROW_FLOOR,
               minimum_dispatch_entries_override=0,
               caller_count_pins_override="",
-              dispatch_exempt_sites_override=""):
+              dispatch_exempt_sites_override="",
+              minimum_dispatch_spellings_override=0):
     """Invoke the REAL gate (subprocess, full main()) against a synthetic
     tree. `ledger=None` omits --ledger entirely, exercising main()'s own
     default-path computation (self-test direction 17). `scan_path=None`
@@ -2967,6 +3106,10 @@ def _run_gate(root, ledger=None, scan_path=None, *,
     if dispatch_exempt_sites_override is not None:
         command += ["--dispatch-exempt-sites-override", dispatch_exempt_sites_override]
         env["RR_SELF_TEST"] = "1"
+    if minimum_dispatch_spellings_override is not None:
+        command += ["--minimum-dispatch-spellings-override",
+                    str(minimum_dispatch_spellings_override)]
+        env["RR_SELF_TEST"] = "1"
     completed = subprocess.run(command, capture_output=True, text=True, env=env)
     return completed.returncode, completed.stdout + completed.stderr
 
@@ -3012,6 +3155,27 @@ def run_self_test():
         failures.append(
             f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 579 -- "
             "an accidental raise must not silently loosen the ratchet."
+        )
+
+    # Task 5-fix2 (M-4): the dispatch-spelling table's floor, pinned as a
+    # LITERAL for the same reason as the three above. The table's two-way
+    # cross-check catches a one-sided edit; the floor is what makes deleting
+    # BOTH sides in one commit cost a third, self-test-reddening edit.
+    if MINIMUM_DISPATCH_SPELLING_ROWS < 26:
+        failures.append(
+            f"MINIMUM_DISPATCH_SPELLING_ROWS is {MINIMUM_DISPATCH_SPELLING_ROWS}, below the 26 "
+            "spellings the gate scans for -- a lowered floor lets the token surface shrink "
+            "silently."
+        )
+    if len(DISPATCH_SPELLING_TOKENS) < MINIMUM_DISPATCH_SPELLING_ROWS:
+        failures.append(
+            f"DISPATCH_SPELLING_TOKENS holds {len(DISPATCH_SPELLING_TOKENS)} spelling(s), below "
+            f"the pinned floor of {MINIMUM_DISPATCH_SPELLING_ROWS}."
+        )
+    if set(DISPATCH_SPELLING_SHAPES) != {name for name, _ in DISPATCH_SPELLING_TOKENS}:
+        failures.append(
+            "DISPATCH_SPELLING_SHAPES and DISPATCH_SPELLING_TOKENS name different spelling "
+            "sets -- every token needs the one-line shape the ledger table declares"
         )
 
     # review-1 W-6: the row-count floor's own VALUE, pinned the same way as
@@ -3747,7 +3911,8 @@ def run_self_test():
         def run_dispatch_case(name, expected_exit, *, probe_text=DISPATCH_PROBE_SOURCE,
                               ledger_text=None, expected_output=(), forbidden_output=(),
                               minimum_dispatch_entries_override=0,
-                              dispatch_exempt_sites_override=""):
+                              dispatch_exempt_sites_override="",
+                              minimum_dispatch_spellings_override=0):
             dispatch_probe.write_text(probe_text, encoding="utf-8")
             dispatch_ledger.write_text(
                 ledger_text if ledger_text is not None
@@ -3756,7 +3921,8 @@ def run_self_test():
             exit_code, output = _run_gate(
                 dispatch_root, dispatch_ledger, minimum_files_override=2,
                 minimum_dispatch_entries_override=minimum_dispatch_entries_override,
-                dispatch_exempt_sites_override=dispatch_exempt_sites_override)
+                dispatch_exempt_sites_override=dispatch_exempt_sites_override,
+                minimum_dispatch_spellings_override=minimum_dispatch_spellings_override)
             if expected_exit == 0 and exit_code != 0:
                 failures.append(f"{name}: expected gate exit 0, got {exit_code}\n{output}")
             if expected_exit != 0 and exit_code == 0:
@@ -4099,6 +4265,50 @@ def run_self_test():
             probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_RENAMED,
             dispatch_exempt_sites_override=exempt_key_pin,
             expected_output=("STALE dispatch-token exemption", "exempt_fn"))
+
+        # ------------------------------------------------------------------
+        # RR Wave R3 Task 5-fix2, direction 26 (re-verification M-4): the
+        # dispatch-SPELLING table's own two directions. 13 of the 19 shipped
+        # spellings could be deleted with both gates green before this.
+        # ------------------------------------------------------------------
+        spelling_row_to_drop = (
+            f"| `.func)(` | {DISPATCH_SPELLING_SHAPES['.func)(']} |\n")
+
+        # (ai) a spelling the code scans for, dropped from the ledger table.
+        run_dispatch_case(
+            "dispatch-spelling-missing-from-the-ledger", 1,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_GUARDED).replace(
+                spelling_row_to_drop, "", 1),
+            expected_output=("dispatch-spelling table", ".func)(", "NOT declared"))
+
+        # (aj) ... and the mirror: a spelling the ledger declares that the
+        # code no longer scans for -- the token-silently-deleted direction.
+        run_dispatch_case(
+            "dispatch-spelling-stale-in-the-ledger", 1,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_GUARDED).replace(
+                spelling_row_to_drop,
+                spelling_row_to_drop + "| `rr_retired_spelling)(` | a spelling nobody scans |\n",
+                1),
+            expected_output=("dispatch-spelling table", "rr_retired_spelling)(",
+                             "no longer scans"))
+
+        # (ak) the table's row floor: below it, a truncated ledger fails
+        # closed instead of quietly declaring a smaller surface.
+        truncated_spellings = "\n".join(
+            SELF_TEST_SPELLINGS_TABLE.rstrip("\n").splitlines()[:5]) + "\n"
+        run_dispatch_case(
+            "dispatch-spelling-table-truncated", 1,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_GUARDED).replace(
+                SELF_TEST_SPELLINGS_TABLE, truncated_spellings, 1),
+            minimum_dispatch_spellings_override=MINIMUM_DISPATCH_SPELLING_ROWS,
+            expected_output=("dispatch-spelling table", "below the floor"))
+
+        # (al) an EMPTY shape cell declares nothing a reviewer can check.
+        run_dispatch_case(
+            "dispatch-spelling-empty-shape-cell", 1,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_GUARDED).replace(
+                spelling_row_to_drop, f"| `.func)(` | {LEDGER_EMPTY_MARKER} |\n", 1),
+            expected_output=("must say what SHAPE",))
 
         # (ah) Task 5-fix2 (M-5): four more SPECIAL-body dispatch shapes the
         # tree already uses in production. All four were exit 0 before this
@@ -4928,6 +5138,14 @@ def render_ledger(rows, token_counts):
     # registry is exactly such work.
     lines += ["", LEDGER_DISPATCH_ENTRIES_MARKER, LEDGER_DISPATCH_ENTRIES_HEADER,
               "| --- | --- | --- | --- |"]
+    # The dispatch-SPELLING table, unlike the registry above, IS machine-
+    # derivable -- it is a mirror of DISPATCH_SPELLING_TOKENS, and its whole
+    # purpose is to make a one-sided edit fail closed. Generating it keeps a
+    # regenerated ledger parseable and check-clean on this one direction.
+    lines += ["", LEDGER_DISPATCH_SPELLINGS_MARKER, LEDGER_DISPATCH_SPELLINGS_HEADER,
+              "| --- | --- |"]
+    for token_name, _ in DISPATCH_SPELLING_TOKENS:
+        lines.append(f"| `{token_name}` | {DISPATCH_SPELLING_SHAPES[token_name]} |")
     lines.append("")
     return "\n".join(lines)
 
@@ -5150,6 +5368,8 @@ def build_argument_parser():
                              "TOKEN=COUNT list REPLACING PINNED_CALLER_COUNTS (the empty "
                              "string pins nothing, which is what every hermetic fixture root "
                              "wants -- a synthetic tree has none of the real callers)")
+    parser.add_argument("--minimum-dispatch-spellings-override", type=int, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1")
     parser.add_argument("--dispatch-exempt-sites-override", type=str, default=None,
                         help="self-test only -- requires RR_SELF_TEST=1; a semicolon-separated "
                              "file::function::token=COUNT list REPLACING "
@@ -5180,12 +5400,13 @@ def main(argv=None):
             or args.minimum_ledger_rows_override is not None
             or args.minimum_dispatch_entries_override is not None
             or args.caller_count_pins_override is not None
-            or args.dispatch_exempt_sites_override is not None) \
+            or args.dispatch_exempt_sites_override is not None
+            or args.minimum_dispatch_spellings_override is not None) \
             and os.environ.get("RR_SELF_TEST") != "1":
         parser.error(
             "--todo-ceiling-override/--minimum-files-override/--minimum-ledger-rows-override/"
             "--minimum-dispatch-entries-override/--caller-count-pins-override/"
-            "--dispatch-exempt-sites-override "
+            "--dispatch-exempt-sites-override/--minimum-dispatch-spellings-override "
             "are self-test-only hooks -- set RR_SELF_TEST=1 to use them (see run_self_test())"
         )
 
@@ -5276,6 +5497,11 @@ def main(argv=None):
     )
     dispatch_entries = parse_dispatch_entries(
         ledger_text, minimum_rows=minimum_dispatch_entries)
+    declared_spellings = parse_dispatch_spellings(
+        ledger_text,
+        minimum_rows=(args.minimum_dispatch_spellings_override
+                      if args.minimum_dispatch_spellings_override is not None
+                      else _UNSET))
     exempt_sites = (
         _parse_dispatch_exempt_sites_override(args.dispatch_exempt_sites_override, parser)
         if args.dispatch_exempt_sites_override is not None
@@ -5301,6 +5527,7 @@ def main(argv=None):
 
     errors = reconcile(sites, rows, token_counts, todo_ceiling=todo_ceiling)
     errors.extend(dispatch_errors)
+    errors.extend(check_dispatch_spellings(declared_spellings))
     errors.extend(caller_count_errors)
     errors.extend(attribution_errors)
     errors.extend(check_pinned_caller_macro_aliases(source_texts, pinned_caller_counts))

@@ -896,19 +896,54 @@ ACMD(do_cast)
             return;
         }
 
-        /* execute the spell */
-        ((*skills[spell_index].spell_pointer)(ch, arg, SPELL_TYPE_SPELL, tar_char, tar_obj, tar_dig,
-            0));
+        /* RR Wave R3 Task 1d (coordinator ruling R3-C-7) -- the ADJACENT
+         * half of this entry's `dispatch-invariant` guard. The tripwire at
+         * :499 licenses do_cast's OWN early room reads (the PEACEROOM
+         * resolve on the next line, and target_from_word's room_of(ch) /
+         * EXIT(ch, ..) at :624); it cannot license the dispatch below,
+         * because THREE statements between it and here can run other code
+         * with `ch` as the actor and none of them promises to leave `ch`
+         * placed on return:
+         *   :516 complete_delay(ch) -> comm.cpp:2837 command_interpreter()
+         *        -> special() -> arbitrary room functs / mob and object spec
+         *        procs (the prepared-spell path, mainline: do_prepare's
+         *        subcmd == 1 arm sets exactly this delay state);
+         *   :721 appear(ch) -> affect_from_char -> affect_remove ->
+         *        affect_total -> modify_affects -> affect_modify's
+         *        APPLY_SPELL arm, an arbitrary ASPELL with caster == victim
+         *        == ch (the wave's own P1 producer);
+         *   :895 check_hallucinate(ch, tar_char) -> affect_from_char, the
+         *        same chain again, one statement above this one.
+         * Task 1c measured the first two and STOPped rather than write an
+         * exhaustion argument; R3-C-7's answer is structural instead --
+         * put the tripwire where nothing can intervene. Between it and the
+         * dispatch there is not one call, so every `dispatch-invariant` row
+         * whose site is reached through skills[].spell_pointer cites THIS
+         * line and not :499.
+         * Same globally unique message as the entry guard on purpose:
+         * R-final's measured-zero sweep counts entry points, not statements.
+         * It refuses through an if/else rather than an early return so the
+         * targ1/targ2 cleanup below still runs -- the targets are fully
+         * parsed by now. Expected unreachable on live paths (census P7). */
+        if (location_of(ch) == NOWHERE) {
+            mudlog("do_cast: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                NRM, LEVEL_IMPL, TRUE);
+        } else {
+            /* execute the spell */
+            ((*skills[spell_index].spell_pointer)(ch, arg, SPELL_TYPE_SPELL, tar_char, tar_obj,
+                tar_dig, 0));
 
-        /*
-         * Casting a prepared spell now causes a short after-spell
-         * lag.  Why do we use beats / 4?  A 30m's fireball (which
-         * is the longest lag spell I can think of - unless spear
-         * is longer) has a time of 15: thus beats/4 is basically
-         * *never* greater than zero.
-         */
-        if (prepared_spell == spell_index) {
-            WAIT_STATE_BRIEF(ch, number(1, skills[spell_index].beats / 4), -1, 0, 50, AFF_WAITING);
+            /*
+             * Casting a prepared spell now causes a short after-spell
+             * lag.  Why do we use beats / 4?  A 30m's fireball (which
+             * is the longest lag spell I can think of - unless spear
+             * is longer) has a time of 15: thus beats/4 is basically
+             * *never* greater than zero.
+             */
+            if (prepared_spell == spell_index) {
+                WAIT_STATE_BRIEF(ch, number(1, skills[spell_index].beats / 4), -1, 0, 50,
+                    AFF_WAITING);
+            }
         }
 
         wtl->targ1.cleanup();

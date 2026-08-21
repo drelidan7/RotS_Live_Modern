@@ -955,7 +955,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/olc/shapemob.cpp · shape_center` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
 | `src/combat/spell_pa.cpp · do_cast` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` \|\| `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); } else {` | GUARDED |
 | `src/app/act_othe.cpp · do_use` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
-| `src/combat/mystic.cpp · cast_mass_spell` | `caster` | `if (location_of(caster) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/combat/mystic.cpp · cast_mass_spell` | `caster` | `if (location_of(caster) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` \|\| `if (location_of(caster) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); break; }` | GUARDED |
 | `src/app/interpre.cpp · activate_char_special` | `victim` | `if (location_of(victim) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return 0; }` | GUARDED |
 | `src/app/interpre.cpp · activate_obj_special` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return 0; }` | GUARDED |
 | `src/script/mobact.cpp · mobile_activity` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); continue; }` | GUARDED |

@@ -363,3 +363,90 @@ TEST(CastMassSpellDispatchInvariant, DispatchesForAPlacedCaster)
     caster.group = nullptr;
     member.group = nullptr;
 }
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1d (coordinator ruling R3-C-7) -- cast_mass_spell()'s
+// ADJACENT guard, the one inside the loop immediately before the fn-ptr
+// dispatch (mystic.cpp:1046).
+//
+// The pair above enters cast_mass_spell with the caster already unplaced, so
+// the entry tripwire alone satisfies both halves. This test enters PLACED and
+// has the dispatched spell unplace the caster on its FIRST call -- which is
+// the leader's own iteration, since the leader is a member of its own group
+// (the placed test above counts 2 dispatches for a caster plus one member for
+// exactly that reason). The entry guard is a precondition on the loop, not an
+// invariant of it, and every real spell this function is handed
+// (spell_regeneration / spell_vitality / spell_insight) reaches
+// affect_total() on its victim and so affect_modify()'s APPLY_SPELL arm,
+// which runs an arbitrary further ASPELL with that victim as its own actor.
+//
+// The third group member is deliberately at NOWHERE. That is what makes the
+// relocation OBSERVABLE rather than merely harmless: once the caster is
+// unplaced, the loop's `location_of(group_member) == location_of(caster)`
+// test starts MATCHING every unplaced member (coordinator ruling R3-C-5's
+// both-NOWHERE equality hole), so without the in-loop guard the absent member
+// receives a real ASPELL dispatch at NOWHERE.
+//
+// DISCRIMINATOR: with the in-loop guard deleted and the entry guard left in
+// place, the dispatch count below is 2 and the last victim is the absent
+// member -- this test goes RED while both tests above stay green.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+char_data* g_relocating_mass_spell_caster = nullptr;
+
+// Records like recording_mass_spell above, and additionally unplaces the
+// caster on its first call -- standing in for the affect_total() ->
+// APPLY_SPELL fan-out the three real mass spells reach.
+void relocating_mass_spell(char_data* caster, char* /*arg*/, int /*type*/, char_data* victim,
+    obj_data* /*obj*/, int /*digit*/, int /*is_object*/)
+{
+    ++g_mass_spell_call_count;
+    g_mass_spell_last_victim = victim;
+    if (g_mass_spell_call_count == 1 && caster == g_relocating_mass_spell_caster) {
+        set_location(caster, NOWHERE);
+    }
+}
+
+} // namespace
+
+TEST(CastMassSpellDispatchInvariant, RefusesLaterIterationsWhenTheSpellRelocatedTheCaster)
+{
+    ScopedTestWorld test_world;
+    char_data caster {};
+    char_data placed_member {};
+    char_data absent_member {};
+    caster.specials2.act = MOB_ISNPC;
+    placed_member.specials2.act = MOB_ISNPC;
+    absent_member.specials2.act = MOB_ISNPC;
+
+    set_location(&caster, 0);
+    set_location(&placed_member, 0);
+    set_location(&absent_member, NOWHERE);
+
+    group_data group(&caster);
+    group.add_member(&placed_member);
+    group.add_member(&absent_member);
+
+    g_mass_spell_call_count = 0;
+    g_mass_spell_last_victim = nullptr;
+    g_relocating_mass_spell_caster = &caster;
+
+    cast_mass_spell(&caster, relocating_mass_spell);
+
+    EXPECT_EQ(location_of(&caster), NOWHERE)
+        << "The stub must really have unplaced the caster on its first dispatch -- otherwise the "
+           "in-loop guard has nothing to refuse and this test proves nothing.";
+    EXPECT_EQ(g_mass_spell_call_count, 1)
+        << "Expected the in-loop dispatch-invariant guard (mystic.cpp:1046) to stop dispatching "
+           "the moment the caster stopped being placed -- the absent member must NOT receive an "
+           "ASPELL through the both-NOWHERE equality hole.";
+    EXPECT_EQ(g_mass_spell_last_victim, &caster)
+        << "The one dispatch that did happen is the leader's own, before the relocation.";
+
+    g_relocating_mass_spell_caster = nullptr;
+    caster.group = nullptr;
+    placed_member.group = nullptr;
+    absent_member.group = nullptr;
+}

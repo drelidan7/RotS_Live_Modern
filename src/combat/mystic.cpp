@@ -1016,6 +1016,38 @@ void cast_mass_spell(char_data* caster, void (*spell)(char_data* caster, char* a
     for (auto iter = caster->group->begin(); iter != caster->group->end(); ++iter) {
         char_data* group_member = *iter;
         if (location_of(group_member) == location_of(caster)) {
+            /* RR Wave R3 Task 1d (coordinator ruling R3-C-7) -- the ADJACENT
+             * half of this entry's `dispatch-invariant` guard. The entry
+             * tripwire above is the loop's PRECONDITION and proves the caster
+             * was placed when the loop STARTED; it says nothing about
+             * iteration two. Each `spell(...)` below is a real ASPELL run with
+             * `group_member` as its victim, and all three spells this function
+             * is ever handed -- spell_regeneration (:1063), spell_vitality
+             * (:1073), spell_insight (:1083) -- reach affect_total() on that
+             * victim (affect_to_char/affect_from_char), and so
+             * affect_modify()'s APPLY_SPELL arm
+             * (entity_lifecycle.cpp:2440/:2442), which runs an arbitrary
+             * further ASPELL. The leader is a member of its own group, so one
+             * iteration always has victim == caster, and that ASPELL's actor
+             * IS the caster.
+             * The refusal must therefore be re-tested per iteration, right
+             * here. It also closes the loop's own R3-C-5 hole from the other
+             * side: `location_of(group_member) == location_of(caster)` is an
+             * EQUALITY test that passes on NOWHERE == NOWHERE, so a caster
+             * relocated mid-loop would otherwise start matching every
+             * unplaced member.
+             * `break` rather than `return`: nothing follows the loop, and the
+             * distinct exit keyword keeps this literal textually separate from
+             * the entry guard's in the dispatch-entry registry. The entry
+             * guard is kept as the loop's stated precondition; for REFUSAL it
+             * is now subsumed by this one, and it stays pinned by the
+             * dispatch-entry registry's downward literal check.
+             * Expected unreachable on live paths (census P7). */
+            if (location_of(caster) == NOWHERE) {
+                mudlog("cast_mass_spell: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                    NRM, LEVEL_IMPL, TRUE);
+                break;
+            }
             spell(caster, nullptr, SPELL_TYPE_SPELL, group_member, nullptr, 0, 0);
         }
     }

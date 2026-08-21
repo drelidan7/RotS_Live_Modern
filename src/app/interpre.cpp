@@ -1100,7 +1100,7 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
              * Why the block needs it at all: every `do_*` body reached from
              * the dispatch below resolves rooms from `ch` without validating
              * it; command_interpreter checks position (just above), never
-             * placement, and special()'s own NOWHERE rejection at :1331 is
+             * placement, and special()'s own NOWHERE rejection at :1354 is
              * consumed as `may_not_perform |= special(...)` -- FALSE
              * contributes nothing, so it has never protected a single ACMD
              * body (dispatch census M-1). Census P7 found no live path
@@ -1269,8 +1269,8 @@ int activate_char_special(char_data* character, char_data* victim, int cmd, char
      * tripwire for this function's four SPECIAL dispatch arms. The guard
      * covers `victim`, the ACTOR argument (parameter 2), NOT `character`,
      * which is the spec-proc HOST: special() calls this as
-     * activate_char_special(tmpch, ch, ...) at :1298/:1324 and
-     * activate_char_special(ch, ch, ...) at :1268. This is one of at least
+     * activate_char_special(tmpch, ch, ...) at :1394/:1420 and
+     * activate_char_special(ch, ch, ...) at :1364. This is one of at least
      * five doors into a SPECIAL body, and the only guarded one before this
      * wave was special() itself (dispatch census M-4) -- mob AI,
      * complete_delay_impl and delayed_command_interpreter reach these

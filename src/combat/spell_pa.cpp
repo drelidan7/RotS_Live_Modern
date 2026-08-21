@@ -486,9 +486,9 @@ ACMD(do_cast)
     }
 
     /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
-     * tripwire covering do_cast's `skills[].spell_pointer` dispatch (:883,
+     * tripwire covering do_cast's `skills[].spell_pointer` dispatch (:933,
      * the M-6 caster door). It sits HERE, not immediately before that
-     * dispatch, deliberately: this statement dominates every path to :883
+     * dispatch, deliberately: this statement dominates every path to :933
      * (straight-line, after the one arm -- `subcmd == -1` -- that resolves
      * nothing and is left untouched), so one guard covers both the dispatch
      * AND do_cast's own unguarded room_of(ch) read on the very next line.

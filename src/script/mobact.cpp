@@ -484,7 +484,7 @@ void register_one_mobile_activity_hook()
 // ACMD(do_stand); duplicate forward decl RETIRED (behavior wave Task 1,
 // census section 5): identical to the declaration already at this
 // file's own top (:39, still used by call sites earlier in this file,
-// e.g. :204/:230/:251). do_sleep/do_rest/do_sit/do_wake ALSO RETIRED
+// e.g. :219/:247/:269). do_sleep/do_rest/do_sit/do_wake ALSO RETIRED
 // (behavior wave Task 2): enforce_position()'s own do_wake/do_sleep/
 // do_rest/do_sit/do_stand calls below now dispatch through
 // rots::combat::issue_command() like every other do_* call in this

@@ -2,6 +2,7 @@
 #include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "test_placement.h"
 #include "test_random_utils.h"
 #include "test_world.h"
@@ -9,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include <optional>
+#include <string>
 
 int get_mage_caster_level(const char_data *caster);
 int get_magic_power(const char_data *caster);
@@ -236,6 +238,22 @@ struct MageTestContext {
     }
 };
 
+// Mirrors mystic_tests.cpp's/act_format_tests.cpp's/olog_hai_tests.cpp's own
+// per-file copy of this helper (no shared header declares it): points a
+// descriptor's output at its OWN small_outbuf so send_to_char() output can be
+// inspected directly instead of going to a real socket. CRITICAL: mutates the
+// caller's descriptor_data in place -- never replace with a version that
+// returns a descriptor_data by value (descriptor_data::output is a self-pointer
+// into small_outbuf[]; see act_format_tests.cpp's fuller note on this hazard).
+void reset_capturing_descriptor(descriptor_data &descriptor, char_data *character) {
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = 0; // CON_PLYNG
+    descriptor.character = character;
+}
+
 loclife_coord *find_loclife_room(loclife_coord *roomlist, int roomnum, int target_room) {
     for (int i = 0; i < roomnum; ++i) {
         if (roomlist[i].number == target_room) {
@@ -433,6 +451,40 @@ TEST_F(MageProcTest, RandomExitChoosesAmongEligibleExitsUsingQueuedRandomRolls) 
     push_test_random_value(0.99);
     EXPECT_EQ(random_exit(7), 9)
         << "Expected the highest queued roll to choose the last eligible blink exit.";
+}
+
+// RR Wave R3 Task 2p -- the wave's one GUARDED room-resolve conversion
+// (mage.cpp:944, docs/superpowers/room-resolve-ledger.md's
+// `src/combat/mage.cpp . spell_blink . room_by_id_total(` row).
+//
+// RED-FIRST against the pre-guard body: spell_blink resolved `room`
+// unconditionally at mage.cpp:944, including on the two paths that had just
+// established `room == NOWHERE` (mage.cpp:935-937 and :941) and five lines
+// before `fail` is first consulted (mage.cpp:949). An unplaced victim therefore
+// drove room_data::operator[]'s negative-room mudlog (db_world.cpp:2082-2085)
+// and had room 0's NO_TELEPORT flag decide an already-decided failure.
+//
+// BOTH halves are asserted on purpose: the absent mudlog is what the guard
+// removes, and the still-delivered failure message is what it must NOT change
+// -- so this test cannot pass by the function simply doing nothing.
+TEST_F(MageProcTest, BlinkDoesNotResolveARoomForAnUnplacedVictimBeforeFailing) {
+    MageTestContext context;
+    descriptor_data caster_descriptor{};
+    reset_capturing_descriptor(caster_descriptor, &context.caster);
+    context.caster.desc = &caster_descriptor;
+    set_location(&context.caster, NOWHERE);
+
+    testing::internal::CaptureStderr();
+    // victim == nullptr, so the body substitutes the caster (mage.cpp:922-923)
+    // -- the shape every real dispatch of this TAR_SELF_ONLY spell takes.
+    spell_blink(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(captured.find("world[] called for negative room number."), std::string::npos)
+        << "Expected an already-failed blink never to resolve NOWHERE; stderr was: " << captured;
+    EXPECT_EQ(std::string(caster_descriptor.output),
+              "The world spins around, but nothing happens.\n\r")
+        << "Expected the pre-existing failure message to be unchanged by the new guard.";
 }
 
 TEST(MageHelpers, TeleportationRoomValidationRejectsOccupiedAndRestrictedRooms) {

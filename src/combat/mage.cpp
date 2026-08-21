@@ -941,8 +941,8 @@ ASPELL(spell_blink)
     if (room == NOWHERE)
         fail = 1;
 
-    if (IS_SET(room_by_id_total(room)->room_flags, NO_TELEPORT)) {
-        // Oops, this is a NO_TELEPORT room, we fail.
+    if (!fail && IS_SET(room_by_id_total(room)->room_flags, NO_TELEPORT)) {
+        // NO_TELEPORT fails the blink. `!fail` is RR Wave R3 Task 2p's GUARDED fix (ledger row).
         fail = 1;
     }
 

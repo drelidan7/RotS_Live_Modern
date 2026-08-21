@@ -1124,121 +1124,196 @@ DISPATCH_SPELLING_TOKENS = (
     ("->func)(", re.compile(r"->\s*func\s*\)\s*\(")),
     (".funct)(", re.compile(r"\.\s*funct\s*\)\s*\(")),
     ("->funct)(", re.compile(r"->\s*funct\s*\)\s*\(")),
-    # ... and the same two slots read as an ADDRESS (the `(*...)` call form
-    # is excluded, being the `.func)(` token above).
-    ("mob_index[].func", re.compile(r"\bmob_index\s*\[[^\]]*\]\s*\.\s*func\b(?!\s*\)\s*\()")),
-    ("obj_index[].func", re.compile(r"\bobj_index\s*\[[^\]]*\]\s*\.\s*func\b(?!\s*\)\s*\()")),
+    # ... and the same two slots read as an ADDRESS. BOTH call forms are
+    # excluded from the address-read tokens -- the `(*...)` wrapper form
+    # (`.func)(` above) and the plain member call (`.func(` below) -- so a
+    # presence TEST and a real dispatch are never the SAME token. That
+    # separation is load-bearing: `DISPATCH_TOKEN_EXEMPT_SITES` is keyed on
+    # the token, and 15 of its keys sit on one of these two address-read
+    # spellings, so while a member call shared their token an exemption for
+    # `if (mob_index[ch->nr].func)` also exempted
+    # `mob_index[ch->nr].func(ch, ...)` added to the same function
+    # (re-verification BLOCKER B-1, demonstrated in `do_block` and
+    # `load_mobiles` at `--check` exit 0).
+    ("mob_index[].func", re.compile(r"\bmob_index\s*\[[^\]]*\]\s*\.\s*func\b(?!\s*(?:\)\s*\(|\())")),
+    ("obj_index[].func", re.compile(r"\bobj_index\s*\[[^\]]*\]\s*\.\s*func\b(?!\s*(?:\)\s*\(|\())")),
+    # The member-call forms the split above carves out. Zero occurrences in
+    # the tree today (measured): every real dispatch through these two slots
+    # is written with the `(*...)` wrapper, which is why the original
+    # patterns only excluded that one.
+    ("mob_index[].func(", re.compile(r"\bmob_index\s*\[[^\]]*\]\s*\.\s*func\s*\(")),
+    ("obj_index[].func(", re.compile(r"\bobj_index\s*\[[^\]]*\]\s*\.\s*func\s*\(")),
+)
+
+# The closed category vocabulary every exemption below is filed under. It
+# exists so the exemption CENSUS is re-derivable by import rather than by
+# hand -- the re-verification's M-1 found the same census stated four
+# different ways (24 / ten / eleven / 12) with no shipped figure right, in
+# the very commit whose job was to repair that class. `--self-test` pins the
+# vocabulary closed, and the split is
+# `collections.Counter(category for _, category, _ in
+# DISPATCH_TOKEN_EXEMPT_SITES.values())`.
+DISPATCH_EXEMPTION_CATEGORIES = (
+    "design-exclusion",     # a real dispatch this program deliberately does not guard
+    "registration-write",   # the slot is WRITTEN; no actor exists at the statement
+    "registration-lookup",  # the slot's value is FETCHED for a later registration write
+    "presence-test",        # the slot is read as a boolean or compared; nothing is called
+    "STOP",                 # a real, unguarded dispatch recorded as R4 design input
 )
 
 # The sites that carry a dispatch spelling but are NOT dispatch entry
-# points, pinned as a `(file, function, token)` -> reason map so adding one
-# is a review-visible SCRIPT edit rather than a ledger-only one (the
-# `RESOLVER_IMPL_KEYS` precedent). Every one was enumerated directly from the
-# real tree by a masked scan; none can be expressed as a registry row without
-# a category error.
+# points, pinned as a `(file, function, token)` -> `(count, category,
+# reason)` map so adding one is a review-visible SCRIPT edit rather than a
+# ledger-only one (the `RESOLVER_IMPL_KEYS` precedent). Every one was
+# enumerated directly from the real tree by a masked scan; none can be
+# expressed as a registry row without a category error.
 #
 # Two of them were the original pair. The rest arrived with the Task 5-fix
 # token widening above, which deliberately admits shapes that are NOT calls
 # (a slot's address read as a value) precisely so a hoisted-copy evasion
 # cannot hide -- the price is that every ordinary presence TEST, comparison
 # and registration WRITE of the same slots now surfaces too, and each is
-# dispositioned here, once per (file, function, token) key rather than once
-# per line. Note the key includes the TOKEN: exempting a function's
-# `spell_pointer` address reads does NOT exempt a real `.spell_pointer(`
-# call newly added to that same function.
+# dispositioned here.
 #
-# THREE keys are load-bearing STOPs rather than category errors -- the two
-# direct SPECIAL doors review-1's B-3 named (`complete_delay_impl` and
-# `delayed_command_interpreter::run`). They really do dispatch a spec proc
-# with an actor nothing on that path validated. They are NOT registered here
-# because registering an entry asserts it HAS a guard, and this wave adds
-# none for them (the wave's scope ends at the twelve entries in the ledger's
-# registry). They are R4 design input, recorded in the spec's section 11
-# alongside shop.cpp's direct ACMD host calls.
+# THE COUNT IS PART OF THE PIN (re-verification BLOCKER B-1, the
+# `PINNED_CALLER_COUNTS` precedent). A key used to exempt its
+# (file, function, token) triple with no line, count or shape restriction,
+# so a SECOND occurrence of the same token added to an exempted function was
+# invisible -- and for `affect_modify`, whose exemption covers the two REAL
+# `.spell_pointer(` calls of the APPLY_SPELL arm, a third dispatch arm added
+# beside them would have been absorbed silently while the mage/mystic
+# `dispatch-invariant` rows' "the APPLY_SPELL door is provably blocked"
+# argument rotted. `check_dispatch_entries` now compares the MEASURED
+# occurrence count per key against the pinned one and fails closed on drift
+# in EITHER direction: a new occurrence is the case the pin exists to catch,
+# and a vanished one means the pinned key is stale and would stop catching
+# the next new occurrence (the same both-directions rule
+# `check_caller_counts` states). A key that matches nothing at all is a
+# STALE-KEY error rather than a silent no-op (re-verification m-1: a
+# pre-planted key for a function that did not exist passed, and so did
+# creating that function later with a real unguarded dispatch in it).
+#
+# Category `STOP` marks the load-bearing exemptions rather than category
+# errors -- the direct SPECIAL doors review-1's B-3 named
+# (`complete_delay_impl` and `delayed_command_interpreter::run`). They really
+# do dispatch a spec proc with an actor nothing on that path validated. They
+# are NOT registered here because registering an entry asserts it HAS a
+# guard, and this wave adds none for them (the wave's scope ends at the
+# twelve entries in the ledger's registry). They are R4 design input,
+# recorded in the spec's section 11 alongside shop.cpp's direct ACMD host
+# calls.
 DISPATCH_TOKEN_EXEMPT_SITES = {
     ("src/combat/combat_hooks.cpp", "rots::combat::set_combat_command", "g_command_table["):
-        "registration WRITE (`g_command_table[i] = handler;`, combat_hooks.cpp:56), not a "
-        "dispatch -- no actor exists at this statement",
+        (1, "registration-write",
+         "registration WRITE (`g_command_table[i] = handler;`, combat_hooks.cpp:56), not a "
+         "dispatch -- no actor exists at this statement"),
     ("src/entity/entity_lifecycle.cpp", "affect_modify", ".spell_pointer("):
-        "the APPLY_SPELL arm (entity_lifecycle.cpp:2440/:2442) -- design doc section 2 "
-        "EXCLUDES it deliberately: it runs at NOWHERE by design inside the login/rent-load "
-        "window (producer P1), so a tripwire there would fire on every login of a character "
-        "carrying an APPLY_SPELL affect. The rows reachable through it stay TODO under the "
-        "`APPLY_SPELL-window` category (owner ruling R3-O-2)",
+        (2, "design-exclusion",
+         "the APPLY_SPELL arm (entity_lifecycle.cpp:2440/:2442) -- design doc section 2 "
+         "EXCLUDES it deliberately: it runs at NOWHERE by design inside the login/rent-load "
+         "window (producer P1), so a tripwire there would fire on every login of a character "
+         "carrying an APPLY_SPELL affect. The rows reachable through it stay TODO under the "
+         "`APPLY_SPELL-window` category (owner ruling R3-O-2). The count of 2 is the pin that "
+         "keeps a THIRD dispatch arm added here from inheriting the exclusion"),
 
     # --- Task 5-fix: the three direct SPECIAL doors (M-4 direct door, R4
     # design input). Real dispatches, deliberately unregistered because this
     # wave lands no guard for them.
     ("src/app/comm.cpp", "complete_delay_impl", ".func)("):
-        "M-4 direct door, R4 design input -- `(*mob_index[ch->nr].func)(...)` at comm.cpp:2830 "
-        "dispatches a mob spec proc directly, outside every registered entry",
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- `(*mob_index[ch->nr].func)(...)` at comm.cpp:2830 "
+         "dispatches a mob spec proc directly, outside every registered entry"),
     ("src/app/comm.cpp", "complete_delay_impl", "mob_index[].func"):
-        "M-4 direct door, R4 design input -- the presence test at comm.cpp:2829 guarding the "
-        "direct dispatch on the next line",
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- the presence test at comm.cpp:2829 guarding the "
+         "direct dispatch on the next line"),
     ("src/app/delayed_command_interpreter.cpp",
      "game_types::delayed_command_interpreter::run", "mob_index[].func"):
-        "M-4 direct door, R4 design input -- `func_pointer = mob_index[index].func;` at "
-        "delayed_command_interpreter.cpp:45, then called at :47 (the hoisted-copy shape)",
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- `func_pointer = mob_index[index].func;` at "
+         "delayed_command_interpreter.cpp:45, then called at :47 (the hoisted-copy shape)"),
 
     # --- Task 5-fix: registration WRITEs. No actor exists at any of these
     # statements; they populate the tables the entries later dispatch through
     # (the combat_hooks.cpp:56 exemption above is the same category).
     ("src/app/interpre.cpp", "COMMANDO", "command_pointer"):
-        "registration WRITE -- `cmd_info[(number)].command_pointer = (pointer);`, the COMMANDO "
-        "macro body (interpre.cpp:59)",
+        (1, "registration-write",
+         "registration WRITE -- `cmd_info[(number)].command_pointer = (pointer);`, the COMMANDO "
+         "macro body (interpre.cpp:59)"),
     ("src/app/interpre.cpp", "assign_command_pointers", "command_pointer"):
-        "registration WRITE -- `cmd_info[position].command_pointer = 0;` (interpre.cpp:1467)",
+        (1, "registration-write",
+         "registration WRITE -- `cmd_info[position].command_pointer = 0;` (interpre.cpp:1467)"),
     ("src/combat/spell_pa.cpp", "assign_spell_pointers", "spell_pointer"):
-        "registration WRITE -- the 69 `skills[N].spell_pointer = spell_x;` lines that populate "
-        "the spell table (spell_pa.cpp:1120-1188)",
+        (69, "registration-write",
+         "registration WRITE -- the 69 `skills[N].spell_pointer = spell_x;` lines that populate "
+         "the spell table (spell_pa.cpp:1120-1188)"),
     ("src/interpre.h", "ASSIGNMOB", "mob_index[].func"):
-        "registration WRITE -- `mob_index[real_mobile(mob)].func = fname;` (interpre.h:66)",
+        (1, "registration-write",
+         "registration WRITE -- `mob_index[real_mobile(mob)].func = fname;` (interpre.h:66)"),
     ("src/interpre.h", "ASSIGNREALMOB", "mob_index[].func"):
-        "registration WRITE -- `mob_index[mob->nr].func = fname;` (interpre.h:72)",
+        (1, "registration-write",
+         "registration WRITE -- `mob_index[mob->nr].func = fname;` (interpre.h:72)"),
     ("src/interpre.h", "ASSIGNOBJ", "obj_index[].func"):
-        "registration WRITE -- `obj_index[real_object(obj)].func = fname;` (interpre.h:84)",
+        (1, "registration-write",
+         "registration WRITE -- `obj_index[real_object(obj)].func = fname;` (interpre.h:84)"),
     ("src/interpre.h", "ASSIGNREALOBJ", "obj_index[].func"):
-        "registration WRITE -- `obj_index[obj->item_number].func = fname;` (interpre.h:78)",
+        (1, "registration-write",
+         "registration WRITE -- `obj_index[obj->item_number].func = fname;` (interpre.h:78)"),
     ("src/world/db_world.cpp", "load_mobiles", "mob_index[].func"):
-        "registration WRITE -- `mob_index[i].func = 0;`, the boot-time table clear "
-        "(db_world.cpp:1209)",
+        (1, "registration-write",
+         "registration WRITE -- `mob_index[i].func = 0;`, the boot-time table clear "
+         "(db_world.cpp:1209)"),
     ("src/world/db_world.cpp", "load_objects", "obj_index[].func"):
-        "registration WRITE -- `obj_index[i].func = 0;`, the boot-time table clear "
-        "(db_world.cpp:1426)",
+        (1, "registration-write",
+         "registration WRITE -- `obj_index[i].func = 0;`, the boot-time table clear "
+         "(db_world.cpp:1426)"),
 
     # --- Task 5-fix: presence TESTS and comparisons. The slot is read as a
     # boolean or compared against a known function; no call is made and no
     # copy escapes the expression.
     ("src/app/act_info.cpp", "show_char_to_char", "mob_index[].func"):
-        "presence TEST -- `!mob_index[i->nr].func && MOB_FLAGGED(...)` (act_info.cpp:993)",
+        (1, "presence-test",
+         "presence TEST -- `!mob_index[i->nr].func && MOB_FLAGGED(...)` (act_info.cpp:993)"),
     ("src/app/act_info.cpp", "sort_commands", "command_pointer"):
-        "presence TEST + comparison -- the table-length loop condition (act_info.cpp:3181) and "
-        "`... .command_pointer == do_action` (:3183); neither calls anything",
+        (2, "presence-test",
+         "presence TEST + comparison -- the table-length loop condition (act_info.cpp:3181) and "
+         "`... .command_pointer == do_action` (:3183); neither calls anything"),
     ("src/app/act_othe.cpp", "do_block", "mob_index[].func"):
-        "presence TEST -- `IS_NPC(ch) && mob_index[ch->nr].func` (act_othe.cpp:1934)",
+        (1, "presence-test",
+         "presence TEST -- `IS_NPC(ch) && mob_index[ch->nr].func` (act_othe.cpp:1934)"),
     ("src/app/act_wiz.cpp", "do_stat_character", "mob_index[].func"):
-        "presence TEST -- the `stat`-output ternary that prints whether a spec proc exists "
-        "(act_wiz.cpp:976)",
+        (1, "presence-test",
+         "presence TEST -- the `stat`-output ternary that prints whether a spec proc exists "
+         "(act_wiz.cpp:976)"),
     ("src/app/act_wiz.cpp", "do_stat_object", "obj_index[].func"):
-        "presence TEST -- the same ternary for objects (act_wiz.cpp:587)",
+        (1, "presence-test",
+         "presence TEST -- the same ternary for objects (act_wiz.cpp:587)"),
     ("src/app/objsave.cpp", "gen_receptionist", "mob_index[].func"):
-        "comparison -- `mob_index[tch->nr].func == receptionist` (objsave.cpp:1307)",
+        (1, "presence-test",
+         "comparison -- `mob_index[tch->nr].func == receptionist` (objsave.cpp:1307)"),
     ("src/combat/fight.cpp", "exp_with_modifiers", "mob_index[].func"):
-        "presence TEST -- `mob_index[dead_man->nr].func || dead_man->special_prog_number` "
-        "(fight.cpp:1227)",
+        (1, "presence-test",
+         "presence TEST -- `mob_index[dead_man->nr].func || dead_man->special_prog_number` "
+         "(fight.cpp:1227)"),
     ("src/combat/spell_pa.cpp", "<anon>::can_cast_spell", "spell_pointer"):
-        "presence TEST -- `!spell.spell_pointer` rejects an unimplemented spell "
-        "(spell_pa.cpp:396)",
+        (1, "presence-test",
+         "presence TEST -- `!spell.spell_pointer` rejects an unimplemented spell "
+         "(spell_pa.cpp:396)"),
     ("src/combat/spell_pa.cpp", "do_prepare", "spell_pointer"):
-        "presence TEST -- `!skills[spl].spell_pointer` (spell_pa.cpp:1060)",
+        (1, "presence-test",
+         "presence TEST -- `!skills[spl].spell_pointer` (spell_pa.cpp:1060)"),
     ("src/entity/entity_lifecycle.cpp", "affect_modify", "spell_pointer"):
-        "presence TEST -- `!skills[tmp].spell_pointer` at entity_lifecycle.cpp:2436, the guard "
-        "for the APPLY_SPELL arm already exempted above",
+        (1, "presence-test",
+         "presence TEST -- `!skills[tmp].spell_pointer` at entity_lifecycle.cpp:2436, the guard "
+         "for the APPLY_SPELL arm already exempted above"),
     ("src/script/spec_ass.cpp", "virt_assignmob", "mob_index[].func"):
-        "presence TEST -- refuses to overwrite an already-assigned mob spec (spec_ass.cpp:512)",
+        (1, "presence-test",
+         "presence TEST -- refuses to overwrite an already-assigned mob spec (spec_ass.cpp:512)"),
     ("src/script/spec_ass.cpp", "virt_assignobj", "obj_index[].func"):
-        "presence TEST -- the same refusal for objects (spec_ass.cpp:527)",
+        (1, "presence-test",
+         "presence TEST -- the same refusal for objects (spec_ass.cpp:527)"),
 }
+
 
 # ---------------------------------------------------------------------------
 # RR Wave R3 Task 1a: the caller-count pins (owner ruling R3-O-3).
@@ -1645,7 +1720,8 @@ def parse_dispatch_entries(text, *, minimum_rows=_UNSET):
     return [_parse_dispatch_entry_row(row_cells) for row_cells in cells]
 
 
-def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
+def check_dispatch_entries(entries, dispatch_occurrences, repository_root,
+                           exempt_sites=_UNSET):
     """The registry's two closed-world directions. Returns (errors, warnings).
 
     Direction (a), DOWNWARD: every entry names a real file and a real,
@@ -1656,7 +1732,15 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
     Direction (b), UPWARD: every production occurrence of a
     DISPATCH_SPELLING_TOKENS spelling (already filtered to non-file-scope
     lines by the scanner) lies inside a registered entry's function, or is
-    one of the pinned DISPATCH_TOKEN_EXEMPT_SITES."""
+    one of the pinned DISPATCH_TOKEN_EXEMPT_SITES -- and there, the pinned
+    OCCURRENCE COUNT must match exactly (re-verification B-1/m-1). Drift in
+    either direction is an error, and so is a key that matches nothing.
+
+    `exempt_sites` is late-bound through the `_UNSET` sentinel, like every
+    other overridable pin here, so `--dispatch-exempt-sites-override` (and a
+    monkeypatched module global) is honored at CALL time."""
+    if exempt_sites is _UNSET:
+        exempt_sites = DISPATCH_TOKEN_EXEMPT_SITES
     errors = []
     # Retained as the second return value even though the PENDING-T1b
     # retirement (Task 5-fix) left it always empty: it is the shape `main()`
@@ -1710,12 +1794,14 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
                     "citing this entry rests on that literal."
                 )
 
+    measured_exempt = {}
     for occurrence in dispatch_occurrences:
         key = (occurrence["file"], occurrence["function"])
         if key in registered:
             continue
         exempt_key = (occurrence["file"], occurrence["function"], occurrence["token"])
-        if exempt_key in DISPATCH_TOKEN_EXEMPT_SITES:
+        if exempt_key in exempt_sites:
+            measured_exempt[exempt_key] = measured_exempt.get(exempt_key, 0) + 1
             continue
         errors.append(
             f"unregistered dispatch site {occurrence['file']}:{occurrence['line']} -- token "
@@ -1724,6 +1810,36 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
             "dispatcher cannot inherit the `dispatch-invariant` proof: either register it (with "
             "a guard) in the ledger's dispatch-entry registry, or pin it as a reviewed "
             "exemption in the script."
+        )
+
+    # The exemption COUNT pins (re-verification B-1) and the stale-key check
+    # (m-1). An exemption is a statement about a KNOWN set of occurrences, so
+    # both directions of drift are errors: one more occurrence is a new,
+    # unreviewed site hiding behind a reviewed one, and one fewer means the
+    # key no longer describes the tree and would absorb the next new site
+    # silently.
+    for exempt_key in sorted(exempt_sites):
+        pinned = exempt_sites[exempt_key][0]
+        actual = measured_exempt.get(exempt_key, 0)
+        if actual == pinned:
+            continue
+        location = KEY_SEPARATOR.join(exempt_key)
+        if actual == 0:
+            errors.append(
+                f"STALE dispatch-token exemption `{location}` -- DISPATCH_TOKEN_EXEMPT_SITES "
+                f"pins {pinned} occurrence(s), the production scan found NONE. The exempted "
+                "function, token or file was renamed, moved or deleted: an exemption that "
+                "matches nothing silently pre-authorizes whatever is written there next. "
+                "Delete the key, or re-point it at the site it is meant to cover."
+            )
+            continue
+        errors.append(
+            f"dispatch-token exemption count `{location}`: DISPATCH_TOKEN_EXEMPT_SITES pins "
+            f"{pinned}, the production scan found {actual}. An exemption covers a REVIEWED set "
+            "of occurrences, not the (file, function, token) triple forever: a new occurrence "
+            "must be read and dispositioned on its own merits (it may be a real dispatch -- "
+            "then register it with a guard), and a vanished one must be un-pinned so the key "
+            "stops standing in for a site that no longer exists."
         )
 
     return errors, warnings
@@ -2539,6 +2655,63 @@ DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO_ELSE = """void dispatcher_fn(char_data* ch)
 """
 
 
+# RR Wave R3 Task 5-fix2 (re-verification B-1/m-1): the exemption-shaped
+# probes. `exempt_fn` is the shape the 15 `*_index[].func` exemptions have --
+# an ordinary presence TEST that reads the slot's address and calls nothing.
+# The gate is driven with a matching one-key override
+# (`--dispatch-exempt-sites-override`), so these four sources differ from one
+# another only in the way a future edit could abuse that key.
+DISPATCH_PROBE_SOURCE_EXEMPT_PRESENCE_TEST = DISPATCH_PROBE_SOURCE + """
+void exempt_fn(char_data* ch, char* arg)
+{
+    if (mob_index[ch->nr].func) {
+        send_to_char("busy", ch);
+    }
+}
+"""
+
+# The BLOCKER itself: the identical statement rewritten as a member CALL.
+# Before the token split, `mob_index[ch->nr].func(...)` carried the SAME
+# token as the presence test above, so the exemption covered both and this
+# whole function dispatched a spec proc at `--check` exit 0.
+DISPATCH_PROBE_SOURCE_EXEMPT_MEMBER_CALL = DISPATCH_PROBE_SOURCE + """
+void exempt_fn(char_data* ch, char* arg)
+{
+    if (mob_index[ch->nr].func) {
+        mob_index[ch->nr].func(ch, ch, 0, arg, 0, 0);
+    }
+}
+"""
+
+# The count direction: a SECOND presence test of the same token in the same
+# exempted function. Same token, same key, one more occurrence than the pin
+# describes -- which is how `affect_modify` could have grown a third
+# `.spell_pointer(` arm beside its two exempted ones.
+DISPATCH_PROBE_SOURCE_EXEMPT_SECOND_OCCURRENCE = DISPATCH_PROBE_SOURCE + """
+void exempt_fn(char_data* ch, char* arg)
+{
+    if (mob_index[ch->nr].func) {
+        send_to_char("busy", ch);
+    }
+    if (mob_index[ch->nr].func) {
+        send_to_char("still busy", ch);
+    }
+}
+"""
+
+# The stale direction: the exempted function exists no longer (renamed), so
+# the pinned key matches nothing and would silently pre-authorize whatever
+# is written into a function of that name next.
+DISPATCH_PROBE_SOURCE_EXEMPT_RENAMED = DISPATCH_PROBE_SOURCE + """
+void exempt_fn_renamed(char_data* ch, char* arg)
+{
+    if (mob_index[ch->nr].func) {
+        send_to_char("busy", ch);
+    }
+}
+"""
+
+
 def _dispatch_ledger(*entry_rows):
     """SELF_TEST_LEDGER_OK with the empty dispatch table filled in."""
     filled = EMPTY_DISPATCH_TABLE.rstrip("\n") + "".join(
@@ -2596,7 +2769,8 @@ def _run_gate(root, ledger=None, scan_path=None, *,
               todo_ceiling_override=None, minimum_files_override=None,
               minimum_ledger_rows_override=SELF_TEST_LEDGER_ROW_FLOOR,
               minimum_dispatch_entries_override=0,
-              caller_count_pins_override=""):
+              caller_count_pins_override="",
+              dispatch_exempt_sites_override=""):
     """Invoke the REAL gate (subprocess, full main()) against a synthetic
     tree. `ledger=None` omits --ledger entirely, exercising main()'s own
     default-path computation (self-test direction 17). `scan_path=None`
@@ -2611,12 +2785,14 @@ def _run_gate(root, ledger=None, scan_path=None, *,
     unchanged. Pass `None` explicitly to test the REAL floor instead
     (direction 13's boundary probes).
 
-    `minimum_dispatch_entries_override` (R3 Task 1a) defaults to 0 and
-    `caller_count_pins_override` to the empty string for the same reason: a
-    synthetic tree has neither the real registry's 12 entry points nor any
-    of the 127 real `CAN_SEE(`/`get_char_room_vis(` callers, so the real
-    floor and the real pins would fail every unrelated direction. The
-    directions that PROBE those two checks pass their own values."""
+    `minimum_dispatch_entries_override` (R3 Task 1a) defaults to 0, and
+    `caller_count_pins_override`/`dispatch_exempt_sites_override` to the
+    empty string, for the same reason: a synthetic tree has neither the real
+    registry's 12 entry points, nor any of the 127 real
+    `CAN_SEE(`/`get_char_room_vis(` callers, nor any of the 26 real exempted
+    dispatch-token sites, so the real floor, the real pins and the real
+    exemption map would fail every unrelated direction. The directions that
+    PROBE those three checks pass their own values."""
     import subprocess
 
     command = [sys.executable, str(pathlib.Path(__file__).resolve()),
@@ -2640,6 +2816,9 @@ def _run_gate(root, ledger=None, scan_path=None, *,
         env["RR_SELF_TEST"] = "1"
     if caller_count_pins_override is not None:
         command += ["--caller-count-pins-override", caller_count_pins_override]
+        env["RR_SELF_TEST"] = "1"
+    if dispatch_exempt_sites_override is not None:
+        command += ["--dispatch-exempt-sites-override", dispatch_exempt_sites_override]
         env["RR_SELF_TEST"] = "1"
     completed = subprocess.run(command, capture_output=True, text=True, env=env)
     return completed.returncode, completed.stdout + completed.stderr
@@ -3221,7 +3400,8 @@ def run_self_test():
              "--root", str(root), "--ledger", str(ledger), "src/app", "src/pad",
              "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR),
              "--minimum-dispatch-entries-override", "0",
-             "--caller-count-pins-override", ""],
+             "--caller-count-pins-override", "",
+             "--dispatch-exempt-sites-override", ""],
             capture_output=True, text=True,
             env={**os.environ, "RR_SELF_TEST": "1"},
         )
@@ -3288,7 +3468,8 @@ def run_self_test():
                  "--minimum-files-override", "4",
                  "--minimum-ledger-rows-override", str(SELF_TEST_LEDGER_ROW_FLOOR),
                  "--minimum-dispatch-entries-override", "0",
-                 "--caller-count-pins-override", ""],
+                 "--caller-count-pins-override", "",
+                 "--dispatch-exempt-sites-override", ""],
                 capture_output=True, text=True, env={**os.environ, "RR_SELF_TEST": "1"},
             )
             if check_completed.returncode != 0:
@@ -3418,7 +3599,8 @@ def run_self_test():
 
         def run_dispatch_case(name, expected_exit, *, probe_text=DISPATCH_PROBE_SOURCE,
                               ledger_text=None, expected_output=(), forbidden_output=(),
-                              minimum_dispatch_entries_override=0):
+                              minimum_dispatch_entries_override=0,
+                              dispatch_exempt_sites_override=""):
             dispatch_probe.write_text(probe_text, encoding="utf-8")
             dispatch_ledger.write_text(
                 ledger_text if ledger_text is not None
@@ -3426,7 +3608,8 @@ def run_self_test():
                 encoding="utf-8")
             exit_code, output = _run_gate(
                 dispatch_root, dispatch_ledger, minimum_files_override=2,
-                minimum_dispatch_entries_override=minimum_dispatch_entries_override)
+                minimum_dispatch_entries_override=minimum_dispatch_entries_override,
+                dispatch_exempt_sites_override=dispatch_exempt_sites_override)
             if expected_exit == 0 and exit_code != 0:
                 failures.append(f"{name}: expected gate exit 0, got {exit_code}\n{output}")
             if expected_exit != 0 and exit_code == 0:
@@ -3678,6 +3861,122 @@ def run_self_test():
         run_dispatch_case(
             "dispatch-guard-in-the-else-arm-of-if-zero", 0,
             probe_text=DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO_ELSE)
+
+        # ------------------------------------------------------------------
+        # RR Wave R3 Task 5-fix2, direction 25: the exemption map's own
+        # closed world (re-verification BLOCKER B-1 and m-1). Every case here
+        # pins ONE synthetic exemption through the override and then varies
+        # only what production writes under it.
+        # ------------------------------------------------------------------
+        exempt_key_pin = (
+            "src/app/dispatch_probe.cpp::exempt_fn::mob_index[].func=1")
+
+        # (ab) clean: exactly the pinned presence test, exactly once.
+        run_dispatch_case(
+            "dispatch-exemption-at-the-pin", 0,
+            probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_PRESENCE_TEST,
+            dispatch_exempt_sites_override=exempt_key_pin)
+
+        # (ac) THE BLOCKER: the same statement written as a member CALL is a
+        # different token now, so the presence-test exemption does not reach
+        # it and the dispatch surfaces as unregistered.
+        run_dispatch_case(
+            "dispatch-exempted-presence-test-does-not-exempt-a-member-call", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_MEMBER_CALL,
+            dispatch_exempt_sites_override=exempt_key_pin,
+            expected_output=("unregistered dispatch site", "mob_index[].func(", "exempt_fn"))
+
+        # (ad) count drift UP: a second occurrence of the exempted token in
+        # the exempted function is a new, unreviewed site.
+        run_dispatch_case(
+            "dispatch-exemption-count-drift-up", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_SECOND_OCCURRENCE,
+            dispatch_exempt_sites_override=exempt_key_pin,
+            expected_output=("dispatch-token exemption count", "pins 1", "found 2"))
+
+        # (ae) count drift DOWN: the pin claims two, production has one. The
+        # key no longer describes the tree, so it would absorb the next new
+        # occurrence silently.
+        run_dispatch_case(
+            "dispatch-exemption-count-drift-down", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_PRESENCE_TEST,
+            dispatch_exempt_sites_override=(
+                "src/app/dispatch_probe.cpp::exempt_fn::mob_index[].func=2"),
+            expected_output=("dispatch-token exemption count", "pins 2", "found 1"))
+
+        # (af) m-1: a key matching NOTHING is an error, not a no-op. Before
+        # this round a pre-planted key for a function that did not exist
+        # passed, and so did creating that function later with a real
+        # unguarded dispatch inside it.
+        run_dispatch_case(
+            "dispatch-exemption-stale-key", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_RENAMED,
+            dispatch_exempt_sites_override=exempt_key_pin,
+            expected_output=("STALE dispatch-token exemption", "exempt_fn"))
+
+        # (ag) the token SPLIT itself, pinned directly: a member CALL and an
+        # address READ of the same slot must classify as DIFFERENT tokens.
+        # The end-to-end direction above stays red without this split (the
+        # call form's own token still fires), so nothing else in the suite
+        # notices the lookahead being dropped -- which is exactly the silent
+        # regression that re-opens B-1's key-sharing.
+        for slot_name in ("mob_index", "obj_index"):
+            call_line = f"    {slot_name}[ch->nr].func(ch, ch, 0, arg, 0, 0);"
+            address_line = f"    if ({slot_name}[ch->nr].func) {{"
+            wrapped_call_line = f"    ((*{slot_name}[ch->nr].func)(ch, ch, 0, arg, 0, 0));"
+            call_tokens = {token_name for token_name, pattern in DISPATCH_SPELLING_TOKENS
+                           if pattern.search(call_line)}
+            address_tokens = {token_name for token_name, pattern in DISPATCH_SPELLING_TOKENS
+                              if pattern.search(address_line)}
+            wrapped_tokens = {token_name for token_name, pattern in DISPATCH_SPELLING_TOKENS
+                              if pattern.search(wrapped_call_line)}
+            if call_tokens != {f"{slot_name}[].func("}:
+                failures.append(
+                    f"dispatch-index-slot-call-is-its-own-token: {call_line.strip()!r} matched "
+                    f"{sorted(call_tokens)}, expected exactly ['{slot_name}[].func('] -- while "
+                    "the member call shares the address-read token, every exemption pinned on "
+                    "that token exempts a real dispatch too (re-verification B-1)"
+                )
+            if address_tokens != {f"{slot_name}[].func"}:
+                failures.append(
+                    f"dispatch-index-slot-address-is-its-own-token: {address_line.strip()!r} "
+                    f"matched {sorted(address_tokens)}, expected exactly "
+                    f"['{slot_name}[].func']"
+                )
+            if wrapped_tokens != {".func)("}:
+                failures.append(
+                    f"dispatch-index-slot-wrapped-call-is-the-funct-token: "
+                    f"{wrapped_call_line.strip()!r} matched {sorted(wrapped_tokens)}, expected "
+                    "exactly ['.func)('] -- the `(*...)` form the tree really uses"
+                )
+
+        # (ag) the exemption CATEGORY vocabulary is closed, and the shipped
+        # map only uses spellings from it -- the property the exemption
+        # census (AGENTS.md/BUILD.md/the ledger) is re-derived from.
+        for exemption_key, exemption_value in sorted(DISPATCH_TOKEN_EXEMPT_SITES.items()):
+            if len(exemption_value) != 3:
+                failures.append(
+                    f"dispatch-exemption-value-shape: {exemption_key} maps to "
+                    f"{exemption_value!r}, expected (count, category, reason)"
+                )
+                continue
+            exemption_count, exemption_category, exemption_reason = exemption_value
+            if not isinstance(exemption_count, int) or exemption_count < 1:
+                failures.append(
+                    f"dispatch-exemption-count-shape: {exemption_key} pins "
+                    f"{exemption_count!r}; an exemption covers at least one real occurrence"
+                )
+            if exemption_category not in DISPATCH_EXEMPTION_CATEGORIES:
+                failures.append(
+                    f"dispatch-exemption-category-closed-world: {exemption_key} is filed under "
+                    f"{exemption_category!r}, which is not in DISPATCH_EXEMPTION_CATEGORIES "
+                    f"{list(DISPATCH_EXEMPTION_CATEGORIES)}"
+                )
+            if not exemption_reason.strip():
+                failures.append(
+                    f"dispatch-exemption-reason-non-empty: {exemption_key} carries an empty "
+                    "reason; every exemption is a reviewed disposition, not a silent skip"
+                )
 
         # ------------------------------------------------------------------
         # RR Wave R3 Task 1a, direction 23: the R3-O-3 caller-count pins, both
@@ -4602,6 +4901,32 @@ def _parse_caller_count_pins_override(raw_value, parser):
     return pins
 
 
+def _parse_dispatch_exempt_sites_override(raw_value, parser):
+    """Self-test-only: `file::function::token=count[;...]` -> the exemption
+    map that REPLACES DISPATCH_TOKEN_EXEMPT_SITES. The empty string yields an
+    empty map, which is what every hermetic fixture root needs: a synthetic
+    tree contains none of the 26 real exempted sites, so applying the real
+    map there would report all of them STALE in every unrelated direction.
+
+    The parsed reason is a fixed placeholder -- only the COUNT participates
+    in any check; the category and reason are documentation for humans."""
+    exemptions = {}
+    for chunk in raw_value.split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        key_text, separator, count_text = chunk.partition("=")
+        parts = key_text.split("::")
+        if not separator or len(parts) != 3 or not count_text.strip().lstrip("-").isdigit():
+            parser.error(
+                "--dispatch-exempt-sites-override: expected "
+                f"file::function::token=COUNT records, got {chunk!r}"
+            )
+        exemptions[tuple(part.strip() for part in parts)] = (
+            int(count_text), "presence-test", "self-test override")
+    return exemptions
+
+
 def build_argument_parser():
     parser = argparse.ArgumentParser(description="Room-resolve retirement census.")
     parser.add_argument("paths", nargs="*", type=pathlib.Path)
@@ -4629,6 +4954,12 @@ def build_argument_parser():
                              "TOKEN=COUNT list REPLACING PINNED_CALLER_COUNTS (the empty "
                              "string pins nothing, which is what every hermetic fixture root "
                              "wants -- a synthetic tree has none of the real callers)")
+    parser.add_argument("--dispatch-exempt-sites-override", type=str, default=None,
+                        help="self-test only -- requires RR_SELF_TEST=1; a semicolon-separated "
+                             "file::function::token=COUNT list REPLACING "
+                             "DISPATCH_TOKEN_EXEMPT_SITES (the empty string exempts nothing, "
+                             "which is what every hermetic fixture root wants -- a synthetic "
+                             "tree has none of the real exempted sites)")
     parser.add_argument("--generate-ledger", action="store_true",
                         help="write docs/superpowers/room-resolve-ledger.md (or --ledger) from "
                              "a fresh scan: every production key TODO, every src/tests/ key "
@@ -4652,11 +4983,13 @@ def main(argv=None):
     if (args.todo_ceiling_override is not None or args.minimum_files_override is not None
             or args.minimum_ledger_rows_override is not None
             or args.minimum_dispatch_entries_override is not None
-            or args.caller_count_pins_override is not None) \
+            or args.caller_count_pins_override is not None
+            or args.dispatch_exempt_sites_override is not None) \
             and os.environ.get("RR_SELF_TEST") != "1":
         parser.error(
             "--todo-ceiling-override/--minimum-files-override/--minimum-ledger-rows-override/"
-            "--minimum-dispatch-entries-override/--caller-count-pins-override "
+            "--minimum-dispatch-entries-override/--caller-count-pins-override/"
+            "--dispatch-exempt-sites-override "
             "are self-test-only hooks -- set RR_SELF_TEST=1 to use them (see run_self_test())"
         )
 
@@ -4747,8 +5080,13 @@ def main(argv=None):
     )
     dispatch_entries = parse_dispatch_entries(
         ledger_text, minimum_rows=minimum_dispatch_entries)
+    exempt_sites = (
+        _parse_dispatch_exempt_sites_override(args.dispatch_exempt_sites_override, parser)
+        if args.dispatch_exempt_sites_override is not None
+        else DISPATCH_TOKEN_EXEMPT_SITES
+    )
     dispatch_errors, dispatch_warnings = check_dispatch_entries(
-        dispatch_entries, dispatch_occurrences, repository_root)
+        dispatch_entries, dispatch_occurrences, repository_root, exempt_sites)
 
     pinned_caller_counts = (
         _parse_caller_count_pins_override(args.caller_count_pins_override, parser)

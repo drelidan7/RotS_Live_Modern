@@ -16,6 +16,7 @@
 #include "../comm.h"
 #include "../handler.h"
 #include "../interpre.h"
+#include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
@@ -37,6 +38,11 @@ ACMD(do_knock);
 // Same gap, same treatment, for RR Wave R3 Task 1b's dispatch-invariant pair
 // at the end of this file.
 ACMD(do_use);
+// consts.cpp's global skill table -- not declared in any header (matching
+// every .cpp that references it, e.g. act_othe.cpp:51, and
+// spell_registry_tests.cpp's own copy). The Task 5-fix probes below borrow
+// one cell's spell_pointer to observe do_use's two dispatches directly.
+extern struct skill_data skills[MAX_SKILLS];
 
 namespace {
 
@@ -256,4 +262,192 @@ TEST(DoUseDispatchInvariant, RunsForAPlacedActor)
         "You tap a dull staff three times on the ground.\n\rThe staff seems powerless.\n\r")
         << "Expected the identical fixture with a PLACED actor to reach the real staff arm -- the "
            "guard must not block a normal use.";
+}
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 5-fix -- do_use()'s two R3-C-7 ADJACENCY tripwires
+// (whole-branch review-1, finding M-4).
+//
+// The :806 entry guard above dominates both spell_pointer doors, but three
+// real calls with `ch` as a participant run between it and them (act() twice
+// on the staff arm; generic_find() and act() twice on the wand arm), so the
+// six `dispatch-invariant` rows that inherit this entry were inheriting it by
+// census EXHAUSTION -- which R3-C-7 forbids in terms. Task 5-fix therefore
+// added a tripwire immediately before each dispatch.
+//
+// WHAT THESE FOUR TESTS PIN, precisely -- and what they do not. Nothing
+// inside do_use() relocates the actor (verified: act_impl and generic_find
+// contain no char_to_room/char_from_room/extract_char/special/issue_command/
+// command_interpreter call), so there is NO fixture that can arrive at either
+// dispatch with an unplaced actor while the :806 guard stands. A T1c
+// "variant-2" test -- one that goes RED with the guard present but at the old
+// placement -- is therefore not constructible here, and this is recorded as
+// such rather than faked. What IS newly pinned:
+//
+//   * both dispatches are REACHED for a placed actor with a charged item
+//     (nothing before this wave exercised either spell_pointer door at all),
+//     so the two new tripwires cannot silently refuse a normal use; and
+//   * neither dispatch runs for an unplaced actor -- an assertion that stays
+//     GREEN when the :806 guard alone is neutered (the two new tripwires
+//     carry it) and goes RED when the arm's own tripwire is neutered too.
+//     That pair of sabotage runs is the report's evidence.
+//
+// The guards' ORDER is pinned MECHANICALLY instead, by the registry: do_use's
+// two new guard literals each quote the tripwire AND the dispatch statement it
+// protects, contiguously, so moving either below its dispatch fails
+// `room_resolve_census.py --check`. That is the only adjacency witness in the
+// registry today (see the ledger's "known reconciliation blind spots").
+//
+// DISCRIMINATOR: a charged item plus a probe spell installed in skills[], so
+// "the dispatch happened" is directly observable as a counter rather than
+// inferred from output text.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Invocation record for the probe spell installed below. File-static because
+// a spell_pointer is a plain C function pointer with no user-data slot.
+int g_probe_spell_calls = 0;
+// The `type` argument the probe last received (SPELL_TYPE_STAFF or
+// SPELL_TYPE_WAND) -- proves WHICH of do_use's two doors dispatched.
+int g_probe_spell_type = 0;
+
+void probe_spell(char_data*, char*, int type, char_data*, obj_data*, int, int)
+{
+    ++g_probe_spell_calls;
+    g_probe_spell_type = type;
+}
+
+// Installs probe_spell into one skills[] cell for the life of the scope and
+// restores whatever was there. The cell index is the one do_use reads,
+// `stick->obj_flags.value[3]`.
+struct ScopedProbeSpell {
+    // The skills[] cell this scope borrowed; restored verbatim on teardown.
+    int index;
+    // The cell's previous handler (usually null in a unit-test process, since
+    // assign_spell_pointers() has not necessarily run).
+    void (*previous)(char_data*, char*, int, char_data*, obj_data*, int, int);
+
+    explicit ScopedProbeSpell(int cell)
+        : index(cell)
+        , previous(skills[cell].spell_pointer)
+    {
+        skills[cell].spell_pointer = probe_spell;
+        g_probe_spell_calls = 0;
+        g_probe_spell_type = 0;
+    }
+
+    ~ScopedProbeSpell() { skills[index].spell_pointer = previous; }
+
+    ScopedProbeSpell(const ScopedProbeSpell&) = delete;
+    ScopedProbeSpell& operator=(const ScopedProbeSpell&) = delete;
+};
+
+// A character holding a CHARGED staff (or wand) in a one-room world, with a
+// carried "orb" so the wand arm's generic_find() resolves a target and the
+// dispatch is actually reached.
+struct DoUseChargedContext {
+    ScopedTestWorld test_world { 1 };
+    char_data ch {};
+    descriptor_data ch_descriptor {};
+    obj_data stick {};
+    obj_data orb {};
+    char stick_name[8] = "wand";
+    char stick_short_descr[16] = "a bone wand";
+    char orb_name[8] = "orb";
+    char orb_short_descr[16] = "a glass orb";
+
+    explicit DoUseChargedContext(int type_flag, int skill_cell)
+    {
+        reset_capturing_descriptor(ch_descriptor, &ch);
+        ch.desc = &ch_descriptor;
+        ch.player.name = const_cast<char*>("Frodo");
+        ch.player.race = RACE_HUMAN;
+        ch.specials.position = POSITION_STANDING;
+        SET_BIT(ch.specials2.pref, PRF_HOLYLIGHT);
+
+        stick.name = stick_name;
+        stick.short_description = stick_short_descr;
+        stick.obj_flags.type_flag = type_flag;
+        stick.obj_flags.value[2] = 3; // charges remaining -> the dispatch is reachable
+        stick.obj_flags.value[3] = skill_cell;
+        ch.equipment[HOLD] = &stick;
+
+        orb.name = orb_name;
+        orb.short_description = orb_short_descr;
+        orb.carried_by = &ch;
+        ch.carrying = &orb;
+    }
+
+    ~DoUseChargedContext()
+    {
+        ch.equipment[HOLD] = nullptr;
+        ch.carrying = nullptr;
+        orb.carried_by = nullptr;
+    }
+
+    DoUseChargedContext(const DoUseChargedContext&) = delete;
+    DoUseChargedContext& operator=(const DoUseChargedContext&) = delete;
+};
+
+// The skills[] cell the probes borrow. 0 is the "reserved" slot -- never
+// populated by assign_spell_pointers() (spell_registry_tests.cpp asserts the
+// populated set starts at 41), so borrowing it cannot perturb another suite.
+constexpr int kProbeSkillCell = 0;
+
+} // namespace
+
+TEST(DoUseDispatchInvariant, DispatchesTheStaffSpellForAPlacedActor)
+{
+    ScopedProbeSpell probe { kProbeSkillCell };
+    DoUseChargedContext context { ITEM_STAFF, kProbeSkillCell };
+    set_location(&context.ch, 0);
+
+    do_use(&context.ch, mutable_arg("wand"), nullptr, 0, 0);
+
+    EXPECT_EQ(g_probe_spell_calls, 1)
+        << "Expected a placed actor with a charged staff to reach the ITEM_STAFF "
+           "spell_pointer dispatch -- the new adjacency tripwire must not refuse a normal use.";
+    EXPECT_EQ(g_probe_spell_type, SPELL_TYPE_STAFF);
+}
+
+TEST(DoUseDispatchInvariant, RefusesTheStaffSpellDispatchForAnUnplacedActor)
+{
+    ScopedProbeSpell probe { kProbeSkillCell };
+    DoUseChargedContext context { ITEM_STAFF, kProbeSkillCell };
+    set_location(&context.ch, NOWHERE);
+
+    do_use(&context.ch, mutable_arg("wand"), nullptr, 0, 0);
+
+    EXPECT_EQ(g_probe_spell_calls, 0)
+        << "Expected the ITEM_STAFF spell_pointer dispatch to be refused for an unplaced actor. "
+           "This assertion stays green when the :806 entry guard alone is neutered -- the "
+           "adjacent tripwire carries it -- and goes red when both are.";
+}
+
+TEST(DoUseDispatchInvariant, DispatchesTheWandSpellForAPlacedActor)
+{
+    ScopedProbeSpell probe { kProbeSkillCell };
+    DoUseChargedContext context { ITEM_WAND, kProbeSkillCell };
+    set_location(&context.ch, 0);
+
+    do_use(&context.ch, mutable_arg("wand orb"), nullptr, 0, 0);
+
+    EXPECT_EQ(g_probe_spell_calls, 1)
+        << "Expected a placed actor pointing a charged wand at a findable target to reach the "
+           "ITEM_WAND spell_pointer dispatch -- generic_find() must resolve the carried orb.";
+    EXPECT_EQ(g_probe_spell_type, SPELL_TYPE_WAND);
+}
+
+TEST(DoUseDispatchInvariant, RefusesTheWandSpellDispatchForAnUnplacedActor)
+{
+    ScopedProbeSpell probe { kProbeSkillCell };
+    DoUseChargedContext context { ITEM_WAND, kProbeSkillCell };
+    set_location(&context.ch, NOWHERE);
+
+    do_use(&context.ch, mutable_arg("wand orb"), nullptr, 0, 0);
+
+    EXPECT_EQ(g_probe_spell_calls, 0)
+        << "Expected the ITEM_WAND spell_pointer dispatch to be refused for an unplaced actor, "
+           "with the same two-sided sabotage story as the staff pair above.";
 }

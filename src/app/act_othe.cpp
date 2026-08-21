@@ -795,14 +795,14 @@ ACMD(do_use)
 
     stick = ch->equipment[HOLD];
 
-    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
-     * tripwire covering BOTH of do_use's `skills[].spell_pointer` doors (the
-     * ITEM_STAFF arm below and the ITEM_WAND arm after it, M-6 rows 2 and
-     * 3). ONE guard, placed where it dominates both rather than one per arm:
-     * this statement is on the single straight-line path to either. It sits
-     * after the not-holding-that-item early return, which resolves no room
-     * and is left untouched. Expected unreachable on live paths (census
-     * P7). */
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- do_use's ENTRY tripwire,
+     * dominating both `skills[].spell_pointer` doors, after the
+     * not-holding-that-item early return (which resolves no room). Expected
+     * unreachable on live paths (census P7). Task 5-fix KEPT it when it added
+     * the two R3-C-7 ADJACENCY tripwires below: it refuses BEFORE the act()
+     * taps and generic_find(), each of which resolves the actor's room
+     * itself, so dropping it would newly let an unplaced actor broadcast into
+     * room 0. The adjacent pair is defence in depth, not a replacement. */
     if (location_of(ch) == NOWHERE) {
         mudlog("do_use: dispatch refused for an unplaced actor (RR dispatch-invariant)",
             NRM, LEVEL_IMPL, TRUE);
@@ -815,6 +815,24 @@ ACMD(do_use)
 
         if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
             stick->obj_flags.value[2]--;
+            /* RR Wave R3 Task 5-fix (whole-branch review-1, finding M-4) --
+             * the R3-C-7 ADJACENCY tripwire for the ITEM_STAFF door below.
+             * The entry guard at :806 dominates both arms, but three real
+             * calls with `ch` as a participant run between it and the two
+             * dispatches (act() twice above; generic_find() and act() twice
+             * on the WAND arm), so the six `dispatch-invariant` rows that
+             * inherit this entry were inheriting it by census EXHAUSTION --
+             * which R3-C-7 forbids in terms ("NOWHERE-on-return must be
+             * excluded structurally (adjacency), not by census exhaustion").
+             * Only the charge decrement and the table's own null test
+             * separate this statement from the dispatch. It shares do_use's
+             * one globally unique message string: the R-final sweep counts
+             * ENTRY POINTS, not statements. */
+            if (location_of(ch) == NOWHERE) {
+                mudlog("do_use: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                    NRM, LEVEL_IMPL, TRUE);
+                return;
+            }
             if (skills[stick->obj_flags.value[3]].spell_pointer)
                 ((*skills[stick->obj_flags.value[3]].spell_pointer)(ch, mutable_arg(""), SPELL_TYPE_STAFF, 0, 0,
                     0, 0));
@@ -835,6 +853,17 @@ ACMD(do_use)
 
             if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
                 stick->obj_flags.value[2]--;
+                /* RR Wave R3 Task 5-fix (review-1 M-4) -- the R3-C-7
+                 * ADJACENCY tripwire for the ITEM_WAND door below. This arm
+                 * is the one that really needed it: generic_find() and two
+                 * act() calls run between the :806 entry guard and here. Same
+                 * message string as the other two statements (one entry, one
+                 * string). */
+                if (location_of(ch) == NOWHERE) {
+                    mudlog("do_use: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                        NRM, LEVEL_IMPL, TRUE);
+                    return;
+                }
                 if (skills[stick->obj_flags.value[3]].spell_pointer)
                     ((*skills[stick->obj_flags.value[3]].spell_pointer)(
                         ch, mutable_arg(""), SPELL_TYPE_WAND, tmp_char, tmp_object, 0, 0));

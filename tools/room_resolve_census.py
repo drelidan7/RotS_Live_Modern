@@ -1216,7 +1216,7 @@ DISPATCH_TOKEN_EXEMPT_SITES = {
         "presence TEST + comparison -- the table-length loop condition (act_info.cpp:3181) and "
         "`... .command_pointer == do_action` (:3183); neither calls anything",
     ("src/app/act_othe.cpp", "do_block", "mob_index[].func"):
-        "presence TEST -- `IS_NPC(ch) && mob_index[ch->nr].func` (act_othe.cpp:1905)",
+        "presence TEST -- `IS_NPC(ch) && mob_index[ch->nr].func` (act_othe.cpp:1934)",
     ("src/app/act_wiz.cpp", "do_stat_character", "mob_index[].func"):
         "presence TEST -- the `stat`-output ternary that prints whether a spec proc exists "
         "(act_wiz.cpp:976)",

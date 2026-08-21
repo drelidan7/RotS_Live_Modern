@@ -1149,9 +1149,37 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
              */
 
             if (!may_not_perform) {
-                /* execute the command */
-                ((*cmd_info[cmd].command_pointer)(ch, argument + begin + look_at, argument_info, cmd,
-                    mode ? subcmd : cmd_info[cmd].subcmd));
+                /* RR Wave R3 Task 1d (coordinator ruling R3-C-7) -- the
+                 * ADJACENT half of this entry's `dispatch-invariant` guard.
+                 * The tripwire at :1119 licenses what runs BEFORE the
+                 * dispatch (target_parser's room reads through
+                 * target_from_word); it cannot license the dispatch itself,
+                 * because target_parser and BOTH special() calls run in
+                 * between, and special() fans out into arbitrary room
+                 * functs, mob spec procs and object spec procs with `ch` as
+                 * the actor. None of those promises to leave `ch` placed on
+                 * return, so :1119's conclusion does not survive to here.
+                 * This guard sits immediately before the ACMD dispatch with
+                 * nothing but the `may_not_perform` test between them, which
+                 * is what R3-C-7 means by ADJACENCY: every
+                 * `dispatch-invariant` row whose site is reached through
+                 * cmd_info[].command_pointer cites THIS line, not :1119.
+                 * Same globally unique message as the entry guard on
+                 * purpose -- R-final's measured-zero sweep counts entry
+                 * points, not statements.
+                 * It refuses through an if/else rather than an early return
+                 * because, unlike at :1119, the targets ARE parsed by now
+                 * and the targ1/targ2 cleanup below must still run (Task
+                 * 1b's original shape, for Task 1b's original reason).
+                 * Expected unreachable on live paths (census P7). */
+                if (location_of(ch) == NOWHERE) {
+                    mudlog("command_interpreter: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                        NRM, LEVEL_IMPL, TRUE);
+                } else {
+                    /* execute the command */
+                    ((*cmd_info[cmd].command_pointer)(ch, argument + begin + look_at, argument_info,
+                        cmd, mode ? subcmd : cmd_info[cmd].subcmd));
+                }
             }
         }
         if (!mode) {

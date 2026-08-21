@@ -950,7 +950,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 <!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->
 | Entry point (file · function) | Actor parameter | Guard literal | Status |
 | --- | --- | --- | --- |
-| `src/app/interpre.cpp · command_interpreter` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/app/interpre.cpp · command_interpreter` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` \|\| `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); } else {` | GUARDED |
 | `src/combat/combat_hooks.cpp · rots::combat::issue_command` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
 | `src/olc/shapemob.cpp · shape_center` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
 | `src/combat/spell_pa.cpp · do_cast` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |

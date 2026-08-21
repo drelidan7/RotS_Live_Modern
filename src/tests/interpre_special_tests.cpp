@@ -184,6 +184,20 @@ struct SpecialDispatchContext {
     }
 };
 
+// RR Wave R3 Task 1d (ruling R3-C-7). A room spec-proc that MOVES the actor
+// out of the world and then declines the event (returns 0, so special() and
+// command_interpreter both carry on). It stands in for the whole class of
+// things special() can fan out to between command_interpreter's entry guard
+// and its ACMD dispatch -- room functs, mob spec procs, object spec procs,
+// and anything they call in turn -- none of which promises to leave `ch`
+// placed on return. Nothing in the tree registers a funct like this today;
+// it exists to make the pre-dispatch tripwire's job observable.
+SPECIAL(relocating_room_funct) {
+    g_room_funct_call.called = true;
+    set_location(ch, NOWHERE);
+    return 0;
+}
+
 // Mirrors act_othe_tests.cpp:45 / comm_act_tests.cpp (duplicated, not shared --
 // each copy lives in a different TU's anonymous namespace). Needed by the
 // Task 1c dominance test below, which reads what command_interpreter did or
@@ -393,6 +407,66 @@ TEST(CommandInterpreterDispatchInvariant, RefusesBeforeTheTargetParserResolvesTh
 
     set_location(&ch, NOWHERE);
     ch.desc = nullptr;
+}
+
+TEST(CommandInterpreterDispatchInvariant, RefusesTheAcmdWhenASpecProcRelocatedTheActorAfterTheEntryGuard) {
+    // RR Wave R3 Task 1d (coordinator ruling R3-C-7), the ADJACENCY test. The
+    // three tests above all enter command_interpreter with the actor already
+    // unplaced, so every one of them is satisfied by the entry guard at
+    // interpre.cpp:1119 alone. This one enters PLACED -- the entry guard
+    // passes, exactly as it does on every live command -- and then has the
+    // room's spec-proc unplace the actor from inside special()'s fan-out,
+    // which runs between that guard and the ACMD dispatch. Only the second
+    // tripwire, the one sitting immediately before the dispatch, can refuse
+    // here.
+    //
+    // Discriminator: with the pre-dispatch guard deleted and :1119 left in
+    // place, the first half below reaches the real do_stand body with an
+    // actor at NOWHERE and this test goes RED, while the other three stay
+    // green. That is the property R3-C-7 asks for and nothing else in this
+    // file tests.
+    ScopedTestWorld test_world;
+    assign_command_pointers();
+
+    char_data ch{};
+    set_location(&ch, 0);
+    ch.specials.position = POSITION_SITTING;
+
+    g_room_funct_call = RecordedCall{};
+    test_world.room().funct = &relocating_room_funct;
+
+    char relocated_line[] = "stand";
+    command_interpreter(&ch, relocated_line, nullptr);
+
+    EXPECT_TRUE(g_room_funct_call.called)
+        << "The fixture is only meaningful if special()'s room-funct dispatch actually ran "
+           "between the entry guard and the ACMD dispatch.";
+    EXPECT_EQ(location_of(&ch), NOWHERE)
+        << "The stub must really have unplaced the actor -- otherwise the pre-dispatch guard "
+           "has nothing to refuse and this test proves nothing.";
+    EXPECT_EQ(GET_POS(&ch), POSITION_SITTING)
+        << "Expected the pre-dispatch dispatch-invariant guard (interpre.cpp:1175) to refuse "
+           "the ACMD dispatch for an actor a spec-proc unplaced AFTER the entry guard at :1119 "
+           "already passed -- do_stand must never have run.";
+
+    // The control: the identical fixture whose spec-proc leaves the actor
+    // where it is dispatches normally. The difference between the two halves
+    // is the relocation, not the presence of a room funct.
+    set_location(&ch, 0);
+    ch.specials.position = POSITION_SITTING;
+    g_room_funct_call = RecordedCall{};
+    test_world.room().funct = &recording_room_funct;
+
+    char placed_line[] = "stand";
+    command_interpreter(&ch, placed_line, nullptr);
+
+    EXPECT_TRUE(g_room_funct_call.called);
+    EXPECT_EQ(GET_POS(&ch), POSITION_STANDING)
+        << "Expected a non-relocating spec-proc to leave the dispatch alone -- the guard must "
+           "not block a normal command.";
+
+    test_world.room().funct = nullptr;
+    set_location(&ch, NOWHERE);
 }
 
 TEST(ActivateCharSpecialDispatchInvariant, RefusesToDispatchForAnUnplacedActor) {

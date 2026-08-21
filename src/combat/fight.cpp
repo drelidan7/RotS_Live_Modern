@@ -551,7 +551,21 @@ void get_corpse_desc(struct obj_data* corpse, struct char_data* ch,
     default:
         strncpy(condition, "silent", BUF_LEN - 1);
     }
-    if (room_of(ch)->sector_type == SECT_WATER_NOSWIM || room_of(ch)->sector_type == SECT_WATER_SWIM || room_of(ch)->sector_type == SECT_UNDERWATER)
+    // RR Wave R3 Task 3p GUARDED (room-resolve ledger row
+    // `src/combat/fight.cpp . get_corpse_desc . room_of(`). The only call
+    // chain that reaches here is raw_kill():950 -> make_corpse ->
+    // make_physical_corpse:735, one statement after death_cry() -- so the same
+    // character death_cry() may legitimately see at NOWHERE arrives here too,
+    // and none of raw_kill()'s 14 call sites guards it. Unguarded, these three
+    // reads take ROOM 0's sector_type (plus three negative-room mudlogs) and
+    // the corpse is described "floating here" whenever room 0 happens to be
+    // watery. ABSENT BEHAVIOR: an unplaced character's corpse falls to the
+    // default "lying here" wording instead of inheriting room 0's sector. The
+    // leading `&&` term short-circuits, so the three resolves below are
+    // reached only for a placed character. Red-first tested by
+    // GetCorpseDescTest.UsesTheLyingHereWordingWhenTheDeadCharacterIsNowhere.
+    if (location_of(ch) != NOWHERE
+        && (room_of(ch)->sector_type == SECT_WATER_NOSWIM || room_of(ch)->sector_type == SECT_WATER_SWIM || room_of(ch)->sector_type == SECT_UNDERWATER))
         rots_asprintf(&(corpse->description), "The %s corpse of %s is floating here.",
             condition,
             IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)].data());
@@ -894,6 +908,25 @@ void death_cry(struct char_data* ch)
 
     act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
     was_in = location_of(ch);
+
+    // RR Wave R3 Task 3p GUARDED (room-resolve ledger row
+    // `src/combat/fight.cpp . death_cry . room_by_id_total(`). `was_in` is
+    // legitimately NOWHERE for a character who really is nowhere -- the tree
+    // says so itself (placement.cpp:396-399 and render_cursor.h:121 record
+    // that ScopedRenderLocation's NOWHERE-refusal precondition was
+    // deliberately narrowed so THIS window keeps working), and none of
+    // raw_kill()'s 14 call sites guards `dead_man`'s placement. Unguarded,
+    // CAN_GO(ch, door) below answers off the ROOM-0 fallback and the loop
+    // then retargets the cursor to one of room 0's neighbours, broadcasting
+    // the death cry into an unrelated room (plus two negative-room mudlogs
+    // per passable door). ABSENT BEHAVIOR: the per-door broadcast is skipped
+    // for an unplaced character. The act() above is already a no-op in that
+    // state (comm.cpp's act_impl returns at `if (!to)`), so nothing else is
+    // lost. Red-first tested by
+    // DeathCryTest.SkipsThePerDoorBroadcastWhenTheDyingCharacterIsNowhere.
+    if (was_in == NOWHERE) {
+        return;
+    }
 
     if (ch->player.death_cry2 && strcmp(ch->player.death_cry2, "(null)")) {
         cry_msg = ch->player.death_cry2;

@@ -3614,3 +3614,209 @@ TEST(LoadWindowDeath, MakeCorpseEmptiesWornGearIntoTheCorpseBeforeExtractCharCan
     RELEASE(victim.player.name);
     object_list = previous_object_list;
 }
+
+// ===========================================================================
+// RR WAVE R3 TASK 3p -- the raw_kill()-rooted NOWHERE-REACHABLE pair.
+//
+// Two room-resolve ledger rows (docs/superpowers/room-resolve-ledger.md)
+// could not be proven and needed a real behavior change instead:
+//   `src/combat/fight.cpp . death_cry . room_by_id_total(`  (fight.cpp:913)
+//   `src/combat/fight.cpp . get_corpse_desc . room_of(`     (fight.cpp:554 x3)
+// Both are reached from ONE raw_kill() invocation, one statement apart
+// (fight.cpp:949 death_cry(dead_man); :950 make_corpse(dead_man, ...) ->
+// make_physical_corpse:735 -> get_corpse_desc), and NONE of raw_kill()'s 14
+// production call sites tree-wide (act_move.cpp:400/:423/:830,
+// act_offe.cpp:262, fight.cpp:1093/:1118/:1147/:2104/:3251/:3317,
+// limits.cpp:1425/:1618, script.cpp:1653, spec_pro.cpp:3277) guards
+// `dead_man`'s placement. The tree documents the unplaced case as LEGITIMATE
+// rather than hypothetical: placement.cpp:396-399 and
+// src/entity/include/rots/entity/render_cursor.h:121 both record that
+// death_cry()'s ScopedRenderLocation window is deliberately permitted to open
+// with `was_in == NOWHERE`, "for a character who really is nowhere".
+//
+// THE ABSENT BEHAVIOR, stated before the guards were written:
+//   * death_cry -- for an unplaced character, CAN_GO(ch, door)
+//     (environment_utils.cpp:139) resolves the room-0 fallback and can
+//     legitimately return 1 off ROOM 0's exits, after which :913 resolves
+//     NOWHERE a second time and the render cursor is retargeted to one of room
+//     0's neighbours: the death cry is broadcast into an unrelated room, plus
+//     two negative-room mudlogs per passable door. The opening
+//     act(..., TO_ROOM) at :895 is ALREADY a no-op for an unplaced character
+//     (comm.cpp's act_impl takes neither its `ch && location_of(ch) !=
+//     NOWHERE` nor its `obj` arm, and returns at `if (!to)`), so the per-door
+//     broadcast is the only delivery the guard removes.
+//   * get_corpse_desc -- for an unplaced character the three :554 reads take
+//     ROOM 0's sector_type, so the corpse is described as "floating here"
+//     whenever room 0 happens to be watery. The guard makes the wording fall
+//     to the default "lying here" instead.
+//
+// Both tests below were run RED against the unguarded fight.cpp, and each
+// carries its own POSITIVE CONTROL in the same body (a placed character, for
+// whom the removed behavior must still happen), so neither can pass
+// vacuously.
+// ===========================================================================
+
+// fight.cpp exports death_cry() by linkage only -- act_move.cpp:55 carries a
+// stale forward declaration with no call behind it, and no header declares
+// it. Declared here the same way make_corpse() is above.
+void death_cry(struct char_data *ch);
+
+namespace {
+
+// Unlinks and releases a corpse make_physical_corpse() CREATE()d: heap
+// storage prepended to the process-global object_list, linked into a room's
+// contents by obj_to_room(), and carrying three rots_asprintf'd/str_dup'd
+// strings. Same teardown shape as
+// LoadWindowDeath.MakeCorpseEmptiesWornGearIntoTheCorpseBeforeExtractCharCanSeeIt
+// above, factored out because both RR tests below build one.
+void release_test_corpse(obj_data *corpse, obj_data *previous_object_list) {
+    if (corpse == nullptr)
+        return;
+    obj_from_room(corpse);
+    if (object_list == corpse)
+        object_list = corpse->next;
+    RELEASE(corpse->name);
+    RELEASE(corpse->short_description);
+    RELEASE(corpse->description);
+    std::free(corpse);
+    object_list = previous_object_list;
+}
+
+} // namespace
+
+// RR Wave R3 Task 3p, GUARDED row 1 (`src/combat/fight.cpp . death_cry .
+// room_by_id_total(`). RED against the unguarded fight.cpp: the unplaced
+// victim's cry reached the bystander standing in room 1, because
+// CAN_GO(victim, NORTH) answered off ROOM 0's exit table and the cursor was
+// then retargeted to that exit's destination.
+TEST(DeathCryTest, SkipsThePerDoorBroadcastWhenTheDyingCharacterIsNowhere) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    // Room 0 -- the room an unplaced character's room_of() silently falls back
+    // to -- gets the only exit in the fixture, pointing at room 1.
+    room_direction_data exit_to_room1{};
+    exit_to_room1.exit_info = 0;
+    exit_to_room1.to_room = 1;
+    room_by_id_total(0)->dir_option[NORTH] = &exit_to_room1;
+
+    char_data victim{};
+    make_mortal_player(victim);
+    ScopedClearCharFields victim_cleanup{victim};
+    RELEASE(victim.player.name);
+    victim.player.name = str_dup("dyingchr");
+    victim.specials.position = POSITION_STANDING;
+
+    // The only listener in the fixture, and deliberately NOT in the victim's
+    // fallback room: anything he hears arrived through the per-door loop.
+    char_data bystander{};
+    make_mortal_player(bystander);
+    ScopedClearCharFields bystander_cleanup{bystander};
+    RELEASE(bystander.player.name);
+    bystander.player.name = str_dup("listener");
+    bystander.specials.position = POSITION_STANDING;
+
+    descriptor_data bystander_descriptor{};
+    bystander_descriptor.output = bystander_descriptor.small_outbuf;
+    bystander_descriptor.small_outbuf[0] = '\0';
+    bystander_descriptor.bufptr = 0;
+    bystander_descriptor.bufspace = SMALL_BUFSIZE - 1;
+    bystander_descriptor.connected = CON_PLYNG;
+    bystander_descriptor.character = &bystander;
+    bystander_descriptor.next = nullptr;
+    bystander.desc = &bystander_descriptor;
+
+    {
+        ScopedRoomOccupants room0_occupants{room_by_id_total(0), 0, {}};
+        ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&bystander}};
+
+        // POSITIVE CONTROL: a PLACED victim in room 0 still broadcasts through
+        // the per-door loop into room 1. Without this the assertion below
+        // could pass simply because the fixture never delivers anything.
+        set_location(&victim, 0);
+        death_cry(&victim);
+        ASSERT_NE(strstr(bystander_descriptor.small_outbuf, "death cry"), nullptr)
+            << "positive control failed -- the fixture never delivers the "
+               "per-door cry, so the NOWHERE assertion below would be vacuous. "
+               "output: "
+            << bystander_descriptor.small_outbuf;
+
+        bystander_descriptor.small_outbuf[0] = '\0';
+        bystander_descriptor.output = bystander_descriptor.small_outbuf;
+        bystander_descriptor.bufptr = 0;
+        bystander_descriptor.bufspace = SMALL_BUFSIZE - 1;
+
+        // THE GUARD: an unplaced victim broadcasts nowhere at all.
+        set_location(&victim, NOWHERE);
+        death_cry(&victim);
+        EXPECT_STREQ(bystander_descriptor.small_outbuf, "")
+            << "an unplaced character's death cry leaked into room 0's "
+               "neighbour";
+    }
+
+    room_by_id_total(0)->dir_option[NORTH] = nullptr;
+    bystander.desc = nullptr;
+    RELEASE(victim.player.name);
+    RELEASE(bystander.player.name);
+}
+
+// RR Wave R3 Task 3p, GUARDED row 2 (`src/combat/fight.cpp . get_corpse_desc
+// . room_of(`). RED against the unguarded fight.cpp: the unplaced victim's
+// corpse was described "floating here", because the three :554 reads took
+// ROOM 0's SECT_WATER_SWIM sector_type.
+TEST(GetCorpseDescTest, UsesTheLyingHereWordingWhenTheDeadCharacterIsNowhere) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+    obj_data *const previous_object_list = object_list;
+
+    // Room 0 -- the fallback an unplaced room_of() lands in -- is made watery,
+    // and room 1 (where the positive control dies) with it. Saved and restored
+    // so no later suite in the monolithic runner inherits the sector.
+    const int previous_room0_sector = room_by_id_total(0)->sector_type;
+    const int previous_room1_sector = room_by_id_total(1)->sector_type;
+    room_by_id_total(0)->sector_type = SECT_WATER_SWIM;
+    room_by_id_total(1)->sector_type = SECT_WATER_SWIM;
+
+    char_data victim{};
+    make_mortal_player(victim);
+    ScopedClearCharFields victim_cleanup{victim};
+    RELEASE(victim.player.name);
+    victim.player.name = str_dup("drownedchr");
+    victim.specials.position = POSITION_STANDING;
+    GET_GOLD(&victim) = 0; // move_gold() stays a no-op, so no money object is created
+
+    {
+        ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&victim}};
+
+        // POSITIVE CONTROL: a PLACED victim really does get the water wording,
+        // so the "lying here" assertion below cannot pass just because the
+        // fixture never reaches the water branch. attack_type SPELL_POISON is
+        // required with a null killer: make_physical_corpse:783's
+        // `attack_type == SPELL_POISON || !IS_NPC(killer)` would otherwise
+        // dereference it.
+        obj_data *placed_corpse = make_corpse(&victim, nullptr, SPELL_POISON);
+        ASSERT_NE(placed_corpse, nullptr);
+        EXPECT_NE(strstr(placed_corpse->description, "floating here"), nullptr)
+            << "positive control failed -- a placed character in a watery room "
+               "did not get the water wording, so the NOWHERE assertion below "
+               "would be vacuous. description: "
+            << placed_corpse->description;
+        release_test_corpse(placed_corpse, previous_object_list);
+    }
+
+    // THE GUARD: an unplaced victim's corpse must not inherit room 0's sector.
+    set_location(&victim, NOWHERE);
+    obj_data *unplaced_corpse = make_corpse(&victim, nullptr, SPELL_POISON);
+    ASSERT_NE(unplaced_corpse, nullptr);
+    EXPECT_NE(strstr(unplaced_corpse->description, "lying here"), nullptr)
+        << "description: " << unplaced_corpse->description;
+    EXPECT_EQ(strstr(unplaced_corpse->description, "floating here"), nullptr)
+        << "an unplaced character's corpse inherited room 0's sector_type. "
+           "description: "
+        << unplaced_corpse->description;
+    release_test_corpse(unplaced_corpse, previous_object_list);
+
+    room_by_id_total(0)->sector_type = previous_room0_sector;
+    room_by_id_total(1)->sector_type = previous_room1_sector;
+    RELEASE(victim.player.name);
+}

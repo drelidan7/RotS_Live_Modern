@@ -3444,6 +3444,21 @@ section supersedes that boilerplate**: wherever an R2 row says "in-range via
 M-1 (`placement.cpp:369-395`)", read the block-quoted wording above instead.
 Rows landed from Wave R3 onward cite the new wording directly.
 
+**Wave R3's OWN rows are uniform, as of Task 4.** The wave's two proof-only
+classification tasks (T2p/T3p) branched before T1a's correction landed and
+copied R3-C-2's DRAFTED `:369-391` span into 23 rows; T2d/T3d/T1c then wrote
+the corrected span into 27 more, each carrying its own clause saying the
+earlier spelling was stale. Task 4 re-pointed all 50 onto the single
+block-quoted wording above -- 31 of them needed the sentence itself rewritten
+(the 23 drafted-span rows plus T2d/T1c's 8, whose phrasing and file-prefix
+differed), the other 19 only their trailing citation-provenance note. Together
+with Task 3e's four OLC rows the ledger now carries exactly ONE spelling of the
+in-range half across all **54** Wave R3 rows, and the drafted `:369-391` span
+survives nowhere in the classification table (it appears exactly once in this
+file, in the paragraph above that records what it was). **No Wave R1/R2 row was
+edited** -- those still carry the superseded `M-1` boilerplate this section
+fixes, deliberately (see the paragraph above).
+
 ## `dispatch-invariant` proofs and the dispatch-entry registry
 
 `dispatch-invariant` (Wave R3, owner ruling R3-O-1) is the sixth and newest
@@ -3624,16 +3639,37 @@ rather than a concession.
 
 The canonical taxonomy lives in `docs/superpowers/room-resolve-playbook.md`
 ("The stayed-TODO taxonomy"), which named four categories out of Wave R2. Wave
-R3 adds two and widens one; they are recorded here because R3's rows cite them
-and this is the file those rows live in.
+R3 adds THREE (`APPLY_SPELL-window`, `owner-punted`, `intervening-relocation`)
+and widens one; they are recorded here because R3's rows cite them and this is
+the file those rows live in. (The "adds two" this sentence carried until Wave
+R3 Task 4 predated Task 1c's `intervening-relocation` entry, which was appended
+to the list below without updating the count -- corrected by re-counting the
+list itself.)
 
 - **`APPLY_SPELL-window`** (owner ruling R3-O-2) -- rows reachable with an
   unplaced caster through `affect_modify`'s APPLY_SPELL arm (producer P1, the
   login/rent-load window; see the dispatch-entry section above for why that
-  arm is deliberately unguarded). 11 combat rows / 16 sites at R3. These are
-  NOT covered by `dispatch-invariant` and are not silently left: they stay
-  `TODO` as a named class, to be ruled together with the program's pending
-  `RR-O-1` ruling, since both are rulings about the same login window.
+  arm is deliberately unguarded). **10 combat rows / 14 sites at R3**, every
+  one of them in `src/combat/mage.cpp` -- re-derived from the landed rows at
+  Wave R3 Task 4. The "11 combat rows / 16 sites" this section carried until
+  then came from census A's own summary SENTENCE; Wave R3 Task 2d found it
+  disagrees with that census's own sub-table, which marks 10 rows / 14 sites
+  "C-2 reachable = YES". The eleventh row is `src/combat/spell_pa.cpp ·
+  do_sense_magic · room_by_id_total(` (2 sites, both spell_pa.cpp:132), whose
+  C-2 column reads "n/a": it does stay `TODO`, but NOT for the login window.
+  Its caster half would land (`do_cast` is its sole caller, so it inherits that
+  entry's guard); its `character` half does not, because `character =
+  player->character` for every `CON_PLYNG` descriptor in
+  `get_descriptor_list_head()`'s list, and "a `CON_PLYNG` descriptor has a
+  placed character" is a different unproven invariant that no R3 ruling covers
+  and the dispatch-entry registry says nothing about. The row is not
+  splittable -- both sites share one physical line, one function and one token,
+  so they are one ledger key. **The stayed-TODO TOTAL is unaffected by the
+  correction** (11 rows / 16 sites still stay `TODO` either way); only the
+  labelling is. The 10 rows in this class are NOT covered by
+  `dispatch-invariant` and are not silently left: they stay `TODO` as a named
+  class, to be ruled together with the program's pending `RR-O-1` ruling, since
+  both are rulings about the same login window.
 - **`owner-punted`** (owner ruling R3-O-4) -- `src/combat/olog_hai.cpp ·
   get_random_target` (1 row / 2 sites) has zero production callers; the
   repository's own dead-code heuristic would delete it, but the owner ruled it

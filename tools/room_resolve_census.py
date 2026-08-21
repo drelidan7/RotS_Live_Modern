@@ -1195,6 +1195,20 @@ DISPATCH_SPELLING_TOKENS = (
     # patterns only excluded that one.
     ("mob_index[].func(", re.compile(r"\bmob_index\s*\[[^\]]*\]\s*\.\s*func\s*\(")),
     ("obj_index[].func(", re.compile(r"\bobj_index\s*\[[^\]]*\]\s*\.\s*func\s*\(")),
+    # Task 5-fix2 (re-verification M-5): the remaining SPECIAL-body doors the
+    # tree ALREADY uses in production and no spelling above named. The first
+    # four return a spec-proc ADDRESS that the caller immediately calls
+    # through a local (the hoisted-copy shape, one line later at every real
+    # site); `intelligent(` is a direct call of a SPECIAL body with an actor
+    # the callee never validated. All five were `--check` exit 0 in a brand
+    # new unregistered function before this round. `\b` keeps
+    # `virt_program_number(` out of `dispatch_virt_program_number(` (`_` is a
+    # word character), so the three are genuinely distinct tokens.
+    ("virt_program_number(", re.compile(r"\bvirt_program_number\s*\(")),
+    ("virt_obj_program_number(", re.compile(r"\bvirt_obj_program_number\s*\(")),
+    ("dispatch_virt_program_number(", re.compile(r"\bdispatch_virt_program_number\s*\(")),
+    ("get_special_function(", re.compile(r"\bget_special_function\s*\(")),
+    ("intelligent(", re.compile(r"\bintelligent\s*\(")),
 )
 
 # The closed category vocabulary every exemption below is filed under. It
@@ -1284,6 +1298,46 @@ DISPATCH_TOKEN_EXEMPT_SITES = {
         (1, "STOP",
          "M-4 direct door, R4 design input -- `func_pointer = mob_index[index].func;` at "
          "delayed_command_interpreter.cpp:45, then called at :47 (the hoisted-copy shape)"),
+
+    # --- Task 5-fix2 (M-5): the SAME two direct-door functions' OTHER arms.
+    # The Task 5-fix round recorded each of them by its `mob_index[].func`
+    # arm alone, but both dispatch a SPECIAL body two more ways on the
+    # `store_prog_number`/`special_prog_number` fall-throughs, with the same
+    # unvalidated actor. Completing the R4 STOP inventory is the point: it
+    # ships as R4 design input, so a partial list is a defect in the
+    # deliverable, not only in the gate.
+    ("src/app/comm.cpp", "complete_delay_impl", "virt_program_number("):
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- `tmpfunc = (SPECIAL(*))virt_program_number("
+         "ch->specials.store_prog_number);` at comm.cpp:2832, called on the next line at :2833"),
+    ("src/app/comm.cpp", "complete_delay_impl", "intelligent("):
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- `intelligent(ch, 0, -1, ..., SPECIAL_DELAY, ...)` "
+         "at comm.cpp:2835 calls a SPECIAL body directly on the special_prog_number arm"),
+    ("src/app/delayed_command_interpreter.cpp",
+     "game_types::delayed_command_interpreter::run", "get_special_function("):
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- `func_pointer = get_special_function("
+         "function_number);` at delayed_command_interpreter.cpp:50, called at :51"),
+    ("src/app/delayed_command_interpreter.cpp",
+     "game_types::delayed_command_interpreter::run", "intelligent("):
+        (1, "STOP",
+         "M-4 direct door, R4 design input -- `intelligent(m_character, victim, -1, ..., "
+         "SPECIAL_DELAY, delay)` at delayed_command_interpreter.cpp:53, the same "
+         "special_prog_number arm as comm.cpp:2835"),
+
+    # --- Task 5-fix2 (M-5): registration LOOKUPs. The fetched address is
+    # stored into the mob/obj index by the ASSIGN* macro on the next line;
+    # nothing is dispatched and no actor participates. (`virt_assignmob`'s
+    # `mob` is a prototype being assigned a spec proc at boot, not an actor.)
+    ("src/script/spec_ass.cpp", "virt_assignmob", "virt_program_number("):
+        (1, "registration-lookup",
+         "registration LOOKUP -- `tmpptr = virt_program_number(mob->specials.store_prog_number);`"
+         " (spec_ass.cpp:516), cast and handed to ASSIGNREALMOB at :518; no call is made"),
+    ("src/script/spec_ass.cpp", "virt_assignobj", "virt_obj_program_number("):
+        (1, "registration-lookup",
+         "registration LOOKUP -- the object twin, `tmpptr = virt_obj_program_number("
+         "obj->obj_flags.prog_number);` (spec_ass.cpp:530), handed to ASSIGNREALOBJ at :532"),
 
     # --- Task 5-fix: registration WRITEs. No actor exists at any of these
     # statements; they populate the tables the entries later dispatch through
@@ -2719,6 +2773,35 @@ DISPATCH_PROBE_SOURCE_GUARD_IF_ZERO_ELSE = """void dispatcher_fn(char_data* ch)
 """
 
 
+# RR Wave R3 Task 5-fix2 (re-verification M-5): the SPECIAL-body doors the
+# tree already uses and no earlier spelling named. Each probe is the exact
+# shape the reviewer ran against the real tree at `--check` exit 0.
+DISPATCH_PROBE_SOURCE_SPECIAL_DOORS = DISPATCH_PROBE_SOURCE + """
+void rogue_prog_number(char_data* ch, char* arg)
+{
+    SPECIAL(*tmpfunc);
+    tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);
+    tmpfunc(ch, ch, 0, arg, SPECIAL_COMMAND, 0);
+}
+
+void rogue_special_function(char_data* ch, char* arg, int number)
+{
+    special_func_ptr fp = get_special_function(number);
+    fp(ch, ch, 0, arg, SPECIAL_COMMAND, 0);
+}
+
+void rogue_dispatch_prog_number(char_data* ch, char* arg)
+{
+    SPECIAL(*tmpfunc) = (SPECIAL(*))rots::script::dispatch_virt_program_number(7);
+    tmpfunc(ch, ch, 0, arg, SPECIAL_COMMAND, 0);
+}
+
+void rogue_intelligent(char_data* ch, char* arg)
+{
+    intelligent(ch, ch, 0, arg, SPECIAL_COMMAND, 0);
+}
+"""
+
 # RR Wave R3 Task 5-fix2 (re-verification B-1/m-1): the exemption-shaped
 # probes. `exempt_fn` is the shape the 15 `*_index[].func` exemptions have --
 # an ordinary presence TEST that reads the slot's address and calls nothing.
@@ -4016,6 +4099,16 @@ def run_self_test():
             probe_text=DISPATCH_PROBE_SOURCE_EXEMPT_RENAMED,
             dispatch_exempt_sites_override=exempt_key_pin,
             expected_output=("STALE dispatch-token exemption", "exempt_fn"))
+
+        # (ah) Task 5-fix2 (M-5): four more SPECIAL-body dispatch shapes the
+        # tree already uses in production. All four were exit 0 before this
+        # round; each names its own token in the failure message.
+        run_dispatch_case(
+            "dispatch-special-body-doors", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_SPECIAL_DOORS,
+            expected_output=("virt_program_number(", "get_special_function(",
+                             "dispatch_virt_program_number(", "intelligent(",
+                             "rogue_prog_number", "rogue_intelligent"))
 
         # (ag) the token SPLIT itself, pinned directly: a member CALL and an
         # address READ of the same slot must classify as DIFFERENT tokens.

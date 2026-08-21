@@ -3196,12 +3196,12 @@ itself prove the id is *in range*, only that it is not the sentinel. In-range-
 ness instead follows from the WRITE side, in the wording ruling R3-C-2 fixes
 below ("The in-range half's standing citation"): the location field's only
 writers are `char_to_room` and `ScopedRenderLocation`, plus append-only room
-allocation (a room id, once valid, stays valid for the process lifetime). The invariant's second
-half -- that the occupant-chain-derived id still equals the character's own
-stored location field -- does **not** hold inside a `ScopedRenderLocation`
-window (the render cursor temporarily diverges from the stored field by
-design); an `occupant-chain` proof taken from inside such a window must say so
-explicitly, or it is incomplete.
+allocation (a room id, once valid, stays valid for the process lifetime). The
+invariant's second half -- that the occupant-chain-derived id still equals the
+character's own stored location field -- does **not** hold inside a
+`ScopedRenderLocation` window (the render cursor temporarily diverges from the
+stored field by design); an `occupant-chain` proof taken from inside such a
+window must say so explicitly, or it is incomplete.
 
 ## The location_of() guard proves only the sentinel half
 

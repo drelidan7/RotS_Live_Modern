@@ -193,9 +193,12 @@ directions over it, the same bidirectional shape
 
 - **Downward:** every `GUARDED`/`GUARDED-PRIOR` row names a real file and a
   real, scanner-findable function whose comment/string-MASKED body still
-  contains that row's guard literal (verbatim up to whitespace normalization,
-  since a real guard wraps across physical lines and a table cell cannot).
-  Deleting a guard from production is a gate failure, not silent proof rot.
+  contains EVERY guard literal that row lists (verbatim up to whitespace
+  normalization, since a real guard wraps across physical lines and a table
+  cell cannot). Deleting a guard from production is a gate failure, not
+  silent proof rot -- and deleting ONE of an entry's two guards is the same
+  failure, since a two-tripwire entry is only as strong as its weakest (see
+  "An entry may carry MORE THAN ONE guard literal" below).
 - **Upward:** every occurrence of a pinned dispatch spelling
   (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`,
   `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
@@ -233,6 +236,37 @@ from the same actor (T3d finding O-2); nothing is parsed yet at that point, so
 the entry is now an ordinary `return`.) The globally unique message TEXT is the separate half of the
 contract: it is what R-final's measured-zero sweep greps for, and it lives
 in production, not here.
+
+**An entry may carry MORE THAN ONE guard literal** (Wave R3 Task 1d,
+coordinator ruling R3-C-7). One tripwire per entry point is not always
+enough. R3-C-7's adjacency rule says a `dispatch-invariant` row inherits an
+entry's guard ONLY if no statement between that guard and the dispatch the
+row's site is reached through can run code with the actor as a participant --
+a `special()` fan-out, a `complete_delay()`, an `affect_total()` APPLY_SPELL
+walk, any `command_interpreter` re-entry. The structural way to satisfy it is
+ADJACENCY: the tripwire sits IMMEDIATELY before the dispatch statement, with
+only scalar/local work in between. But an entry function that must ALSO
+resolve or parse the actor EARLIER than its dispatch -- `do_cast`'s
+`room_of(ch)` at spell_pa.cpp:505 and its `target_from_word` call at :624,
+`command_interpreter`'s `target_parser` at interpre.cpp:1130 -- still needs a
+guard THERE, for those sites. So such an entry carries TWO tripwires: an
+early one licensing the early sites, and a pre-dispatch one licensing
+everything reached through the dispatch. Both share the entry's one globally
+unique message string (the sweep counts entry points, not statements).
+
+The `Guard literal` cell then lists both, separated by ` || ` -- spaces
+around, and the bars written `\|\|` in the markdown so the row survives cell
+splitting -- and `--check` requires EVERY listed literal to be present. The
+separator is parsed STRUCTURALLY, anchored on the backticks that wrap each
+literal, never by a bare split: `one_mobile_activity`'s single literal
+contains a real C `||` operator, and a naive split would tear it into two
+halves that each still match, silently weakening the check to nothing.
+
+Because the two guards license DIFFERENT sets of sites, every
+`dispatch-invariant` proof cites the specific guard LINE it rests on, not
+merely the entry. A row whose site is reached through the dispatch cites the
+pre-dispatch line; a row whose site sits above the first relocating call
+cites the early one.
 
 
 **Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**

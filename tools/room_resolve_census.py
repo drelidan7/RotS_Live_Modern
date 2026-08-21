@@ -912,6 +912,28 @@ LEDGER_DISPATCH_ENTRIES_HEADER = (
 DISPATCH_ENTRY_STATUSES = ("PENDING-T1b", "GUARDED", "GUARDED-PRIOR")
 DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES = frozenset({"GUARDED", "GUARDED-PRIOR"})
 
+# RR Wave R3 Task 1d (coordinator ruling R3-C-7): an entry may carry MORE
+# THAN ONE guard literal, because one tripwire per entry point is not always
+# enough. R3-C-7's adjacency rule says a `dispatch-invariant` row inherits an
+# entry's guard only if nothing between that guard and the dispatch can run
+# code with the actor as a participant; where a function must ALSO resolve or
+# parse the actor earlier (`do_cast`'s room_of(ch)/target_from_word,
+# `command_interpreter`'s target_parser), the honest shape is TWO tripwires --
+# an early one licensing the early sites, and one immediately before the
+# dispatch licensing everything reached through it. Each row then lists both,
+# and every `dispatch-invariant` proof cites the specific guard LINE it rests
+# on.
+#
+# Cell grammar: one or more backtick-wrapped literals joined by ` || `
+# (SPACES around the bars, and the bars themselves written `\|\|` in the
+# markdown -- `_split_row_cells` unescapes them before this runs). The
+# separator is matched STRUCTURALLY, never by a bare `split(" || ")`: the
+# `one_mobile_activity` entry's single literal contains a real C `||`
+# operator, and a naive split would tear it in half. Anchoring on the
+# backticks keeps a literal's own contents opaque.
+DISPATCH_GUARD_SEPARATOR = " || "
+DISPATCH_GUARD_CELL_PATTERN = r"`[^`]*`(?: \|\| `[^`]*`)*"
+
 # Floor pinned AT the real registry's row count (12 = the nine R3 entries
 # plus the three already-guarded ones), zero headroom -- the same reasoning
 # `MINIMUM_REGISTRY_ROWS_A` records in the sibling census: the row-count
@@ -1324,13 +1346,20 @@ def _parse_dispatch_entry_row(cells):
     actor = actor_match.group(1).strip()
 
     if status in DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES:
-        guard_match = re.fullmatch(r"`([^`]*)`", guard_cell)
-        if guard_match is None or not guard_match.group(1).strip():
+        if re.fullmatch(DISPATCH_GUARD_CELL_PATTERN, guard_cell) is None:
             raise SystemExit(
-                f"error: ledger: {status} dispatch entry {entry_text!r} must carry a "
-                f"backtick-wrapped, non-empty guard literal (got {guard_cell!r})"
+                f"error: ledger: {status} dispatch entry {entry_text!r} must carry one or more "
+                f"backtick-wrapped guard literals, separated by {DISPATCH_GUARD_SEPARATOR!r} "
+                f"(got {guard_cell!r})"
             )
-        guard = guard_match.group(1)
+        guards = re.findall(r"`([^`]*)`", guard_cell)
+        for literal in guards:
+            if not literal.strip():
+                raise SystemExit(
+                    f"error: ledger: {status} dispatch entry {entry_text!r} carries an EMPTY "
+                    f"guard literal in {guard_cell!r} -- every listed literal must be a real, "
+                    "non-empty statement the downward check can look for"
+                )
     else:
         if guard_cell != LEDGER_EMPTY_MARKER:
             raise SystemExit(
@@ -1338,10 +1367,10 @@ def _parse_dispatch_entry_row(cells):
                 f"literal at the empty marker {LEDGER_EMPTY_MARKER!r} (got {guard_cell!r}) -- a "
                 "not-yet-landed entry must not carry a literal that LOOKS like a checked guard"
             )
-        guard = ""
+        guards = []
 
     return {"file": entry_file, "function": entry_function, "actor": actor,
-            "guard": guard, "status": status}
+            "guards": guards, "status": status}
 
 
 def parse_dispatch_entries(text, *, minimum_rows=_UNSET):
@@ -1422,14 +1451,21 @@ def check_dispatch_entries(entries, dispatch_occurrences, repository_root):
             continue
         if entry["status"] not in DISPATCH_ENTRY_GUARD_REQUIRED_STATUSES:
             continue
-        if _normalize_whitespace(entry["guard"]) not in _normalize_whitespace("\n".join(body_lines)):
-            errors.append(
-                f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} is {entry['status']}, but "
-                f"its guard literal {entry['guard']!r} no longer appears in that function's "
-                "(comment/string-masked) body -- either the guard was removed/rewritten in "
-                "production, or the registry row is stale. Every `dispatch-invariant` row "
-                "citing this entry rests on that literal."
-            )
+        # EVERY listed literal must still be there. An entry with two
+        # tripwires (Task 1d's adjacency rule, R3-C-7) is only as strong as
+        # its weakest one: deleting the pre-dispatch guard while leaving the
+        # entry guard behind would restore exactly the hole adjacency exists
+        # to close, so a partial match is a gate failure, not a pass.
+        masked_body = _normalize_whitespace("\n".join(body_lines))
+        for literal in entry["guards"]:
+            if _normalize_whitespace(literal) not in masked_body:
+                errors.append(
+                    f"dispatch-entry registry: {KEY_SEPARATOR.join(key)} is {entry['status']}, "
+                    f"but its guard literal {literal!r} no longer appears in that function's "
+                    "(comment/string-masked) body -- either the guard was removed/rewritten in "
+                    "production, or the registry row is stale. Every `dispatch-invariant` row "
+                    "citing this entry rests on that literal."
+                )
 
     for occurrence in dispatch_occurrences:
         key = (occurrence["file"], occurrence["function"])
@@ -2074,6 +2110,73 @@ DISPATCH_ENTRY_ROW_GUARDED = (
     "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
     "`if (location_of(ch) == NOWHERE) { return; }` | GUARDED |"
 )
+
+# RR Wave R3 Task 1d (R3-C-7): the TWO-tripwire shape. An early guard
+# licenses whatever the function resolves before it dispatches, and a second
+# one sits IMMEDIATELY before the dispatch so nothing that ran in between
+# (here `parse_the_target(ch)`, standing in for `target_parser`/
+# `complete_delay`) can have relocated the actor unobserved. The second guard
+# uses the if/else refusal shape rather than an early return, exactly as the
+# real `command_interpreter`/`do_cast` sites do, so the probe also exercises a
+# literal whose text ends in `} else {`.
+DISPATCH_PROBE_SOURCE_TWO_GUARDS = """void dispatcher_fn(char_data* ch)
+{
+    if (location_of(ch) == NOWHERE) {
+        return;
+    }
+
+    parse_the_target(ch);
+
+    if (location_of(ch) == NOWHERE) {
+        mudlog("dispatcher_fn: dispatch refused", NRM, LEVEL_IMPL, TRUE);
+    } else {
+        skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+    }
+}
+"""
+
+# The two-literal cell. The separator's bars are written escaped, exactly as
+# the ledger's markdown must write them, so this fixture drives
+# `_split_row_cells`'s unescaping too and not merely the grammar behind it.
+DISPATCH_ENTRY_ROW_TWO_GUARDS = (
+    "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+    "`if (location_of(ch) == NOWHERE) { return; }` \\|\\| "
+    "`if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); } else {` | GUARDED |"
+)
+
+# A single literal that CONTAINS a real C `||` operator -- the shape the live
+# `one_mobile_activity` entry carries. It must parse as ONE literal; a naive
+# `split(" || ")` would tear it into two unmatchable halves and fail a row
+# that is perfectly well formed.
+DISPATCH_PROBE_SOURCE_DISJUNCTIVE_GUARD = """void dispatcher_fn(char_data* ch)
+{
+    if ((location_of(ch) < 0) || (location_of(ch) > top_of_world)) {
+        return;
+    }
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
+
+DISPATCH_ENTRY_ROW_DISJUNCTIVE_GUARD = (
+    "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+    "`if ((location_of(ch) < 0) \\|\\| (location_of(ch) > top_of_world)) { return; }` | GUARDED |"
+)
+
+# The same entry after somebody REWROTE its disjunctive guard into two
+# separate, weaker tests. Each of the two halves a naive `split(" || ")`
+# would produce is still a substring of this body -- `if ((location_of(ch) <
+# 0)` and `(location_of(ch) > top_of_world)) { return; }` both appear -- but
+# the guard the registry row names does not exist any more. Only a checker
+# that matches the WHOLE literal catches it.
+DISPATCH_PROBE_SOURCE_DISJUNCTIVE_GUARD_TORN = """void dispatcher_fn(char_data* ch)
+{
+    if ((location_of(ch) < 0) && allow_negative_rooms) {
+        return;
+    }
+    if (false && (location_of(ch) > top_of_world)) { return; }
+    skills[tmp].spell_pointer(ch, mutable_arg(""), 0, ch, 0, 0, 1);
+}
+"""
 
 
 def _dispatch_ledger(*entry_rows):
@@ -3042,6 +3145,92 @@ def run_self_test():
             expected_output=("below the floor",))
 
         # ------------------------------------------------------------------
+        # RR Wave R3 Task 1d (R3-C-7): the MULTI-LITERAL guard cell. An entry
+        # with two tripwires is only as strong as its weakest one, so the
+        # downward check must demand EVERY listed literal, and the cell's
+        # grammar must fail closed on a malformed separator rather than
+        # silently dropping half of it.
+        # ------------------------------------------------------------------
+
+        # (l) clean: BOTH literals really are in the body.
+        run_dispatch_case(
+            "dispatch-two-guards-both-present", 0,
+            probe_text=DISPATCH_PROBE_SOURCE_TWO_GUARDS,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_TWO_GUARDS))
+
+        # (m) SABOTAGE: the SECOND literal (the pre-dispatch tripwire) is gone
+        # from production while the first survives. This is the exact
+        # regression R3-C-7 exists to catch -- an entry guard left standing
+        # while the adjacent one is deleted restores the relocation hole -- and
+        # a one-of-two check would pass it.
+        run_dispatch_case(
+            "dispatch-two-guards-second-deleted", 1,
+            probe_text=DISPATCH_PROBE_SOURCE,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_TWO_GUARDS),
+            expected_output=("guard literal", "} else {"))
+
+        # (n) SABOTAGE: the FIRST literal is gone and only the pre-dispatch one
+        # survives -- the mirror direction, so neither position is privileged.
+        run_dispatch_case(
+            "dispatch-two-guards-first-deleted", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_TWO_GUARDS.replace(
+                "    if (location_of(ch) == NOWHERE) {\n        return;\n    }\n\n", "", 1),
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_TWO_GUARDS),
+            expected_output=("guard literal", "{ return; }"))
+
+        # (o) SABOTAGE: a stray trailing separator with no literal after it.
+        run_dispatch_case(
+            "dispatch-guard-cell-stray-separator", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_TWO_GUARDS,
+            ledger_text=_dispatch_ledger(
+                "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+                "`if (location_of(ch) == NOWHERE) { return; }` \\|\\| | GUARDED |"),
+            expected_output=("separated by",))
+
+        # (p) SABOTAGE: an EMPTY second literal (``) -- grammatically a literal,
+        # but one that would match every body ever written.
+        run_dispatch_case(
+            "dispatch-guard-cell-empty-literal", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_TWO_GUARDS,
+            ledger_text=_dispatch_ledger(
+                "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+                "`if (location_of(ch) == NOWHERE) { return; }` \\|\\| `` | GUARDED |"),
+            expected_output=("EMPTY guard literal",))
+
+        # (q) SABOTAGE: a separator without its surrounding spaces. The cell
+        # grammar is exact; a `A`||`B` cell is a typo, not a two-literal row
+        # the checker may guess at.
+        run_dispatch_case(
+            "dispatch-guard-cell-unspaced-separator", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_TWO_GUARDS,
+            ledger_text=_dispatch_ledger(
+                "| `src/app/dispatch_probe.cpp · dispatcher_fn` | `ch` | "
+                "`if (location_of(ch) == NOWHERE) { return; }`\\|\\|"
+                "`if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); } else {`"
+                " | GUARDED |"),
+            expected_output=("separated by",))
+
+        # (r) a SINGLE literal containing a real C `||` operator still parses
+        # as one literal and passes -- the `one_mobile_activity` shape, and the
+        # regression a bare `split(" || ")` implementation would introduce.
+        run_dispatch_case(
+            "dispatch-guard-cell-disjunctive-single-literal", 0,
+            probe_text=DISPATCH_PROBE_SOURCE_DISJUNCTIVE_GUARD,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_DISJUNCTIVE_GUARD))
+
+        # (s) SABOTAGE, and the direction that makes (r) worth having: that
+        # same disjunctive guard rewritten in production into two separate,
+        # weaker tests. Both halves a naive `split(" || ")` would produce are
+        # still substrings of the body, so a split-then-match checker passes
+        # this happily; the whole-literal checker fails it, which is the
+        # correct answer -- the named guard is gone.
+        run_dispatch_case(
+            "dispatch-guard-cell-disjunctive-torn-apart", 1,
+            probe_text=DISPATCH_PROBE_SOURCE_DISJUNCTIVE_GUARD_TORN,
+            ledger_text=_dispatch_ledger(DISPATCH_ENTRY_ROW_DISJUNCTIVE_GUARD),
+            expected_output=("guard literal",))
+
+        # ------------------------------------------------------------------
         # RR Wave R3 Task 1a, direction 23: the R3-O-3 caller-count pins, both
         # drift directions plus the declaration-does-not-count claim the
         # measurement method rests on.
@@ -3302,9 +3491,12 @@ directions over it, the same bidirectional shape
 
 - **Downward:** every `GUARDED`/`GUARDED-PRIOR` row names a real file and a
   real, scanner-findable function whose comment/string-MASKED body still
-  contains that row's guard literal (verbatim up to whitespace normalization,
-  since a real guard wraps across physical lines and a table cell cannot).
-  Deleting a guard from production is a gate failure, not silent proof rot.
+  contains EVERY guard literal that row lists (verbatim up to whitespace
+  normalization, since a real guard wraps across physical lines and a table
+  cell cannot). Deleting a guard from production is a gate failure, not
+  silent proof rot -- and deleting ONE of an entry's two guards is the same
+  failure, since a two-tripwire entry is only as strong as its weakest (see
+  "An entry may carry MORE THAN ONE guard literal" below).
 - **Upward:** every occurrence of a pinned dispatch spelling
   (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`,
   `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
@@ -3342,6 +3534,37 @@ from the same actor (T3d finding O-2); nothing is parsed yet at that point, so
 the entry is now an ordinary `return`.) The globally unique message TEXT is the separate half of the
 contract: it is what R-final's measured-zero sweep greps for, and it lives
 in production, not here.
+
+**An entry may carry MORE THAN ONE guard literal** (Wave R3 Task 1d,
+coordinator ruling R3-C-7). One tripwire per entry point is not always
+enough. R3-C-7's adjacency rule says a `dispatch-invariant` row inherits an
+entry's guard ONLY if no statement between that guard and the dispatch the
+row's site is reached through can run code with the actor as a participant --
+a `special()` fan-out, a `complete_delay()`, an `affect_total()` APPLY_SPELL
+walk, any `command_interpreter` re-entry. The structural way to satisfy it is
+ADJACENCY: the tripwire sits IMMEDIATELY before the dispatch statement, with
+only scalar/local work in between. But an entry function that must ALSO
+resolve or parse the actor EARLIER than its dispatch -- `do_cast`'s
+`room_of(ch)` at spell_pa.cpp:505 and its `target_from_word` call at :624,
+`command_interpreter`'s `target_parser` at interpre.cpp:1130 -- still needs a
+guard THERE, for those sites. So such an entry carries TWO tripwires: an
+early one licensing the early sites, and a pre-dispatch one licensing
+everything reached through the dispatch. Both share the entry's one globally
+unique message string (the sweep counts entry points, not statements).
+
+The `Guard literal` cell then lists both, separated by ` || ` -- spaces
+around, and the bars written `\\|\\|` in the markdown so the row survives cell
+splitting -- and `--check` requires EVERY listed literal to be present. The
+separator is parsed STRUCTURALLY, anchored on the backticks that wrap each
+literal, never by a bare split: `one_mobile_activity`'s single literal
+contains a real C `||` operator, and a naive split would tear it into two
+halves that each still match, silently weakening the check to nothing.
+
+Because the two guards license DIFFERENT sets of sites, every
+`dispatch-invariant` proof cites the specific guard LINE it rests on, not
+merely the entry. A row whose site is reached through the dispatch cites the
+pre-dispatch line; a row whose site sits above the first relocating call
+cites the early one.
 
 
 **Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**

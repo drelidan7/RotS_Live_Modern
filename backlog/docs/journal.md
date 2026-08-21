@@ -134,8 +134,13 @@ check nothing; the `skills[].spell_pointer` doors check nothing on the caster; `
 bypasses even the position check. The class's tree-wide upper bound was 106 rows / 375 sites —
 52% of every remaining TODO site in the program. Owner ruling R3-O-1 adopted policy (A):
 `dispatch-invariant`, a sixth proof kind whose evidence is that the DISPATCHER guards the actor,
-closed by a marker-anchored registry the gate checks in both directions so an eighth dispatcher
-becomes a build failure rather than a free inheritance of the proof.
+closed by each row's exhaustive direct-caller list, with a marker-anchored registry the gate
+checks in both directions as the mechanical backstop, so an eighth dispatcher written in any of
+the pinned spellings becomes a build failure rather than a free inheritance of the proof.
+(The wave's two adversarial reviews later demonstrated six re-spellings that the first token set
+missed; the fix round widened it 7 -> 19, made a one-line function definition an error instead of
+a skip, retired the `PENDING-T1b` status that licensed an unguarded dispatcher outright, and
+reworded this claim in all five places that carried it.)
 
 Nine entry-point tripwires landed first, consumer-free, with one unplaced/placed test pair each
 and a measurement rather than an assertion that they are unreachable: rebuilt with every guard

@@ -66,12 +66,12 @@ void mobile_activity(void)
                 /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the
                  * `dispatch-invariant` tripwire for the PC/virt-program arm.
                  * The NPC arm above needs none: one_mobile_activity() carries
-                 * its own entry guard (:91 below, which tests BOTH halves).
+                 * its own entry guard (:106 below, which tests BOTH halves).
                  * This arm is not routed through it and so inherits nothing
                  * (dispatch census M-5). It is also the arm that would see a
                  * permanently unplaced character left in character_list by a
                  * char_to_room(X, location_of(Y)) propagation site (census
-                 * P5) -- for an NPC, :91 already catches exactly that.
+                 * P5) -- for an NPC, :106 already catches exactly that.
                  * Expected unreachable on live paths (census P7). */
                 if (location_of(ch) == NOWHERE) {
                     mudlog("mobile_activity: dispatch refused for an unplaced actor (RR dispatch-invariant)",

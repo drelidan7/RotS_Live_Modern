@@ -203,15 +203,22 @@ invokers, the OLC `shape_center` fan-out, or the mob-AI driver. The proof is
 that the DISPATCHER guards the actor: one tripwire per entry point, on the
 actor argument, in the `db_world.cpp:2083` idiom.
 
-**The kind is only sound while the entry set is CLOSED**, so it does not stand
-on prose alone: the entry points live in a marker-anchored dispatch-entry
-registry in `docs/superpowers/room-resolve-ledger.md`, and
+**The kind is only sound while the entry set is CLOSED.** What actually closes
+a ROW is mandatory citation part (iii) below — its exhaustive direct-caller
+list, re-grepped and read by a human. The mechanical half is a BACKSTOP over
+that, not a substitute: the entry points live in a marker-anchored
+dispatch-entry registry in `docs/superpowers/room-resolve-ledger.md`, and
 `tools/room_resolve_census.py --check` asserts both directions over it (every
 registered guard literal must still be present in that function's masked body;
 every occurrence of a pinned dispatch spelling must lie inside a registered
-entry). Read the ledger's own "`dispatch-invariant` proofs and the
-dispatch-entry registry" section before writing one of these rows — this
-playbook records the recipe, that section is the contract.
+entry). Both directions are LINE-BASED, so a call split across two physical
+lines at the `)`/`(` boundary, and a fn-ptr address read in an expression shape
+no pattern names, both slip past — R3's own dual whole-branch review
+demonstrated six such spellings and the gate was widened to catch them, which
+is precisely the evidence for treating it as a backstop. Read the ledger's own
+"`dispatch-invariant` proofs and the dispatch-entry registry" section before
+writing one of these rows — this playbook records the recipe, that section is
+the contract.
 
 **The three mandatory citation parts. All three, or the row is not proven:**
 
@@ -692,7 +699,7 @@ signature change, and an entry-evaluated flag would already be STALE by
 `fight.cpp:982` because `call_special`/`stop_riding`/the `affect_remove` loop
 run in between. It landed one guard per function instead —
 `if (was_in == NOWHERE) { return; }` at `fight.cpp:927` in `death_cry`, and a
-leading `location_of(ch) != NOWHERE &&` term at `fight.cpp:568` in
+leading `location_of(ch) != NOWHERE &&` term at `fight.cpp:567` in
 `get_corpse_desc` (the `limits.cpp:813` idiom, which keeps the row's site count
 at 3 so no token count moves) — each red-first, each with an IN-BODY POSITIVE
 CONTROL (a PLACED character for whom the removed behavior must still happen)
@@ -901,6 +908,20 @@ For **R4 (`src/script/`, ~44 rows / 118 sites)**, R3's measurements say:
 - The `dispatch-invariant` machinery is BUILT and R4 inherits it — registry,
   gate directions, self-tests, nine guarded entry points. R4's marginal cost
   for a dispatch row is a caller re-grep plus an adjacency check, not a policy.
+- **Adjacency has almost no mechanical witness.** The registry's downward
+  direction asks whether a guard literal is PRESENT, never whether it still
+  runs BEFORE the dispatch; R3's review-2 demonstrated moving `do_use`'s guard
+  below both its dispatches with `--check` still green. The one exception is
+  `do_use` itself, whose two T5-fix literals quote guard-and-dispatch
+  contiguously so the substring check doubles as an ordering check. Copy that
+  shape when you add an entry, and lean on the per-entry TESTS for the rest.
+- **Three direct SPECIAL doors are R4's, exempted rather than registered.**
+  `src/app/comm.cpp:2829`/`:2830` (`complete_delay_impl`'s
+  `(*mob_index[ch->nr].func)(...)`) and
+  `src/app/delayed_command_interpreter.cpp:45` (the hoisted-copy shape) each
+  dispatch a spec proc with an actor nothing validated. They carry pinned
+  reasons in `DISPATCH_TOKEN_EXEMPT_SITES` reading "M-4 direct door, R4 design
+  input"; registering them means writing a guard, which R3 did not.
 - **The known gap is the SPECIAL host.** `activate_char_special`'s tripwire
   guards `victim`, not `character`, and `src/app/shop.cpp`'s
   `SPECIAL(shop_keeper)` calls four ACMD bodies directly with a HOST. R3

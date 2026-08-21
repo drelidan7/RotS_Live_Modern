@@ -1403,48 +1403,78 @@ docs commit, not copied from a task report.
   literal of just the `if` would be satisfied by any absence test in the function), and a
   multi-literal cell requires EVERY literal, parsed structurally on the wrapping backticks because
   `one_mobile_activity`'s single literal contains a real C `||` operator; UPWARD, every occurrence
-  of a pinned dispatch spelling must lie inside a registered entry.
-- **Tokens and pins.** `DISPATCH_SPELLING_TOKENS` is a **separate surface of 7**
-  (`command_pointer)(`, `g_command_table[`, `spell_pointer)(`, `.spell_pointer(`,
-  `activate_char_special(`, `activate_obj_special(`, `shape_center(`) and does **not** count
+  of a pinned dispatch spelling must lie inside a registered entry. **What actually closes a row
+  is mandatory citation part (iii)**, its exhaustive direct-caller list; the upward check is a
+  line-based BACKSTOP over that, with two documented residual limits (a call split across two
+  physical lines at the `)`/`(` boundary; a slot address read in an expression shape no pattern
+  names). The T5-fix round also retired the `PENDING-T1b` status: both whole-branch reviews
+  demonstrated it licensing a completely unguarded dispatcher at `--check` exit 0, so every
+  registry row now carries at least one guard literal and an unknown status is a parse error.
+- **Tokens and pins.** `DISPATCH_SPELLING_TOKENS` is a **separate surface of 19** after the
+  T5-fix widening — 7 as first landed (`command_pointer)(`, `g_command_table[`,
+  `spell_pointer)(`, `.spell_pointer(`, `activate_char_special(`, `activate_obj_special(`,
+  `shape_center(`), plus the member-call forms (`->spell_pointer(`, `->command_pointer(`,
+  `.command_pointer(`), the bare address-read forms a hoisted fn-ptr copy or a table alias
+  produces (`command_pointer`, `spell_pointer`, `g_command_table`), and the SPECIAL fn-ptr slots
+  the tree already dispatches through (`.func)(`, `->func)(`, `.funct)(`, `->funct)(`,
+  `mob_index[].func`, `obj_index[].func`). Each added shape was a demonstrated evasion in one or
+  both reviews. The surface does **not** count
   toward the resolver-token surface, which stays at **17** — R3 added no resolver token.
-  File-scope occurrences are skipped (declarations and definition heads) and exactly two real
-  sites are pinned in `DISPATCH_TOKEN_EXEMPT_SITES`: `combat_hooks.cpp:56`'s registration WRITE,
+  A file-scope occurrence is admitted only at brace depth 0 (declaration, definition head or
+  brace-init definition); inside braces on a file-scope line it is a one-line function body — the
+  other demonstrated bypass — and an ERROR. **24** real
+  sites are pinned in `DISPATCH_TOKEN_EXEMPT_SITES`, each with a one-line reason: the original
+  two (`combat_hooks.cpp:56`'s registration WRITE,
   and `affect_modify`'s APPLY_SPELL arm (`entity_lifecycle.cpp:2440`/`:2442`), which is
   DELIBERATELY not an entry — it runs at NOWHERE by design in the login/rent-load window, so a
-  tripwire there would fire on every login of a character carrying an `APPLY_SPELL` affect.
+  tripwire there would fire on every login of a character carrying an `APPLY_SPELL` affect),
+  nine registration WRITEs, ten presence tests/comparisons, and **three load-bearing STOPs** —
+  `comm.cpp:2829`/`:2830` (`complete_delay_impl`) and `delayed_command_interpreter.cpp:45`, the
+  direct SPECIAL doors that really do dispatch a spec proc with an unvalidated actor, recorded as
+  R4 design input rather than registered because this wave lands no guard for them.
   Separately, `PINNED_CALLER_COUNTS` pins the tree-wide production caller counts of
   `CAN_SEE(` (**86**) and `get_char_room_vis(` (**41**) — owner ruling R3-O-3's deliberate
   deviation, since pinning those NAMES as tokens would have minted ~127 rows and raised the
-  ceiling by the same amount for zero proof value. `--self-test` grew **28 → 52** named
-  directions (44 at T1a, +8 at T1d for the multi-literal grammar).
+  ceiling by the same amount for zero proof value; a `#define` whose body ALIASES either name
+  (rather than calling it) is now a `--check` error too, since such an alias adds callers the
+  count cannot see. `--self-test` grew **28 → 63** named
+  directions (44 at T1a, +8 at T1d for the multi-literal grammar, +11 at T5-fix for the reviews'
+  demonstrated evasions).
 - **The ceiling chain, every step `--check`-derived.** **716 → 717** (T1a, ruling R3-C-3 reopens
   the `report_zone_power` row, whose Wave R2 proof enumerated "the SOLE FOUR"
   `skills[].spell_pointer` doors when there are six) → **636** (integration after T2p+T3p) →
-  **585** (integration after T2d+T3d). At the docs commit the `--check`-derived TODO site-sum is
-  **579** (T1c −1, T3e −5) with `MAXIMUM_TODO_COUNT` still 585; the controller lowers it once at
-  finalization. **138 sites drained**: 130 in `src/combat/` (95 rows / 186 sites in scope, 100
+  **585** (integration after T2d+T3d) → **579** (T1c −1, T3e −5), lowered in the branch's own
+  ceiling commit `607c787d`, `--check`-derived, with a probe at 578 failing closed. **138 sites drained**: 130 in `src/combat/` (95 rows / 186 sites in scope, 100
   rows after five mixed-class splits, 29 rows / 56 sites still `TODO`), 5 in `src/olc/` (the four
   R2-deferred rows, taking that tier to zero `TODO`) and 3 in `src/world/weather.cpp` (the two
   R2-deferred `weather_to_char` rows, ruling R3-C-4). Ledger classes move **TODO 271/716 →
   200/579**, **PROVEN 38/83 → 111/215**, **GUARDED 1/3 → 4/8**; `dispatch-invariant` alone carries
   **30 rows / 56 sites**, immediately the second-largest kind after `entry-guard` (45/85).
-- **ctest 1865 → 1890 (+25)**, not 1862 → : Wave R1's own 1862 measurement predates three tests
-  that entered master afterwards, and the wave spec's header carried the stale figure. T1b +18
+- **ctest 1865 → 1894 (+29)** — and the baseline is 1865, **not** the 1862 the wave spec's own
+  header carried: Wave R1's 1862 measurement predates three tests that entered master afterwards.
+  T1b +18
   (one unplaced/placed pair per entry point), T2p +1 (`spell_blink`'s `GUARDED` fix), T3p +2 (the
   `raw_kill`-rooted `death_cry`/`get_corpse_desc` `GUARDED` pair), T1c +1 (the guard-dominates-
-  `target_parser` test), T1d +3 (one adjacency test per new tripwire). Skips **76** (macOS)
+  `target_parser` test), T1d +3 (one adjacency test per new tripwire), T5-fix +4 (`do_use`'s two
+  spell_pointer doors reached and refused — neither had any test before). Skips **76** (macOS)
   throughout.
 - **Gates.** Per this wave's cadence, macOS-native at every commit: build clean, `ctest --preset
   macos-arm64`, `room_resolve_census.py --check`/`--self-test`, `location_read_census.py --check`,
   `string_view_census.py --check`, and the native boot golden (byte-identical at every commit —
   the guards are unreachable on every live path). ASan at every task that touched a test file
   (T1b, T2p, T3p, T1c, T1d) and the seed42 characterization golden unchanged throughout. The
-  `rots64` container leg ran at the T2p/T3p integration commit (`f4336565`: 0 warnings,
-  1886/1886, boot golden matches). **`make smoke-account` is OWED and NOT YET RUN** — `do_cast`,
-  `do_use`, `command_interpreter` and `raw_kill`/`death_cry` are all touched — as are the final-HEAD
-  `rots64` leg, the i386 battery and the six blocking CI jobs; all four run once at T5
-  finalization, before the dual adversarial whole-branch review.
+  `rots64` container leg ran twice: at the T2p/T3p integration commit (`f4336565`: 0 warnings,
+  1886/1886, boot golden matches) and again at `e0c40ab8` (0 warnings, 1890/1890, boot golden
+  matches). **`make smoke-account` PASSED** at `e0c40ab8` — the full 16-step flow, run host-side
+  through `tools/account_smoke.py` against the native `macos-arm64` binary copied into `bin/`
+  (the root `make smoke-account` wrapper cannot run on this host: `bin/ageland` is the i386 ELF,
+  and the container image has no cargo; the i386 ELF was restored afterwards). It is MANDATORY
+  here because `do_cast`, `do_use`, `command_interpreter` and `raw_kill`/`death_cry` are all
+  touched. The i386 battery at `607c787d` is measured (ctest 1890 total / 0 failed / 7 skips;
+  monolithic 1877 ran / 1853 passed / 24 skipped, exit 0; boot golden matches). **The T5-fix
+  round added production C++ (`do_use`'s two adjacency tripwires), so the `rots64` leg, the
+  smoke-account run, the i386 battery and the six blocking CI jobs are RE-RUN at the post-fix
+  HEAD; the controller fills those measurements in at T5 close, before merge.**
 
 See `docs/superpowers/specs/2026-08-21-rr3-combat-design.md`'s as-built sections 5-11 for the
 per-task chain, the six deviations from that document's own plan, the 29-row/56-site stayed-`TODO`

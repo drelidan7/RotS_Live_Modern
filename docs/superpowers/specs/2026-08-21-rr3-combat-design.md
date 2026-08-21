@@ -145,6 +145,33 @@ Ledger totals, `parse_ledger()`-derived at `62188453` and at `6c2bc034`:
 `caller-contract` 20 / 48, `loop-bound` 9 / 14, `dominating-resolve` 7 / 12. The
 `dispatch-invariant` column did not exist before this wave.
 
+### 6a. The behavior-change inventory (added at the Task 5-fix round)
+
+Section 2 says "zero expected behavior change", and for the boot golden and the whole test
+suite that is measured and true. It is not the whole statement, and this inventory is what the
+wave should have carried from the start (whole-branch review-1, finding m-7).
+
+1. **Three deliberate `GUARDED` changes**, each red-first with an in-body positive control and
+   each already inventoried in section 7 and its ledger row: `mage.cpp:944`'s `!fail &&` term
+   in `spell_blink`; `fight.cpp:927` in `death_cry`; the leading
+   `location_of(ch) != NOWHERE &&` term at `fight.cpp:567` in `get_corpse_desc`.
+2. **A changed FAILURE MODE for an unplaced PLAYER, under a known-live producer.** Census P7
+   found no live path delivering an unplaced actor to a tripwire, but that is a statement about
+   the DISPATCHERS, not about producer P5 (`char_to_room(X, location_of(Y))` with `Y` itself
+   unplaced — 8 sites, `act_wiz.cpp:360`/`:373`/`:1426`, `mystic.cpp:1682`, `mage.cpp:830`,
+   `spec_pro.cpp:446`/`:2881`/`:3446`), which `rr3-dispatch-census.md:621` classifies "YES --
+   persistent" and live. If P5 fires for a PLAYER, the pre-R3 behavior was that the player kept
+   acting, degrading onto room 0; the post-R3 behavior is that `command_interpreter`'s `:1119`
+   tripwire refuses EVERY command that player types -- including `quit` -- with a `LEVEL_IMPL`
+   mudlog and no message to the player. That is the better posture, and it is where RR-O-1 is
+   heading, but it is a player-facing change under a bug class known to be live and it belongs
+   on this list rather than inside "zero expected behavior change". The same producer's NPC
+   half is caught by `mobact.cpp:106`, which pre-dates the wave.
+3. **Nothing else.** Every other statement this wave added is a refusal on a path census P7
+   measured as unreachable: the abort-probe build of all twelve tripwires produced failures
+   only in fixtures that were dispatching at NOWHERE as a test convenience, and both boot
+   goldens plus the seed42 characterization golden are byte-identical throughout.
+
 **Sites drained: 138** (716 base + 1 reopened by R3-C-3 = 717, less 579 at HEAD) —
 **130 in `src/combat/`** (95 rows / 186 sites in scope, now 100 rows after five mixed-class
 splits, with 29 rows / 56 sites still `TODO`), **5 in `src/olc/`** (Task 3e's four R2-deferred
@@ -245,7 +272,7 @@ document and the ledger prose carried from census A's summary sentence (section 
    frames below `raw_kill` behind a required return value, and an entry-evaluated flag would
    be stale by `:982` because `call_special`/`stop_riding`/the `affect_remove` loop run in
    between. Landed as one guard per function (`fight.cpp:927` in `death_cry`, a leading
-   `location_of(ch) != NOWHERE &&` term at `fight.cpp:568` in `get_corpse_desc`), each
+   `location_of(ch) != NOWHERE &&` term at `fight.cpp:567` in `get_corpse_desc`), each
    red-first with an in-body positive control.
 5. **T1c STOPped, and T1d repaired the wave's own policy.** Reading `do_cast` from its `:499`
    guard to its dispatch found **two** statements that can relocate `ch` —
@@ -310,6 +337,12 @@ not close.
    `m_character` as the host and `victim = NULL` — never routing through
    `activate_char_special` at all (`intelligent(...)` at `:53` is a third arm of the same
    shape). Any R4 policy for spec-proc bodies has to name this door explicitly.
+   `src/app/comm.cpp:2829`/`:2830` (`complete_delay_impl`'s
+   `(*mob_index[ch->nr].func)(...)`) is a second door of the same class, found by the Task
+   5-fix token widening. Both are now VISIBLE to the gate rather than invisible to it: they
+   carry pinned entries in `DISPATCH_TOKEN_EXEMPT_SITES` whose reason text reads "M-4 direct
+   door, R4 design input", so a reviewer meets them in the script instead of having to
+   rediscover them. Registering them instead would assert they have a guard; R3 wrote none.
 3. **`do_sense_magic`'s CON_PLYNG premise.** `spell_pa.cpp:132`'s two sites read
    `character = player->character` for every `CON_PLYNG` descriptor in
    `get_descriptor_list_head()`'s list. "A `CON_PLYNG` descriptor has a placed character" is

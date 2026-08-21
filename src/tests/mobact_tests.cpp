@@ -226,7 +226,7 @@ TEST(MobactStandardAggressive, TargetsTheFirstEligibleOccupantNotALaterOne) {
 // mobile_activity() walks the whole character_list once per pulse with no
 // placement check on the walk itself and splits two ways (dispatch census
 // M-5). The NPC arm needs no new guard: one_mobile_activity() carries a real
-// entry guard of its own (mobact.cpp:91, which tests BOTH halves --
+// entry guard of its own (mobact.cpp:106, which tests BOTH halves --
 // `< 0` excludes the sentinel and `> top_of_world` establishes in-range) and
 // every one of its 16 ledger sites is dominated by it. The PC/virt-program
 // arm is NOT routed through that callee and inherits nothing, so it is the
@@ -235,7 +235,7 @@ TEST(MobactStandardAggressive, TargetsTheFirstEligibleOccupantNotALaterOne) {
 // That arm is also exactly where census P5's permanently-unplaced-NPC leak
 // would surface for a non-NPC actor: `char_to_room(X, location_of(Y))` with
 // an absent Y leaves X in character_list with no location, and for an NPC
-// :91 already catches it.
+// :106 already catches it.
 //
 // DISCRIMINATOR: a single non-NPC in character_list with a store_prog_number,
 // and a recording stub installed behind script_hooks.h's
@@ -312,7 +312,7 @@ TEST(MobileActivityDispatchInvariant, RefusesThePcVirtProgramArmForAnUnplacedAct
 
     EXPECT_EQ(g_virt_program_call_count, 0)
         << "Expected the dispatch-invariant guard to skip the PC/virt-program arm for an actor "
-           "with no location -- one_mobile_activity()'s :91 guard does not cover this arm.";
+           "with no location -- one_mobile_activity()'s :106 guard does not cover this arm.";
 }
 
 TEST(MobileActivityDispatchInvariant, RunsThePcVirtProgramArmForAPlacedActor) {

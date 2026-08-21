@@ -758,7 +758,24 @@ MINIMUM_PROOF_TEXT_LENGTH = 20
 # class Task 1 already applied to the OLC tier) -- taking the ceiling
 # 748 -> 716. Value re-derived programmatically from the ledger's own TODO
 # rows at land time, per the "never hand math" rule, not estimated.
-MAXIMUM_TODO_COUNT = 716
+#
+# RR Wave R3 Task 1a RAISES it, once, 716 -> 717 -- the only raise this
+# program has taken. Coordinator ruling R3-C-3 REOPENED
+# `src/world/db_world.cpp · report_zone_power · room_of(` (1 site), a Wave R2
+# PROVEN row whose `caller-contract` proof enumerated "the SOLE FOUR"
+# tree-wide `skills[].spell_pointer` dispatch doors. There are SIX: the row's
+# own grep pattern (`spell_pointer)(`) structurally cannot match the
+# unparenthesised `.spell_pointer(` spelling, so `entity_lifecycle.cpp:2440`/
+# `:2442` were invisible to it -- and `:2440` runs inside `affect_modify`'s
+# APPLY_SPELL arm at NOWHERE on the login path (`db_players.cpp:1403` ->
+# `affect_total` `:1405` -> `modify_affects` -> `affect_modify`), so the row
+# is NOWHERE-reachable for any character wearing an `APPLY_SPELL`/109 item at
+# login. A wrong proof is worse than no proof: the row goes back to TODO and
+# is re-dispositioned under the R3 dispatch policy alongside every other
+# spell-reachable row. Both this ceiling and `run_self_test`'s pin were
+# `--check`-DERIVED at the flip (the gate reported "TODO total 717 exceeds
+# the ceiling of 716"), never hand-computed.
+MAXIMUM_TODO_COUNT = 717
 
 # Same floor tools/location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT
 # uses, at the same value: measured at 315 files under src/ at this commit
@@ -2161,17 +2178,20 @@ def run_self_test():
 
     # Ceiling pin (F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's pin, T2 brief
     # direction 5), ACTIVATED (Task 3, the tracked review obligation): pinned
-    # at 716 -- the exact MAXIMUM_TODO_COUNT this commit seeds (RR Wave R2
-    # Task 1 lowered it 788 -> 748; Task 2 lowered it further, 748 -> 716),
-    # measured against the real ledger's TODO total. An accidental RAISE (an
+    # at 717 -- the exact MAXIMUM_TODO_COUNT the module now holds (RR Wave R2
+    # Task 1 lowered it 788 -> 748; Task 2 lowered it further, 748 -> 716; RR
+    # Wave R3 Task 1a raised it 716 -> 717 for the R3-C-3 reopening, the
+    # program's only raise -- see MAXIMUM_TODO_COUNT's own comment), measured
+    # against the real ledger's TODO total. The two literals move together, in
+    # one commit, always. An accidental RAISE (an
     # edit that loosens the ratchet without a deliberate, reviewed
     # drain-wave decision) fails `--self-test`, not just review; a LOWER
     # value (a real drain wave) keeps passing `<=`, and that wave updates
     # this literal in the same commit that lowers MAXIMUM_TODO_COUNT itself
     # (the two literals are set together, never independently).
-    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 716:
+    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 717:
         failures.append(
-            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 716 -- "
+            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 717 -- "
             "an accidental raise must not silently loosen the ratchet."
         )
 

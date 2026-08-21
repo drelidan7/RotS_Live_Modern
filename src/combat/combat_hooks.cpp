@@ -4,12 +4,23 @@
 // ROTS_COMBAT_SOURCES: like output_seam.cpp (its closest precedent -- a
 // seam header with several FUTURE callers rather than one owning TU, hence
 // its own dedicated .cpp instead of folding storage into a caller file the
-// way entity_hooks.h's per-hook pairs do), it only reaches down into
-// rots::log (RotS::platform) for its tripwire message and passes
-// char_data*/waiting_type* straight through opaquely -- never dereferenced,
-// never allocated -- so no game-type header is needed here.
+// way entity_hooks.h's per-hook pairs do), it reaches down into
+// rots::log (RotS::platform) for its tripwire messages and passes
+// waiting_type* straight through opaquely -- never dereferenced, never
+// allocated.
+//
+// It DID pass char_data* through opaquely too, and carried no game-type
+// header at all, until RR Wave R3 Task 1b (owner ruling R3-O-1) added
+// issue_command()'s dispatch-invariant guard: that guard reads the actor's
+// location through location_of() (handler.h -- a declaration only; the
+// definition is placement.cpp/RotS::entity, which this library already
+// links), so handler.h/utils.h are included below. That is a downward
+// edge like every other one here, not a new dependency tier.
 
 #include "combat_hooks.h"
+
+#include "handler.h" /* For location_of() -- RR Wave R3 Task 1b's dispatch-invariant guard */
+#include "utils.h" /* For TRUE/LEVEL_IMPL, mudlog()'s argument spelling */
 
 #include "rots/platform/log.h"
 
@@ -61,6 +72,17 @@ void issue_command(
 {
     const std::size_t index = static_cast<std::size_t>(command);
     if (g_command_table[index]) {
+        // RR Wave R3 Task 1b (owner ruling R3-O-1) -- the
+        // `dispatch-invariant` tripwire for the table dispatch below. Unlike
+        // command_interpreter, this entry point checks NOTHING today: not
+        // placement, not even position (dispatch census M-2), and it has 148
+        // production call sites reaching 26 ACMD bodies. Expected
+        // unreachable on live paths (census P7).
+        if (location_of(ch) == NOWHERE) {
+            mudlog("issue_command: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                NRM, LEVEL_IMPL, TRUE);
+            return;
+        }
         g_command_table[index](ch, argument, wtl, cmd, subcmd);
         return;
     }

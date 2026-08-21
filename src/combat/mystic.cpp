@@ -999,6 +999,20 @@ void cast_mass_spell(char_data* caster, void (*spell)(char_data* caster, char* a
         return;
     }
 
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
+     * tripwire covering the `spell(...)` fn-ptr dispatch inside the loop
+     * below (the M-6 caster door at row 4). The loop's own
+     * `location_of(group_member) == location_of(caster)` test is NOT a
+     * substitute: it compares two locations for EQUALITY and therefore
+     * passes when BOTH are NOWHERE (coordinator ruling R3-C-5), which would
+     * dispatch a real ASPELL for every unplaced group member. Expected
+     * unreachable on live paths (census P7). */
+    if (location_of(caster) == NOWHERE) {
+        mudlog("cast_mass_spell: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+            NRM, LEVEL_IMPL, TRUE);
+        return;
+    }
+
     for (auto iter = caster->group->begin(); iter != caster->group->end(); ++iter) {
         char_data* group_member = *iter;
         if (location_of(group_member) == location_of(caster)) {

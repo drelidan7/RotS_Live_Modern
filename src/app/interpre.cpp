@@ -1111,9 +1111,26 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
              */
 
             if (!may_not_perform) {
-                /* execute the command */
-                ((*cmd_info[cmd].command_pointer)(ch, argument + begin + look_at, argument_info, cmd,
-                    mode ? subcmd : cmd_info[cmd].subcmd));
+                /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the
+                 * `dispatch-invariant` tripwire for the ACMD dispatch below.
+                 * Every `do_*` body reached from here resolves rooms from
+                 * `ch` without validating it; command_interpreter checks
+                 * position (above), never placement, and special()'s own
+                 * NOWHERE rejection at :1263 is consumed as `may_not_perform
+                 * |= special(...)` -- FALSE contributes nothing, so it has
+                 * never protected a single ACMD body (dispatch census M-1).
+                 * Census P7 found no live path delivering an unplaced actor
+                 * here, so this is expected to be unreachable in production.
+                 * It REFUSES the dispatch rather than returning, because the
+                 * targ1/targ2 cleanup below is not optional. */
+                if (location_of(ch) == NOWHERE) {
+                    mudlog("command_interpreter: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+                        NRM, LEVEL_IMPL, TRUE);
+                } else {
+                    /* execute the command */
+                    ((*cmd_info[cmd].command_pointer)(ch, argument + begin + look_at, argument_info, cmd,
+                        mode ? subcmd : cmd_info[cmd].subcmd));
+                }
             }
         }
         if (!mode) {
@@ -1199,6 +1216,24 @@ int activate_char_special(char_data* character, char_data* victim, int cmd, char
 {
     special_func tmp_func;
 
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
+     * tripwire for this function's four SPECIAL dispatch arms. The guard
+     * covers `victim`, the ACTOR argument (parameter 2), NOT `character`,
+     * which is the spec-proc HOST: special() calls this as
+     * activate_char_special(tmpch, ch, ...) at :1298/:1324 and
+     * activate_char_special(ch, ch, ...) at :1268. This is one of at least
+     * five doors into a SPECIAL body, and the only guarded one before this
+     * wave was special() itself (dispatch census M-4) -- mob AI,
+     * complete_delay_impl and delayed_command_interpreter reach these
+     * bodies with no rejection at all. Expected unreachable on live paths
+     * (census P7); the whole body is the dispatch, so the guard sits at
+     * entry. */
+    if (location_of(victim) == NOWHERE) {
+        mudlog("activate_char_special: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+            NRM, LEVEL_IMPL, TRUE);
+        return 0;
+    }
+
     if (IS_MOB(character)) {
         tmp_func = mob_index[character->nr].func;
         if (tmp_func && (IS_SET(character->specials2.act, MOB_SPEC) && !no_specials)) {
@@ -1231,6 +1266,18 @@ int activate_obj_special(struct obj_data* host, struct char_data* ch, int cmd,
     char* arg, int callflag, struct waiting_type* wtl)
 {
     SPECIAL(*tmpfunc);
+
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
+     * tripwire for this function's two object-SPECIAL dispatch arms, on the
+     * ACTOR `ch` (the character using/carrying the object), not on `host`
+     * (the object itself). Same M-4 reasoning as activate_char_special
+     * above; the whole body is the dispatch, so the guard sits at entry.
+     * Expected unreachable on live paths (census P7). */
+    if (location_of(ch) == NOWHERE) {
+        mudlog("activate_obj_special: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+            NRM, LEVEL_IMPL, TRUE);
+        return 0;
+    }
 
     if ((void*)(obj_index[host->item_number].func)) {
         if ((*obj_index[host->item_number].func)((struct char_data*)(host), ch, cmd, arg, callflag, wtl))

@@ -2031,3 +2031,49 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenShutdownIsUnregistered)
            "flag untouched -- the real do_shutdown body never ran (and never will, in this "
            "discriminator).";
 }
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1b -- issue_command()'s dispatch-invariant guard (owner
+// ruling R3-O-1; docs/superpowers/specs/2026-08-21-rr3-combat-design.md
+// section 2). This entry point checked NOTHING before the guard: not
+// placement, and unlike command_interpreter not even position (dispatch
+// census M-2), while carrying 148 production call sites into 26 ACMD bodies.
+// The pair below differs from the re-fixtured
+// IssueCommandReachesTheRealDoStandWhenRegistered above in exactly one way --
+// whether the actor has a location -- and is written out in full rather than
+// leaning on that test, so the discriminator reads as one self-contained
+// pair. Expected unreachable on a live path (census P7); these two tests are
+// the only thing in the tree that reaches this guard.
+// ---------------------------------------------------------------------------
+
+TEST(IssueCommandDispatchInvariant, RefusesToDispatchARegisteredCellForAnUnplacedActor)
+{
+    ScopedTestWorld test_world(1);
+    char_data character {};
+    set_location(&character, NOWHERE);
+    character.specials.position = POSITION_SITTING;
+    character.specials.fighting = nullptr;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::stand, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_SITTING)
+        << "Expected the dispatch-invariant guard to refuse the table dispatch for an actor with "
+           "no location -- the registered do_stand body must never have run.";
+}
+
+TEST(IssueCommandDispatchInvariant, DispatchesARegisteredCellForAPlacedActor)
+{
+    ScopedTestWorld test_world(1);
+    char_data character {};
+    set_location(&character, 0);
+    character.specials.position = POSITION_SITTING;
+    character.specials.fighting = nullptr;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::stand, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_STANDING)
+        << "Expected the identical fixture with a PLACED actor to reach the real do_stand body -- "
+           "the guard must not block a normal dispatch.";
+}

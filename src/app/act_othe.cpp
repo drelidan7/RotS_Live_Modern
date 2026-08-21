@@ -795,6 +795,20 @@ ACMD(do_use)
 
     stick = ch->equipment[HOLD];
 
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
+     * tripwire covering BOTH of do_use's `skills[].spell_pointer` doors (the
+     * ITEM_STAFF arm below and the ITEM_WAND arm after it, M-6 rows 2 and
+     * 3). ONE guard, placed where it dominates both rather than one per arm:
+     * this statement is on the single straight-line path to either. It sits
+     * after the not-holding-that-item early return, which resolves no room
+     * and is left untouched. Expected unreachable on live paths (census
+     * P7). */
+    if (location_of(ch) == NOWHERE) {
+        mudlog("do_use: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+            NRM, LEVEL_IMPL, TRUE);
+        return;
+    }
+
     if (stick->obj_flags.type_flag == ITEM_STAFF) {
         act("$n taps $p three times on the ground.", TRUE, ch, stick, 0, TO_ROOM);
         act("You tap $p three times on the ground.", FALSE, ch, stick, 0, TO_CHAR);

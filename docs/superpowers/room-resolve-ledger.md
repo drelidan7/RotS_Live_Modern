@@ -213,6 +213,24 @@ downward direction only (it must still name a real file and a real function).
 `--check` prints a loud WARNING for every `PENDING-T1b` row that remains, so
 the wave cannot finish with one standing.
 
+**How a guard literal is SPELLED, and why it looks masked.** The downward
+check runs against the function's comment/string-MASKED body, so a
+literal that quotes a `mudlog()` call must quote it as the masker leaves
+it -- the message's contents (and its quotes) are blanked, so
+`mudlog("...", NRM, LEVEL_IMPL, TRUE);` normalizes to `mudlog( , NRM,
+LEVEL_IMPL, TRUE);`. Wave R3 Task 1b's nine rows use that spelling
+deliberately: a literal of just `if (location_of(ch) == NOWHERE) {` is
+satisfied by ANY absence test anywhere in the function, so deleting the
+tripwire and leaving some unrelated NOWHERE check behind would pass. The
+full statement -- condition, `mudlog()` call, and the exit keyword, which
+differs per site (`return` / `return 0` / `continue`, and
+`command_interpreter`'s `} else {`, which refuses the dispatch without
+returning because its argument cleanup below is not optional) -- pins the
+whole shape. The globally unique message TEXT is the separate half of the
+contract: it is what R-final's measured-zero sweep greps for, and it lives
+in production, not here.
+
+
 **Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**
 (`src/entity/entity_lifecycle.cpp:2440`/`:2442`). That arm runs a real
 `ASPELL` with `caster == victim == ch` at NOWHERE **by design**, inside the
@@ -870,15 +888,15 @@ later (review-1 F-5/F-6/F-7/W-12):
 <!-- ROOM-RESOLVE-DISPATCH-ENTRIES -->
 | Entry point (file · function) | Actor parameter | Guard literal | Status |
 | --- | --- | --- | --- |
-| `src/app/interpre.cpp · command_interpreter` | `ch` | — | PENDING-T1b |
-| `src/combat/combat_hooks.cpp · rots::combat::issue_command` | `ch` | — | PENDING-T1b |
-| `src/olc/shapemob.cpp · shape_center` | `ch` | — | PENDING-T1b |
-| `src/combat/spell_pa.cpp · do_cast` | `ch` | — | PENDING-T1b |
-| `src/app/act_othe.cpp · do_use` | `ch` | — | PENDING-T1b |
-| `src/combat/mystic.cpp · cast_mass_spell` | `caster` | — | PENDING-T1b |
-| `src/app/interpre.cpp · activate_char_special` | `victim` | — | PENDING-T1b |
-| `src/app/interpre.cpp · activate_obj_special` | `ch` | — | PENDING-T1b |
-| `src/script/mobact.cpp · mobile_activity` | `ch` | — | PENDING-T1b |
+| `src/app/interpre.cpp · command_interpreter` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); } else {` | GUARDED |
+| `src/combat/combat_hooks.cpp · rots::combat::issue_command` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/olc/shapemob.cpp · shape_center` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/combat/spell_pa.cpp · do_cast` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/app/act_othe.cpp · do_use` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/combat/mystic.cpp · cast_mass_spell` | `caster` | `if (location_of(caster) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return; }` | GUARDED |
+| `src/app/interpre.cpp · activate_char_special` | `victim` | `if (location_of(victim) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return 0; }` | GUARDED |
+| `src/app/interpre.cpp · activate_obj_special` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); return 0; }` | GUARDED |
+| `src/script/mobact.cpp · mobile_activity` | `ch` | `if (location_of(ch) == NOWHERE) { mudlog( , NRM, LEVEL_IMPL, TRUE); continue; }` | GUARDED |
 | `src/app/interpre.cpp · special` | `ch` | `if (in_room == NOWHERE) return FALSE;` | GUARDED-PRIOR |
 | `src/script/mobact.cpp · one_mobile_activity` | `ch` | `if ((location_of(ch) < 0) \|\| (location_of(ch) > top_of_world)) {` | GUARDED-PRIOR |
 | `src/combat/limits.cpp · affect_update_room` | `tmpch` | `for (tmpch = rots::entity::first_occupant(room); tmpch; tmpch = next_tmpch) {` | GUARDED-PRIOR |

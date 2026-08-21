@@ -19,6 +19,7 @@
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "test_placement.h"
@@ -33,6 +34,9 @@
 // outside their own TU) -- forward-declared here with the ACMD() macro,
 // mirroring act_offe_tests.cpp's `ACMD(do_rescue);` precedent.
 ACMD(do_knock);
+// Same gap, same treatment, for RR Wave R3 Task 1b's dispatch-invariant pair
+// at the end of this file.
+ACMD(do_use);
 
 namespace {
 
@@ -167,4 +171,89 @@ TEST(DoKnockCharacterization, KnockWithNoTargetSendsTheSelfDirectedMessageAndNev
     EXPECT_STREQ(context.room0_descriptor.output, "Frodo knocked himself on his head.\n\r\n\r");
     EXPECT_STREQ(context.room1_descriptor.output, "");
     EXPECT_EQ(location_of(&context.ch), 0);
+}
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1b -- do_use()'s dispatch-invariant guard (owner ruling
+// R3-O-1; docs/superpowers/specs/2026-08-21-rr3-combat-design.md section 2).
+//
+// do_use is the ENTIRE object-driven cast surface of this tree (the dispatch
+// census verified scroll/potion casting does not exist here), and it carries
+// TWO `skills[].spell_pointer` doors: the ITEM_STAFF arm (act_othe.cpp:805 in
+// the census's numbering) and the ITEM_WAND arm (:825). Neither checks the
+// caster.
+//
+// ONE guard covers both, placed immediately after `stick =
+// ch->equipment[HOLD];` -- the single straight-line statement that dominates
+// either arm -- rather than one guard per arm. It sits AFTER the
+// not-holding-that-item early return, which resolves no room and is
+// deliberately left alone.
+//
+// DISCRIMINATOR: a held ITEM_STAFF with zero charges. That drives the staff
+// arm's two act() taps and its "powerless" line WITHOUT reaching the
+// spell_pointer dispatch at all, so the pair needs no spell table. Unplaced
+// -> the guard returns before the first tap; placed -> both lines arrive.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A character holding a charge-less staff in an otherwise empty one-room
+// world. The room is empty of occupants, so the staff arm's act(...,
+// TO_ROOM) tap has no recipient and only the TO_CHAR half is observable.
+struct DoUseStaffContext {
+    ScopedTestWorld test_world { 1 };
+    char_data ch {};
+    descriptor_data ch_descriptor {};
+    obj_data staff {};
+    char staff_name[8] = "staff";
+    char staff_short_descr[16] = "a dull staff";
+
+    DoUseStaffContext()
+    {
+        reset_capturing_descriptor(ch_descriptor, &ch);
+        ch.desc = &ch_descriptor;
+        ch.player.name = const_cast<char*>("Frodo");
+        ch.player.race = RACE_HUMAN;
+        ch.specials.position = POSITION_STANDING;
+        SET_BIT(ch.specials2.pref, PRF_HOLYLIGHT);
+
+        staff.name = staff_name;
+        staff.short_description = staff_short_descr;
+        staff.obj_flags.type_flag = ITEM_STAFF;
+        staff.obj_flags.value[2] = 0; // no charges -> never reaches spell_pointer
+        staff.obj_flags.value[3] = 0;
+        ch.equipment[HOLD] = &staff;
+    }
+
+    ~DoUseStaffContext() { ch.equipment[HOLD] = nullptr; }
+
+    DoUseStaffContext(const DoUseStaffContext&) = delete;
+    DoUseStaffContext& operator=(const DoUseStaffContext&) = delete;
+};
+
+} // namespace
+
+TEST(DoUseDispatchInvariant, RefusesToRunForAnUnplacedActor)
+{
+    DoUseStaffContext context;
+    set_location(&context.ch, NOWHERE);
+
+    do_use(&context.ch, mutable_arg("staff"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.ch_descriptor.output, "")
+        << "Expected the dispatch-invariant guard to return before either spell_pointer arm was "
+           "reached -- not even the staff arm's tap message should be rendered.";
+}
+
+TEST(DoUseDispatchInvariant, RunsForAPlacedActor)
+{
+    DoUseStaffContext context;
+    set_location(&context.ch, 0);
+
+    do_use(&context.ch, mutable_arg("staff"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.ch_descriptor.output,
+        "You tap a dull staff three times on the ground.\n\rThe staff seems powerless.\n\r")
+        << "Expected the identical fixture with a PLACED actor to reach the real staff arm -- the "
+           "guard must not block a normal use.";
 }

@@ -2,8 +2,11 @@
 #include "../handler.h"
 #include "../protos.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
+#include "test_world.h"
 #include <gtest/gtest.h>
 
 #include <cstdlib>
@@ -301,4 +304,82 @@ TEST(ShapeMob, ImplementProtoAndReadMobileSpawnAnIdenticallyLocationlessMobRegar
     character_list = previous_character_list;
     mob_index = previous_mob_index;
     top_of_mobt = previous_top_of_mobt;
+}
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1b -- shape_center()'s dispatch-invariant guard (owner
+// ruling R3-O-1; docs/superpowers/specs/2026-08-21-rr3-combat-design.md
+// section 2).
+//
+// shape_center() is command_interpreter's OLC BYPASS: interpre.cpp:987 (the
+// '/' prefix form) and :996 (the already-POSITION_SHAPING form) both call it
+// and return, AHEAD of even the position check, so an actor arriving here has
+// passed neither a placement nor a position test (dispatch census M-1b) --
+// which is why it carries its own guard rather than inheriting
+// command_interpreter's. Three of Wave R2's six deferred ledger rows sit
+// under exactly this bypass.
+//
+// DISCRIMINATOR: `ch->temp` is null on a zero-initialized character, so the
+// real body takes its else arm and sends one literal line. Unplaced -> the
+// guard returns before that send; placed -> the line arrives. The pair needs
+// no shape state, no editor table and no world beyond the one room the
+// placed half stands the actor in.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Mirrors act_othe_tests.cpp's/mystic_tests.cpp's own per-file copy of this
+// helper (duplicated, not shared -- each copy lives in a different TU's
+// anonymous namespace): points a descriptor's output at its OWN small_outbuf
+// so send_to_char() output can be inspected directly. CRITICAL: mutates the
+// caller's descriptor_data in place -- never replace with a version that
+// returns a descriptor_data by value (descriptor_data::output is a
+// self-pointer into small_outbuf[]).
+void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character)
+{
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = 0; // CON_PLAYING
+    descriptor.character = character;
+}
+
+constexpr const char* kShapeCenterUsageLine
+    = "Use 'shape <mob|obj|room|script> <number>' to start shaping.\n\r";
+
+} // namespace
+
+TEST(ShapeCenterDispatchInvariant, RefusesToDispatchForAnUnplacedActor)
+{
+    ScopedTestWorld test_world;
+    char_data ch {};
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &ch);
+    ch.desc = &descriptor;
+    ch.temp = nullptr;
+    set_location(&ch, NOWHERE);
+
+    shape_center(&ch, mutable_arg(""));
+
+    EXPECT_STREQ(descriptor.small_outbuf, "")
+        << "Expected the dispatch-invariant guard to return before shape_center's own body ran "
+           "-- not even its no-shape-state usage line should reach the actor.";
+}
+
+TEST(ShapeCenterDispatchInvariant, DispatchesForAPlacedActor)
+{
+    ScopedTestWorld test_world;
+    char_data ch {};
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &ch);
+    ch.desc = &descriptor;
+    ch.temp = nullptr;
+    set_location(&ch, 0);
+
+    shape_center(&ch, mutable_arg(""));
+
+    EXPECT_STREQ(descriptor.small_outbuf, kShapeCenterUsageLine)
+        << "Expected the identical fixture with a PLACED actor to reach the real body's else arm "
+           "-- the guard must not block a normal OLC entry.";
 }

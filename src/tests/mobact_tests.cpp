@@ -27,11 +27,14 @@
 // `vict`/`tmp_ch` are locals with no other externally observable effect.
 
 #include "../combat_hooks.h"
+#include "../comm.h" /* For register_virt_program_number_hook() -- RR3 T1b */
 #include "../interpre.h"
+#include "../script_hooks.h"
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "test_placement.h"
+#include "test_random_utils.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -39,9 +42,15 @@
 #include <optional>
 
 void one_mobile_activity(char_data *ch);
+// mobile_activity() has no header declaration anywhere in the tree (comm.cpp
+// calls it from the pulse loop through a local extern) -- forward-declared
+// here for RR Wave R3 Task 1b's dispatch-invariant pair at the end of this
+// file, matching mobact.cpp:56's signature exactly.
+void mobile_activity(void);
 
 extern room_data world;
 extern int top_of_world;
+extern char_data *character_list;
 
 namespace {
 
@@ -207,4 +216,125 @@ TEST(MobactStandardAggressive, TargetsTheFirstEligibleOccupantNotALaterOne) {
         << "Expected the FIRST eligible occupant to win (matching the original `tmp_ch && !found` "
            "loop condition's first-match-then-stop semantics) -- a missing `if (found) break;` "
            "guard would let occupant_b's later iteration silently overwrite `vict` instead.";
+}
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1b -- mobile_activity()'s dispatch-invariant guard (owner
+// ruling R3-O-1; docs/superpowers/specs/2026-08-21-rr3-combat-design.md
+// section 2).
+//
+// mobile_activity() walks the whole character_list once per pulse with no
+// placement check on the walk itself and splits two ways (dispatch census
+// M-5). The NPC arm needs no new guard: one_mobile_activity() carries a real
+// entry guard of its own (mobact.cpp:91, which tests BOTH halves --
+// `< 0` excludes the sentinel and `> top_of_world` establishes in-range) and
+// every one of its 16 ledger sites is dominated by it. The PC/virt-program
+// arm is NOT routed through that callee and inherits nothing, so it is the
+// arm -- and the only arm -- this wave guards.
+//
+// That arm is also exactly where census P5's permanently-unplaced-NPC leak
+// would surface for a non-NPC actor: `char_to_room(X, location_of(Y))` with
+// an absent Y leaves X in character_list with no location, and for an NPC
+// :91 already catches it.
+//
+// DISCRIMINATOR: a single non-NPC in character_list with a store_prog_number,
+// and a recording stub installed behind script_hooks.h's
+// virt_program_number seam. The `!number(0, 3)` sampling gate is pinned with
+// the deterministic test-RNG hook (test_random_utils.h) so the walk reaches
+// the arm on the one iteration this test drives.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+int g_virt_program_call_count = 0;
+
+SPECIAL(recording_virt_program) {
+    ++g_virt_program_call_count;
+    return 0;
+}
+
+void *recording_virt_program_number(int /*number*/) {
+    return reinterpret_cast<void *>(&recording_virt_program);
+}
+
+// Installs the recording virt-program lookup for a scope and restores
+// spec_ass.cpp's real registration afterwards -- the same "swap out, restore
+// via the real registrar" shape ScopedRecordingHitHook above uses.
+struct ScopedRecordingVirtProgramHook {
+    ScopedRecordingVirtProgramHook() {
+        rots::script::set_virt_program_number_hook(recording_virt_program_number);
+    }
+
+    ~ScopedRecordingVirtProgramHook() { register_virt_program_number_hook(); }
+
+    ScopedRecordingVirtProgramHook(const ScopedRecordingVirtProgramHook &) = delete;
+    ScopedRecordingVirtProgramHook &operator=(const ScopedRecordingVirtProgramHook &) = delete;
+};
+
+// Publishes exactly one character as the whole process-global character_list
+// for a scope, restoring the previous head afterwards -- mobile_activity()
+// walks that global, so a test that wants a one-iteration walk has to own it.
+struct ScopedSoleCharacterListMember {
+    explicit ScopedSoleCharacterListMember(char_data *member)
+        : saved_head(character_list) {
+        member->next = nullptr;
+        character_list = member;
+    }
+
+    ~ScopedSoleCharacterListMember() { character_list = saved_head; }
+
+    ScopedSoleCharacterListMember(const ScopedSoleCharacterListMember &) = delete;
+    ScopedSoleCharacterListMember &operator=(const ScopedSoleCharacterListMember &) = delete;
+
+    char_data *saved_head;
+};
+
+} // namespace
+
+TEST(MobileActivityDispatchInvariant, RefusesThePcVirtProgramArmForAnUnplacedActor) {
+    ScopedTestWorld test_world;
+    ScopedRecordingVirtProgramHook virt_program_hook;
+
+    char_data ch{};
+    ch.specials2.act = 0; // NOT MOB_ISNPC -- the PC/virt-program arm
+    ch.specials.store_prog_number = 7;
+    set_location(&ch, NOWHERE);
+
+    ScopedSoleCharacterListMember sole_member(&ch);
+
+    g_virt_program_call_count = 0;
+    clear_test_random_values();
+    push_test_random_value(0.0); // pins the walk's `!number(0, 3)` sampling gate
+
+    mobile_activity();
+
+    clear_test_random_values();
+
+    EXPECT_EQ(g_virt_program_call_count, 0)
+        << "Expected the dispatch-invariant guard to skip the PC/virt-program arm for an actor "
+           "with no location -- one_mobile_activity()'s :91 guard does not cover this arm.";
+}
+
+TEST(MobileActivityDispatchInvariant, RunsThePcVirtProgramArmForAPlacedActor) {
+    ScopedTestWorld test_world;
+    ScopedRecordingVirtProgramHook virt_program_hook;
+
+    char_data ch{};
+    ch.specials2.act = 0;
+    ch.specials.store_prog_number = 7;
+    set_location(&ch, 0);
+
+    ScopedSoleCharacterListMember sole_member(&ch);
+
+    g_virt_program_call_count = 0;
+    clear_test_random_values();
+    push_test_random_value(0.0);
+
+    mobile_activity();
+
+    clear_test_random_values();
+
+    EXPECT_EQ(g_virt_program_call_count, 1)
+        << "Expected the identical fixture with a PLACED actor to reach the registered virt "
+           "program -- the guard must not block a normal pulse.";
 }

@@ -8,6 +8,16 @@
 // rots::entity::occupants(room_by_id_total(in_room)) room-occupant walk
 // (:1352, replacing the raw `for (k = world[in_room].people; k; k =
 // k->next_in_room)` loop-condition/declaration-deletion pair).
+//
+// RR Wave R3 Task 1b (owner ruling R3-O-1) adds the DispatchInvariant suites
+// at the end of this file: one unplaced/placed pair for each of interpre.cpp's
+// three registered dispatch entry points -- command_interpreter (the ACMD
+// table dispatch), activate_char_special and activate_obj_special (the two
+// SPECIAL fn-ptr invokers). Each pair drives the real entry point with an
+// actor at NOWHERE and asserts the dispatched body did NOT run, then drives
+// the identical fixture with the actor placed in a ScopedTestWorld room and
+// asserts it DID. The stubs and index fixtures those tests use are the ones
+// this file already owns.
 
 #include "../db.h"
 #include "../interpre.h"
@@ -32,6 +42,18 @@ extern struct index_data *mob_index;
 // mob_index comment above) -- forward-declared for the same reason, needed by
 // this file's F8 remote_mode coverage rider (ScopedRecordingObjIndex below).
 extern struct index_data *obj_index;
+// activate_obj_special() has no header declaration anywhere in the tree (its
+// sibling activate_char_special() is declared in interpre.h:139, this one is
+// not) -- forward-declared here for RR Wave R3 Task 1b's dispatch-invariant
+// pair below, mirroring act_othe_tests.cpp's `ACMD(do_knock);` precedent for
+// the same gap.
+int activate_obj_special(struct obj_data *host, struct char_data *ch, int cmd, char *arg,
+                         int callflag, struct waiting_type *wtl);
+// interpre.cpp's command table is populated at boot by assign_command_pointers();
+// nothing in gtest_main.cpp calls it, so the CommandInterpreterDispatchInvariant
+// pair below drives it itself (color_tests.cpp:375 established the precedent --
+// the call is idempotent and writes only the process-global cmd_info[]).
+void assign_command_pointers(void);
 
 namespace {
 
@@ -260,4 +282,143 @@ TEST(InterpreSpecial, AbsentCharacterEarlyReturnsFalseWithoutDispatchingAnything
         << "The early return must fire strictly before the room-funct dispatch is attempted.";
 
     test_world.room().funct = nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1b dispatch-invariant guards (owner ruling R3-O-1;
+// docs/superpowers/specs/2026-08-21-rr3-combat-design.md section 2). Each pair
+// below drives one of interpre.cpp's three registered dispatch entry points
+// twice with an otherwise identical fixture, differing ONLY in whether the
+// ACTOR the ledger's dispatch-entry registry names has a location. Unplaced ->
+// the dispatched body must not run; placed -> it must. Every guard is expected
+// to be unreachable on a live path (dispatch census P7), so these tests are the
+// only thing in the tree that reaches them.
+// ---------------------------------------------------------------------------
+
+TEST(CommandInterpreterDispatchInvariant, RefusesToDispatchAnAcmdForAnUnplacedActor) {
+    // command_interpreter checks position, never placement, and the two
+    // special() calls it makes before dispatching contribute FALSE to
+    // may_not_perform when they reject an absent character -- so before the
+    // guard this reached the real do_stand body (dispatch census M-1).
+    ScopedTestWorld test_world;
+    assign_command_pointers();
+
+    char_data ch{};
+    set_location(&ch, NOWHERE);
+    ch.specials.position = POSITION_SITTING;
+
+    char line[] = "stand";
+    command_interpreter(&ch, line, nullptr);
+
+    EXPECT_EQ(GET_POS(&ch), POSITION_SITTING)
+        << "Expected the dispatch-invariant guard to refuse the ACMD dispatch for an actor with "
+           "no location -- do_stand must never have run.";
+}
+
+TEST(CommandInterpreterDispatchInvariant, DispatchesTheAcmdForAPlacedActor) {
+    ScopedTestWorld test_world;
+    assign_command_pointers();
+
+    char_data ch{};
+    set_location(&ch, 0);
+    ch.specials.position = POSITION_SITTING;
+
+    char line[] = "stand";
+    command_interpreter(&ch, line, nullptr);
+
+    EXPECT_EQ(GET_POS(&ch), POSITION_STANDING)
+        << "Expected the identical fixture with a PLACED actor to reach the real do_stand body "
+           "and stand the character up -- the guard must not block a normal dispatch.";
+}
+
+TEST(ActivateCharSpecialDispatchInvariant, RefusesToDispatchForAnUnplacedActor) {
+    // The registry's actor for this entry point is `victim` (parameter 2), NOT
+    // `character` (parameter 1, the spec-proc HOST): special() calls it as
+    // activate_char_special(tmpch, ch, ...) at interpre.cpp:1298/:1324. The
+    // host below is therefore placed in both tests; only the victim moves.
+    ScopedTestWorld test_world;
+    ScopedRecordingMobIndex mob_index_scope;
+
+    char_data host{};
+    host.specials2.act = MOB_ISNPC | MOB_SPEC;
+    host.nr = 0; // indexes mob_index_scope's single fabricated entry
+    set_location(&host, 0);
+
+    char_data victim{};
+    set_location(&victim, NOWHERE);
+
+    g_mob_spec_call = RecordedCall{};
+    waiting_type wtl{};
+    const int result =
+        activate_char_special(&host, &victim, 0, mutable_arg(""), SPECIAL_SELF, &wtl, 0);
+
+    EXPECT_FALSE(g_mob_spec_call.called)
+        << "Expected the dispatch-invariant guard to refuse the SPECIAL dispatch when the ACTOR "
+           "(victim) has no location.";
+    EXPECT_EQ(result, 0) << "A refused dispatch reports 'nothing consumed the event'.";
+}
+
+TEST(ActivateCharSpecialDispatchInvariant, DispatchesForAPlacedActor) {
+    ScopedTestWorld test_world;
+    ScopedRecordingMobIndex mob_index_scope;
+
+    char_data host{};
+    host.specials2.act = MOB_ISNPC | MOB_SPEC;
+    host.nr = 0;
+    set_location(&host, 0);
+
+    char_data victim{};
+    set_location(&victim, 0);
+
+    g_mob_spec_call = RecordedCall{};
+    waiting_type wtl{};
+    const int result =
+        activate_char_special(&host, &victim, 0, mutable_arg(""), SPECIAL_SELF, &wtl, 0);
+
+    EXPECT_TRUE(g_mob_spec_call.called)
+        << "Expected the identical fixture with a PLACED actor to reach the host's registered "
+           "spec-proc.";
+    EXPECT_EQ(result, 1) << "The recording stub consumes the event, so the call must return 1.";
+}
+
+TEST(ActivateObjSpecialDispatchInvariant, RefusesToDispatchForAnUnplacedActor) {
+    ScopedTestWorld test_world;
+    ScopedRecordingObjIndex obj_index_scope;
+
+    obj_data host{};
+    host.item_number = 0; // indexes obj_index_scope's single fabricated entry
+
+    char_data actor{};
+    set_location(&actor, NOWHERE);
+
+    g_obj_spec_call = RecordedCall{};
+    waiting_type wtl{};
+    const int result =
+        activate_obj_special(&host, &actor, 0, mutable_arg(""), SPECIAL_SELF, &wtl);
+
+    EXPECT_FALSE(g_obj_spec_call.called)
+        << "Expected the dispatch-invariant guard to refuse the object-SPECIAL dispatch when the "
+           "ACTOR (ch) has no location -- `host` is the object, not the actor.";
+    EXPECT_EQ(result, 0);
+}
+
+TEST(ActivateObjSpecialDispatchInvariant, DispatchesForAPlacedActor) {
+    ScopedTestWorld test_world;
+    ScopedRecordingObjIndex obj_index_scope;
+
+    obj_data host{};
+    host.item_number = 0;
+
+    char_data actor{};
+    set_location(&actor, 0);
+
+    g_obj_spec_call = RecordedCall{};
+    waiting_type wtl{};
+    const int result =
+        activate_obj_special(&host, &actor, 0, mutable_arg(""), SPECIAL_SELF, &wtl);
+
+    EXPECT_TRUE(g_obj_spec_call.called)
+        << "Expected the identical fixture with a PLACED actor to reach the object's registered "
+           "spec-proc.";
+    EXPECT_EQ(result, 1) << "The recording stub consumes the event, so the call must return 1.";
 }

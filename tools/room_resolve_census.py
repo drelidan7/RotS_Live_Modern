@@ -3320,6 +3320,24 @@ downward direction only (it must still name a real file and a real function).
 `--check` prints a loud WARNING for every `PENDING-T1b` row that remains, so
 the wave cannot finish with one standing.
 
+**How a guard literal is SPELLED, and why it looks masked.** The downward
+check runs against the function's comment/string-MASKED body, so a
+literal that quotes a `mudlog()` call must quote it as the masker leaves
+it -- the message's contents (and its quotes) are blanked, so
+`mudlog("...", NRM, LEVEL_IMPL, TRUE);` normalizes to `mudlog( , NRM,
+LEVEL_IMPL, TRUE);`. Wave R3 Task 1b's nine rows use that spelling
+deliberately: a literal of just `if (location_of(ch) == NOWHERE) {` is
+satisfied by ANY absence test anywhere in the function, so deleting the
+tripwire and leaving some unrelated NOWHERE check behind would pass. The
+full statement -- condition, `mudlog()` call, and the exit keyword, which
+differs per site (`return` / `return 0` / `continue`, and
+`command_interpreter`'s `} else {`, which refuses the dispatch without
+returning because its argument cleanup below is not optional) -- pins the
+whole shape. The globally unique message TEXT is the separate half of the
+contract: it is what R-final's measured-zero sweep greps for, and it lives
+in production, not here.
+
+
 **Deliberately NOT an entry: `affect_modify`'s APPLY_SPELL arm**
 (`src/entity/entity_lifecycle.cpp:2440`/`:2442`). That arm runs a real
 `ASPELL` with `caster == victim == ch` at NOWHERE **by design**, inside the

@@ -2363,6 +2363,19 @@ void extra_coms_proto(struct char_data* ch, char* argument)
 /*************************** Dispatch here :) *******************************/
 void shape_center(struct char_data* ch, char* argument)
 {
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
+     * tripwire for the six-way OLC editor fan-out below. This entry point is
+     * command_interpreter's OLC BYPASS (interpre.cpp:987/:996 call it and
+     * return, ahead of even the position check), so an actor arriving here
+     * has passed neither a placement nor a position test (dispatch census
+     * M-1b) -- which is why it carries its own guard rather than inheriting
+     * command_interpreter's. The whole body is the dispatch, so the guard
+     * sits at entry. Expected unreachable on live paths (census P7). */
+    if (location_of(ch) == NOWHERE) {
+        mudlog("shape_center: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+            NRM, LEVEL_IMPL, TRUE);
+        return;
+    }
 
     if (ch->temp)
         switch (*(sh_int*)ch->temp) {

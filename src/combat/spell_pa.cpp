@@ -485,6 +485,23 @@ ACMD(do_cast)
         return;
     }
 
+    /* RR Wave R3 Task 1b (owner ruling R3-O-1) -- the `dispatch-invariant`
+     * tripwire covering do_cast's `skills[].spell_pointer` dispatch (:883,
+     * the M-6 caster door). It sits HERE, not immediately before that
+     * dispatch, deliberately: this statement dominates every path to :883
+     * (straight-line, after the one arm -- `subcmd == -1` -- that resolves
+     * nothing and is left untouched), so one guard covers both the dispatch
+     * AND do_cast's own unguarded room_of(ch) read on the very next line.
+     * That read must NOT be mistaken for a proof of the dispatch: room_of()
+     * is total and degrades silently, so an earlier unguarded resolve of the
+     * same id establishes nothing (coordinator ruling R3-C-1). Expected
+     * unreachable on live paths (census P7). */
+    if (location_of(ch) == NOWHERE) {
+        mudlog("do_cast: dispatch refused for an unplaced actor (RR dispatch-invariant)",
+            NRM, LEVEL_IMPL, TRUE);
+        return;
+    }
+
     if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char("Your lips falter and you cannot seem to find the words you seek.\n\r", ch);
         return;

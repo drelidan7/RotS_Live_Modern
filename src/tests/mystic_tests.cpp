@@ -62,6 +62,14 @@
 
 #include <string>
 
+// cast_mass_spell() has no header declaration anywhere in the tree (it is a
+// mystic.cpp-local helper the three mass-* ASPELLs call by name) --
+// forward-declared here for RR Wave R3 Task 1b's dispatch-invariant pair at
+// the end of this file, matching mystic.cpp:995's signature exactly.
+void cast_mass_spell(char_data* caster,
+    void (*spell)(char_data* caster, char* arg, int type, char_data* victim, obj_data* obj,
+        int digit, int is_object));
+
 namespace {
 
 // Mirrors act_format_tests.cpp's/olog_hai_tests.cpp's own per-file copy of
@@ -259,4 +267,99 @@ TEST(MysticSpellTerror, ReturnsImmediatelyWhenCasterHasNoRoom)
 
     EXPECT_EQ(std::string(context.caster_descriptor.output), "")
         << "Expected the caster->in_room == NOWHERE guard to return before any message is sent.";
+}
+
+// ---------------------------------------------------------------------------
+// RR Wave R3 Task 1b -- cast_mass_spell()'s dispatch-invariant guard (owner
+// ruling R3-O-1; docs/superpowers/specs/2026-08-21-rr3-combat-design.md
+// section 2).
+//
+// cast_mass_spell is the fourth `skills[].spell_pointer`-class caster door
+// (dispatch census M-6 row 4): the three mass-* ASPELLs hand it a real spell
+// function pointer and it re-dispatches that pointer once per co-located
+// group member. Its own per-member test is
+// `location_of(group_member) == location_of(caster)`, which is an EQUALITY
+// comparison, not an absence test -- so it PASSES when both sides are
+// NOWHERE (coordinator ruling R3-C-5). Without the guard an unplaced caster
+// in a group of unplaced members therefore dispatches a real ASPELL for
+// every one of them.
+//
+// The unplaced half below reproduces exactly that shape -- caster AND member
+// both at NOWHERE -- because the alternative (an unplaced caster with a
+// placed member) would be VACUOUS: the equality test alone already rejects
+// it, and the test would pass with the guard deleted. The placed half is the
+// same fixture with both in room 0.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Records every actor/victim pair cast_mass_spell() dispatches for.
+int g_mass_spell_call_count = 0;
+char_data* g_mass_spell_last_victim = nullptr;
+
+void recording_mass_spell(char_data* /*caster*/, char* /*arg*/, int /*type*/, char_data* victim,
+    obj_data* /*obj*/, int /*digit*/, int /*is_object*/)
+{
+    ++g_mass_spell_call_count;
+    g_mass_spell_last_victim = victim;
+}
+
+} // namespace
+
+TEST(CastMassSpellDispatchInvariant, RefusesToDispatchForAnUnplacedCasterEvenWhenTheGroupMatches)
+{
+    ScopedTestWorld test_world;
+    char_data caster {};
+    char_data member {};
+    caster.specials2.act = MOB_ISNPC;
+    member.specials2.act = MOB_ISNPC;
+
+    // Both absent: the body's own `location_of(group_member) ==
+    // location_of(caster)` test passes on NOWHERE == NOWHERE, so the guard is
+    // the ONLY thing standing between this fixture and a real dispatch.
+    set_location(&caster, NOWHERE);
+    set_location(&member, NOWHERE);
+
+    group_data group(&caster);
+    group.add_member(&member);
+
+    g_mass_spell_call_count = 0;
+    g_mass_spell_last_victim = nullptr;
+
+    cast_mass_spell(&caster, recording_mass_spell);
+
+    EXPECT_EQ(g_mass_spell_call_count, 0)
+        << "Expected the dispatch-invariant guard to refuse the fn-ptr dispatch for an unplaced "
+           "caster -- the both-NOWHERE equality hole (R3-C-5) must not be a door.";
+
+    caster.group = nullptr;
+    member.group = nullptr;
+}
+
+TEST(CastMassSpellDispatchInvariant, DispatchesForAPlacedCaster)
+{
+    ScopedTestWorld test_world;
+    char_data caster {};
+    char_data member {};
+    caster.specials2.act = MOB_ISNPC;
+    member.specials2.act = MOB_ISNPC;
+
+    set_location(&caster, 0);
+    set_location(&member, 0);
+
+    group_data group(&caster);
+    group.add_member(&member);
+
+    g_mass_spell_call_count = 0;
+    g_mass_spell_last_victim = nullptr;
+
+    cast_mass_spell(&caster, recording_mass_spell);
+
+    EXPECT_EQ(g_mass_spell_call_count, 2)
+        << "Expected the identical fixture with a PLACED caster to dispatch once per co-located "
+           "group member (the leader is a member of its own group).";
+    EXPECT_EQ(g_mass_spell_last_victim, &member);
+
+    caster.group = nullptr;
+    member.group = nullptr;
 }

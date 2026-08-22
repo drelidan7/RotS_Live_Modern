@@ -1004,6 +1004,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/script/spec_pro.cpp · vampire_killer · room_by_id_total(` | 4 | TODO | — | — |
 | `src/script/spec_pro.cpp · vampire_killer · room_of(` | 4 | TODO | — | — |
 | `src/script/spec_pro.cpp · vortex_elevator · room_of(` | 1 | TODO | — | — |
+| `src/tests/affect_update_tests.cpp · AffectUpdateWalk.SurvivesAnOccupantDyingToTheBlazeTickItIsProcessing · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/act_info_format_tests.cpp · #decl · room_by_id_total(` | 29 | TEST-FIXTURE | — | — |
 | `src/tests/act_info_format_tests.cpp · ActInfoDisplayCluster.DoLookCaseEightExitMarkShowsShadowyMarkerForOrc · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/act_info_format_tests.cpp · ActInfoPerception.DoLookDirectionFormatsTooDarkMessageWhenTargetRoomIsDark · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
@@ -1182,7 +1183,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 321 |
-| `room_by_id_total(` | 631 |
+| `room_by_id_total(` | 633 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

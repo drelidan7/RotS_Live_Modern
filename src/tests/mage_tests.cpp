@@ -1055,6 +1055,8 @@ public:
     ScopedFireballExtractCharHook& operator=(const ScopedFireballExtractCharHook&) = delete;
 };
 
+// queue_fireball_rolls() needs enough values to outlast the splash loop too
+// (it now runs BEFORE the fumble's self-hit), so it queues 40.
 // make_corpse() CREATE()s a heap corpse and pushes it onto world[].contents
 // and object_list; take both back out (the release_test_corpse shape from
 // load_room_placement_tests.cpp).
@@ -1108,7 +1110,7 @@ constexpr int kFireballRoom = 7;
 // the formula exceeds.
 void queue_fireball_rolls(double fumble_roll)
 {
-    for (int i = 0; i < 14; ++i)
+    for (int i = 0; i < 40; ++i)
         push_test_random_value(fumble_roll);
 }
 
@@ -1120,13 +1122,22 @@ TEST_F(MageProcTest, FireballStopsAfterASelfFumbleKillsTheCaster) {
     context.caster.specials2.act = MOB_ISNPC;
     context.caster.nr = 0; // prototype slot 0 of the scoped one-entry mob_index below
     ScopedFireballMobIndex prototype_table;
+    ScopedZoneTableOwner zone_table_owner; // group_gain()/exp_with_modifiers() read zone_table for a good-aligned killer
     context.caster.player.race = RACE_ORC;
     context.caster.tmpabilities.hit = 1;
     room_data* room = room_by_id_total(kFireballRoom);
     ScopedRoomOccupants occupants { room, kFireballRoom, { &context.caster, &context.victim, &context.master } };
     obj_data* const previous_object_list = object_list;
     ScopedFireballExtractCharHook extraction;
-    const int bystander_hit_before = context.master.tmpabilities.hit;
+    // The bystander is a placed, healthy player with a capturing descriptor:
+    // the splash either damages it or (on a made save) tells it so, and the
+    // queued 0.0 rolls make number() <= 0.2 so the splash roll always lands.
+    context.master.abilities.hit = 500;
+    context.master.tmpabilities.hit = 500;
+    context.master.specials.position = POSITION_STANDING;
+    descriptor_data bystander_descriptor{};
+    reset_capturing_descriptor(bystander_descriptor, &context.master);
+    context.master.desc = &bystander_descriptor;
     const int victim_hit_before = context.victim.tmpabilities.hit;
 
     queue_fireball_rolls(0.0);
@@ -1134,6 +1145,7 @@ TEST_F(MageProcTest, FireballStopsAfterASelfFumbleKillsTheCaster) {
     spell_fireball(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
     const std::string captured = testing::internal::GetCapturedStderr();
     release_fireball_corpse(room, previous_object_list);
+    context.master.desc = nullptr;
 
     ASSERT_EQ(g_recorded_fireball_extraction.calls, 1)
         << "the fixture must actually kill the caster through damage()/die()/raw_kill(); stderr was: " << captured;
@@ -1142,10 +1154,17 @@ TEST_F(MageProcTest, FireballStopsAfterASelfFumbleKillsTheCaster) {
         << "extract_char's NPC arm unlinks the caster before anything else can read it";
     EXPECT_EQ(captured.find("world[] called for negative room number."), std::string::npos)
         << "Expected a caster killed by its own fumble never to be resolved again; stderr was: " << captured;
-    EXPECT_EQ(context.victim.tmpabilities.hit, victim_hit_before)
-        << "the fumble redirected the primary hit onto the caster; the named victim must be untouched";
-    EXPECT_EQ(context.master.tmpabilities.hit, bystander_hit_before)
-        << "a dead caster cannot splash the room";
+    // The fumble redirected the PRIMARY hit onto the caster; the named target is
+    // then just another occupant and may take a SPLASH. With every roll queued at
+    // 0.0 the formula gives fireball_damage = (30 + 0 + 0 + 0 - 5) / 3 = 8, so the
+    // primary hit is 5 or 8 and a splash is at most 8 / 5 = 1.
+    EXPECT_GE(context.victim.tmpabilities.hit, victim_hit_before - 1)
+        << "the named victim must take at most a splash, never the redirected primary hit";
+    const bool bystander_was_splashed = context.master.tmpabilities.hit < 500
+        || std::string(bystander_descriptor.output).find("You dodge to the side") != std::string::npos;
+    EXPECT_TRUE(bystander_was_splashed)
+        << "the fumbled fireball must still splash the room BEFORE the caster's own hit lands; "
+           "bystander hit=" << context.master.tmpabilities.hit << " output=" << bystander_descriptor.output;
 }
 
 TEST_F(MageProcTest, FireballWithoutAFumbleStillDamagesTheVictimAndKeepsTheCaster) {
@@ -1154,6 +1173,7 @@ TEST_F(MageProcTest, FireballWithoutAFumbleStillDamagesTheVictimAndKeepsTheCaste
     context.caster.specials2.act = MOB_ISNPC;
     context.caster.nr = 0; // prototype slot 0 of the scoped one-entry mob_index below
     ScopedFireballMobIndex prototype_table;
+    ScopedZoneTableOwner zone_table_owner; // group_gain()/exp_with_modifiers() read zone_table for a good-aligned killer
     context.caster.player.race = RACE_ORC;
     context.caster.tmpabilities.hit = 1;
     room_data* room = room_by_id_total(kFireballRoom);

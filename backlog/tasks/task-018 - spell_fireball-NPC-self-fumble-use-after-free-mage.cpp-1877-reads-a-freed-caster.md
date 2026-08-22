@@ -35,3 +35,5 @@ Source: RR R3 census A overturn (2026-08-21). The RR program's ledger can only c
 <!-- SECTION:NOTES:BEGIN -->
 2026-08-22: fixed on fix/task-018-spell-fireball-uaf. AC#1 note — the literal free is NOT exercised by the test: a real extract_char() on the stack fixture would free() non-heap storage, so the test stubs the seam to the real unlink minus the free and witnesses the post-death resolve through the negative-room mudlog (deterministic, red-first); ASan+UBSan ran clean on the suite with the fix. The first two red attempts were fixture gaps in the death pipeline (no mob_index for an NPC caster), closed by a scoped one-entry table.
 <!-- SECTION:NOTES:END -->
+
+2026-08-22 (owner review): reordered per David's design note -- the fumble's self-hit now lands LAST, after the splash loop, so every other occupant still resolves (the first cut returned early on the caster's death and dropped the splash). spell_earthquake was checked as precedent: it never damages the caster at all (`tmpch != caster`).

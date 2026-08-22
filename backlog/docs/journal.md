@@ -202,8 +202,8 @@ CON_PLYNG premise; the APPLY_SPELL-window rows bundled with RR-O-1).
 ## 2026-08-22 — TASK-018 fixed (spell_fireball self-fumble use-after-free)
 Root cause confirmed from source: `damage()` returns 1 after `die()`, and `extract_char`'s
 NPC arm `free_char`s the caster before `spell_fireball` reads `room_of(caster)` and
-`is_friendly_taget(caster, victim)`. Fix = the `limits.cpp` self-damage idiom (keep the
-result, return when the dead victim was the caster) plus hoisting the friendly check above
-the hit. Red-first test drives the real damage/die/raw_kill pipeline with the extract_char
+`is_friendly_taget(caster, victim)`. Fix = on a fumble the caster's self-hit is delivered LAST, after the splash loop (the room
+still takes the splash; a dead caster is unreachable by construction), plus hoisting the
+friendly check above any hit. Red-first test drives the real damage/die/raw_kill pipeline with the extract_char
 seam stubbed to "unlink, don't free"; ledger row GUARDED; ceiling 579 → 578. Branch
 `fix/task-018-spell-fireball-uaf`; merge is the owner's call.

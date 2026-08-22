@@ -1862,16 +1862,26 @@ ASPELL(spell_fireball)
     }
 
     bool is_fire_spec = utils::get_specialization(*caster) == game_types::PS_Fire;
+    // Read before the primary hit: damage() can kill `victim`, and an NPC victim
+    // is free_char()'d by extract_char() before this function resumes.
+    const bool victim_is_friendly = is_fire_spec && is_friendly_taget(caster, victim);
 
     int save_bonus = get_save_bonus(*caster, *victim, game_types::PS_Fire, game_types::PS_Cold);
     bool saved = new_saves_spell(caster, victim, save_bonus);
+    int victim_died;
     if (saved) {
         act("$N dodges off to the side, avoiding part of the blast!", FALSE, caster, 0, victim, TO_CHAR);
         act("You dodge to the side, avoiding part of the blast!", FALSE, caster, 0, victim, TO_VICT);
-        apply_spell_damage(caster, victim, fireball_damage * 2 / 3, SPELL_FIREBALL, 0);
+        victim_died = apply_spell_damage(caster, victim, fireball_damage * 2 / 3, SPELL_FIREBALL, 0);
     } else {
-        apply_spell_damage(caster, victim, fireball_damage, SPELL_FIREBALL, 0);
+        victim_died = apply_spell_damage(caster, victim, fireball_damage, SPELL_FIREBALL, 0);
     }
+    // TASK-018: the orc fumble above made the caster its own victim. damage()
+    // returns 1 once die() -> raw_kill() -> extract_char() has run, after which
+    // an NPC caster is freed and a player caster is already standing in the
+    // mortal start room -- either way there is no caster left to splash from.
+    if (victim_died && victim == caster)
+        return;
 
     char_data* next_character = nullptr;
     for (char_data* potential_victim = rots::entity::first_occupant(room_of(caster)); potential_victim; potential_victim = next_character) {
@@ -1880,7 +1890,7 @@ ASPELL(spell_fireball)
             continue;
 
         /* Fire specialization mages won't hit friendly targets. */
-        if (is_fire_spec && is_friendly_taget(caster, victim))
+        if (victim_is_friendly)
             continue;
 
         double random_roll = number();

@@ -1,12 +1,16 @@
+#include "../db.h"
+#include "../entity_hooks.h"
 #include "../handler.h"
 #include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/object.h"
 #include "test_placement.h"
 #include "test_random_utils.h"
 #include "test_world.h"
 #include <algorithm>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <limits>
 #include <optional>
@@ -1002,4 +1006,166 @@ TEST(SpellBeaconTest, RoundTripsToAnInRangeStoredRoomUnchanged) {
            "rider.";
     EXPECT_EQ(affected_by_spell(&context.caster, SPELL_BEACON), nullptr)
         << "A successful return still consumes the beacon.";
+}
+
+// TASK-018 -- spell_fireball's orc self-fumble arm (mage.cpp, `victim =
+// caster;`) hands the caster to apply_spell_damage() as its own victim. When
+// that hit is lethal, fight.cpp's damage() runs die() -> raw_kill() ->
+// extract_char(), whose NPC arm unlinks AND free_char()s the caster -- and
+// the body then continued straight into `room_of(caster)` (the splash loop)
+// and `is_friendly_taget(caster, victim)` on freed memory.
+//
+// The extraction is observed through entity_hooks.h's extract_char seam
+// (the ScopedExtractCharHook shape entity_lifecycle_tests.cpp established):
+// the stub performs the real unlink (char_from_room) but not the free, so
+// the pre-fix body's post-death resolve is witnessed DETERMINISTICALLY as
+// room_data::operator[]'s negative-room mudlog (the spell_blink test's own
+// idiom) instead of as undefined behavior. The control test drives the same
+// fixture without the fumble and proves the ordinary path still lands.
+extern obj_data* object_list;
+extern struct index_data* mob_index;
+
+namespace {
+
+struct RecordedFireballExtraction {
+    char_data* ch = nullptr;
+    int calls = 0;
+};
+
+RecordedFireballExtraction g_recorded_fireball_extraction;
+
+void unlinking_extract_char_stub(char_data* ch, int /*new_room*/)
+{
+    g_recorded_fireball_extraction.ch = ch;
+    ++g_recorded_fireball_extraction.calls;
+    // The real NPC arm's first observable act, minus the free_char() that
+    // would turn a stack fixture into a crash instead of a witness.
+    char_from_room(ch);
+}
+
+class ScopedFireballExtractCharHook {
+public:
+    ScopedFireballExtractCharHook()
+    {
+        g_recorded_fireball_extraction = RecordedFireballExtraction {};
+        rots::entity::set_extract_char_hook(unlinking_extract_char_stub);
+    }
+    ~ScopedFireballExtractCharHook() { register_extract_char_hook(); }
+    ScopedFireballExtractCharHook(const ScopedFireballExtractCharHook&) = delete;
+    ScopedFireballExtractCharHook& operator=(const ScopedFireballExtractCharHook&) = delete;
+};
+
+// make_corpse() CREATE()s a heap corpse and pushes it onto world[].contents
+// and object_list; take both back out (the release_test_corpse shape from
+// load_room_placement_tests.cpp).
+void release_fireball_corpse(room_data* room, obj_data* previous_object_list)
+{
+    obj_data* corpse = room->contents;
+    if (corpse == nullptr)
+        return;
+    obj_from_room(corpse);
+    if (object_list == corpse)
+        object_list = corpse->next;
+    RELEASE(corpse->name);
+    RELEASE(corpse->short_description);
+    RELEASE(corpse->description);
+    std::free(corpse);
+    object_list = previous_object_list;
+}
+
+// The death pipeline reads the NPC's prototype twice -- activate_char_special()
+// (`mob_index[nr].func`, the SPECIAL_DEATH probe raw_kill() makes through
+// call_special()) and make_physical_corpse() (`mob_index[nr].virt`, the corpse
+// owner id). This suite has no mob table, so publish a one-entry one with no
+// spec-proc for the test's scope and restore whatever was there after.
+class ScopedFireballMobIndex {
+public:
+    ScopedFireballMobIndex()
+        : m_previous(mob_index)
+    {
+        m_entry = index_data {};
+        m_entry.virt = 1;
+        mob_index = &m_entry;
+    }
+    ~ScopedFireballMobIndex() { mob_index = m_previous; }
+    ScopedFireballMobIndex(const ScopedFireballMobIndex&) = delete;
+    ScopedFireballMobIndex& operator=(const ScopedFireballMobIndex&) = delete;
+
+private:
+    index_data* m_previous; // the table this suite found installed (normally null)
+    index_data m_entry {}; // the single prototype slot the caster's nr = 0 names
+};
+
+constexpr int kFireballRoom = 7;
+
+// Every number()/number(int,int) draw between entry and the orc fumble test
+// (get_magic_power() draws through get_mage_caster_level() too, so the fumble
+// is not a fixed-position draw) gets the same queued value: 0.0 makes
+// number(0, 9) answer 0 (fumble); 0.99 makes it answer 9 (no fumble). The
+// queue outlasts the pre-fumble draws by a wide margin; whatever is left
+// drains harmlessly and the rest of the spell uses the seeded PRNG. Death
+// needs only damage >= 1 against a 1-hit-point caster, which every branch of
+// the formula exceeds.
+void queue_fireball_rolls(double fumble_roll)
+{
+    for (int i = 0; i < 14; ++i)
+        push_test_random_value(fumble_roll);
+}
+
+} // namespace
+
+TEST_F(MageProcTest, FireballStopsAfterASelfFumbleKillsTheCaster) {
+    MageTestContext context;
+    context.prepare_for_spell_damage();
+    context.caster.specials2.act = MOB_ISNPC;
+    context.caster.nr = 0; // prototype slot 0 of the scoped one-entry mob_index below
+    ScopedFireballMobIndex prototype_table;
+    context.caster.player.race = RACE_ORC;
+    context.caster.tmpabilities.hit = 1;
+    room_data* room = room_by_id_total(kFireballRoom);
+    ScopedRoomOccupants occupants { room, kFireballRoom, { &context.caster, &context.victim, &context.master } };
+    obj_data* const previous_object_list = object_list;
+    ScopedFireballExtractCharHook extraction;
+    const int bystander_hit_before = context.master.tmpabilities.hit;
+    const int victim_hit_before = context.victim.tmpabilities.hit;
+
+    queue_fireball_rolls(0.0);
+    testing::internal::CaptureStderr();
+    spell_fireball(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
+    const std::string captured = testing::internal::GetCapturedStderr();
+    release_fireball_corpse(room, previous_object_list);
+
+    ASSERT_EQ(g_recorded_fireball_extraction.calls, 1)
+        << "the fixture must actually kill the caster through damage()/die()/raw_kill(); stderr was: " << captured;
+    ASSERT_EQ(g_recorded_fireball_extraction.ch, &context.caster);
+    EXPECT_EQ(location_of(&context.caster), NOWHERE)
+        << "extract_char's NPC arm unlinks the caster before anything else can read it";
+    EXPECT_EQ(captured.find("world[] called for negative room number."), std::string::npos)
+        << "Expected a caster killed by its own fumble never to be resolved again; stderr was: " << captured;
+    EXPECT_EQ(context.victim.tmpabilities.hit, victim_hit_before)
+        << "the fumble redirected the primary hit onto the caster; the named victim must be untouched";
+    EXPECT_EQ(context.master.tmpabilities.hit, bystander_hit_before)
+        << "a dead caster cannot splash the room";
+}
+
+TEST_F(MageProcTest, FireballWithoutAFumbleStillDamagesTheVictimAndKeepsTheCaster) {
+    MageTestContext context;
+    context.prepare_for_spell_damage();
+    context.caster.specials2.act = MOB_ISNPC;
+    context.caster.nr = 0; // prototype slot 0 of the scoped one-entry mob_index below
+    ScopedFireballMobIndex prototype_table;
+    context.caster.player.race = RACE_ORC;
+    context.caster.tmpabilities.hit = 1;
+    room_data* room = room_by_id_total(kFireballRoom);
+    ScopedRoomOccupants occupants { room, kFireballRoom, { &context.caster, &context.victim, &context.master } };
+    obj_data* const previous_object_list = object_list;
+    ScopedFireballExtractCharHook extraction;
+
+    queue_fireball_rolls(0.99);
+    spell_fireball(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
+    release_fireball_corpse(room, previous_object_list);
+
+    EXPECT_EQ(g_recorded_fireball_extraction.calls, 0) << "no fumble, no self-kill";
+    EXPECT_EQ(location_of(&context.caster), kFireballRoom);
+    EXPECT_LT(context.victim.tmpabilities.hit, 500) << "the primary hit must still land on the named victim";
 }

@@ -257,10 +257,13 @@ leg earned its keep on exactly the class the macOS-only implementer gate cannot 
 `-Werror=nonnull-compare` on `capture()`'s null-guarding macros, invisible to clang, fixed in
 `9f24c589`.
 
-**Not done yet.** TASK-021 is Done, but the branch is not merged: `make smoke-account` (MANDATORY
-— `raw_kill`/`damage` moved), the final-HEAD `rots64` leg, the i386 battery, the six blocking CI
-jobs and a bounded adversarial review are the controller's finalization step. Merge is the owner's
-call. Follow-ups filed: TASK-023 (the shared `ScopedZoneTableOwner` fixture is one zone slot short
+**Not done yet.** TASK-021 is Done, but the branch is not merged. Measured at the production-final
+commit `a1449d14`: `make smoke-account` PASSED (the full flow, host-side method — mandatory here
+because `raw_kill`/`damage` moved), the monolithic single-process run 1941 ran / 1865 passed / 76
+skipped exit 0, and the six-seed shuffle clean on every seed. Still outstanding: the i386 battery
+(running at `a1449d14`; the docs commits on top touch no source, so the LS-1
+doc-only-after-battery precedent applies), the final-HEAD `rots64` leg, the six blocking CI jobs
+and a bounded adversarial review. Merge is the owner's call. Follow-ups filed: TASK-023 (the shared `ScopedZoneTableOwner` fixture is one zone slot short
 under `recalc_zone_power`) and TASK-024 (character handles — retire raw `char_data` holders);
 TASK-022's scope widened to cover `spell_haze`/`spell_poison`'s pre-guard caster dereference
 alongside `spell_blaze`'s.

@@ -1721,9 +1721,12 @@ named here because a reviewer should not have to find it.
   test file — Tasks 1-6 — with zero sanitizer diagnostics; it earned its keep on the mist-move
   use-after-free above.
 - **Monolithic single-process run** (`build/macos-arm64/ageland_tests` from `src/tests`) exit 0 at
-  Tasks 4, 5 and 6: 1915/1839/76, 1927/1851/76 and 1940/1864/76 (ran/passed/skipped).
+  Tasks 4, 5 and 6: 1915/1839/76, 1927/1851/76 and 1940/1864/76 (ran/passed/skipped), and again at
+  the production-final commit `a1449d14`: **1941 ran / 1865 passed / 76 skipped, exit 0**
+  (1954 − 1941 = the 13 CMake-ctest-only checks — nine `*LayerAcyclicity` linkchecks plus
+  `LocationReadCensus`/`…SelfTest` and `RoomResolveCensus`/`…SelfTest`).
 - **Six-seed shuffle** (`--gtest_shuffle --gtest_repeat=3`, seeds 1/42/1234/98940/60928/777) at
-  Task 6: 0 crashes / 0 failures on every seed.
+  Task 6 and again at `a1449d14`: 0 crashes / 0 failures on every seed.
 - **Native boot golden** (`scripts/boot-golden.sh --native build/macos-arm64/ageland verify`)
   matched at Tasks 2, 3, 4, 5, 6 and Task 6's fix round; the **seed42 characterization golden**
   passed at every task, byte-identical, never regenerated.
@@ -1734,11 +1737,14 @@ named here because a reviewer should not have to find it.
   pointer, and re-measured there: **0 warnings, 1953/1953, boot golden matches.** `a1449d14`'s
   production edits are comment-only (it adds one test), so the container leg re-runs at
   finalization for the 1954th test.
-- **`make smoke-account` and the i386 battery are finalization legs** and are measured there, not
-  per task — see AGENTS.md's "TASK-021 room-affect caster snapshot" chain entry. `smoke-account`
-  is required because `raw_kill`/`damage` moved (the login path itself is untouched, but the
-  death→save path did), and on this host it runs host-side through `tools/account_smoke.py`
-  against the native binary copied into `bin/`, per the RR Wave R3 method recorded above.
+- **`make smoke-account` PASSED at `a1449d14`** — the full flow, run host-side through
+  `tools/account_smoke.py` against the native binary copied into `bin/` (the i386 ELF restored
+  afterwards), per the RR Wave R3 method recorded above. It is MANDATORY here because
+  `raw_kill`/`damage` moved: the login path itself is untouched, but the death→save path did.
+- **The i386 battery runs at `a1449d14`**, the production-final commit; the Task-7 docs commits
+  land on top of it and touch no source, so the LS-1 doc-only-after-battery precedent applies and
+  the binary the battery certifies is the binary at HEAD. The six blocking CI jobs are measured on
+  the PR.
 - **All three censuses** (`room_resolve_census.py --check`/`--self-test`,
   `location_read_census.py --check`/`--self-test`, `string_view_census.py --check`) exit 0 after
   every ledger edit, and all nine `*LayerAcyclicity` linkchecks pass — `caster_snapshot.cpp`

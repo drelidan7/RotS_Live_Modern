@@ -86,3 +86,23 @@ proof, a guard, or a crash at the defect.
 - 2026-08-22: TASK-018 fixed (`spell_fireball` self-fumble UAF, found by R3's census A): GUARDED row, ceiling 579 → 578, +2 tests (1896).
 - 2026-08-22: TASK-019 fixed (earthquake's caster fall deferred to the loop's end, the TASK-018 shape); +1 test (1897); ceiling unchanged.
 - 2026-08-22: TASK-020 fixed (affect_update snapshot walk; ASan-witnessed UAF at limits.cpp:1567); +1 test (1898); TASK-022 filed from its AC#3.
+- 2026-08-22: TASK-021 done (room affects remember their caster). The largest behavior change on
+  this stack and the first here that is NOT zero-behavior-change: a flat POD `caster_snapshot` of
+  the formula inputs is recorded per `(room->number, spell)` at cast time — beside the affect, not
+  inside it, because `affected_type` is embedded in the retained 32-bit `char_file_u` layout — and
+  four per-spell tick bodies (blaze, room-poison, haze, mist) compute from it instead of re-casting
+  the spell on the occupant as its own caster. Eleven formula helpers gained a
+  `const caster_snapshot&` overload that owns the body so cast and tick share one path;
+  `damage_credited()` split engagement from kill credit; and `raw_kill`'s
+  `attack_type == SPELL_POISON` heuristic (a `TODO(drelidan)`) was retired in favour of a recorded
+  poison origin written at six sites through one `record_poison_origin()`. **+56 tests
+  (1898 → 1954)** over six tasks, every delta re-derived at HEAD. Ledger: rows 480 → 516, sites
+  1296 → 1357; `MAXIMUM_TODO_COUNT` **578 → 576**, `--check`-derived — and notably NOT a drain by
+  proof: the two sites came from hoisting each converted cast's repeated resolver call into one
+  local, with every affected row's proof text rewritten for its new site. One new `PROVEN` /
+  `entry-guard` production row (`room_affect_tick.cpp · <anon>::mist_tick`). Two use-after-free
+  classes were closed on the way: `resolve()` never dereferences its stored pointer (a new
+  `characters_by_abs_number` registry answers identity instead), and `affect_update_room`'s
+  mist-move branch stopped reading the affect it had just freed — pre-existing, ASan-witnessed,
+  observably a no-op. Eight flagged behavior changes ride the wave, none golden-observable
+  (docs/BUILD.md's inventory). Follow-ups filed: TASK-023, TASK-024; TASK-022's scope widened.

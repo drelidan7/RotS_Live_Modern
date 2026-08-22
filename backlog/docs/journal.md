@@ -222,3 +222,45 @@ each entry at its turn (char_exists + still affected; rooms are never freed); on
 both build systems. TASK-020's AC#3 (blaze's precedence bug + pre-guard deref) split into
 TASK-022 (LOW) so the crash fix stays a crash fix. Branch `fix/task-020-021-room-affects`,
 stacked on the TASK-018/019 branch.
+
+## 2026-08-22 — TASK-021 done (room affects remember their caster)
+The room-affect engine now snapshots the caster instead of re-casting the spell on its victim.
+A flat POD `caster_snapshot` — the formula INPUTS, never rolled results, so the per-tick
+stat-remainder roll survives — is recorded at cast time in a side table keyed
+`(room->number, spell)`, because `affected_type` is pooled, copied by value, and embedded in the
+retained 32-bit `char_file_u` layout, so it must not grow. Four per-spell tick bodies (blaze,
+room-poison, haze, mist) reproduce their spell's arm statement for statement — including both of
+the mist's long-standing quirks — but read the snapshot; eleven formula helpers gained a
+`const caster_snapshot&` overload that owns the body, with the live forms forwarding, so cast and
+tick cannot drift. `damage_credited()` separated engagement from kill credit, and `raw_kill`'s
+`attack_type == SPELL_POISON` heuristic — a standing `TODO(drelidan)` — was retired for a real
+recorded origin written at six poison sources through one `record_poison_origin()`.
+
+**Not zero-behavior-change**, by design and with the owner's ruling behind each item: eight
+flagged changes ride it, chief among them that a poison death is now a player kill iff the
+recorded origin is a player (the heuristic made every poison death one), and that a room tick with
+no recorded caster credits nobody rather than the victim itself. None of it is golden-observable —
+both boot goldens and the seed42 characterization golden are byte-identical throughout, never
+regenerated. The full inventory, the design and the known limits are in docs/BUILD.md's
+"Room-affect caster snapshot (TASK-021)" subsection.
+
+Two use-after-free classes closed along the way, neither in the plan: `caster_snapshot::resolve()`
+never dereferences its stored pointer (`abs_number` slots recycle and `free_char` releases the
+storage, so a new `characters_by_abs_number` registry answers identity and the stored pointer is
+only ever compared), and `affect_update_room`'s mist-move branch stopped reading the affect it had
+just freed — pre-existing, ASan-witnessed, observably a no-op because the branch only runs when
+the duration is non-zero.
+
++56 tests, 1898 → 1954, every delta re-derived at HEAD rather than copied from a task report.
+`MAXIMUM_TODO_COUNT` 578 → 576, `--check`-derived — from resolver hoists, not proofs. The `rots64`
+leg earned its keep on exactly the class the macOS-only implementer gate cannot see: gcc
+`-Werror=nonnull-compare` on `capture()`'s null-guarding macros, invisible to clang, fixed in
+`9f24c589`.
+
+**Not done yet.** TASK-021 is Done, but the branch is not merged: `make smoke-account` (MANDATORY
+— `raw_kill`/`damage` moved), the final-HEAD `rots64` leg, the i386 battery, the six blocking CI
+jobs and a bounded adversarial review are the controller's finalization step. Merge is the owner's
+call. Follow-ups filed: TASK-023 (the shared `ScopedZoneTableOwner` fixture is one zone slot short
+under `recalc_zone_power`) and TASK-024 (character handles — retire raw `char_data` holders);
+TASK-022's scope widened to cover `spell_haze`/`spell_poison`'s pre-guard caster dereference
+alongside `spell_blaze`'s.

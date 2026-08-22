@@ -4,10 +4,10 @@ title: >-
   Room affects snapshot the caster's casting state at cast time (damage/saves
   from the snapshot, kill credit to the caster) -- blaze, mist, haze,
   room-poison
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 17:44'
-updated_date: '2026-08-22 18:05'
+updated_date: '2026-08-22 23:24'
 labels: []
 milestone: m-0
 dependencies:
@@ -32,10 +32,25 @@ Design notes for the implementer (not rulings): the `ASPELL` signature takes a `
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A cast-time `caster_snapshot` (the thirteen scalar INPUTS above + name: level_a, mage/cleric prof levels, intel, wil, perception, spell_power, spell_pen, specialization, race, abs_number) is stored with every ROOMAFF_SPELL at affect_to_room time; it is POD, no raw char_data* is stored, and no stat is re-read from the caster at tick time
-- [ ] #2 The formula helpers (get_mage_caster_level, get_magic_power, get_saving_throw_dc, spell-penetration, get_save_bonus's caster half, get_mystic_caster_level, saves_poison's caster half, is_friendly_taget's caster half) take `const caster_snapshot&`, with the live cast path capturing at entry so cast and tick share one path; a test changes the caster's stats (intel/wil/spell_power) and extracts the caster after the cast and proves the tick damage and save DC are unchanged, and that the per-tick stat-remainder roll still happens
-- [ ] #3 A tick kill credits the snapshot's caster when char_exists(abs_number) (exp/group_gain, pkill/exploit path, "died to a player" semantics) and credits no one otherwise -- each pinned by a test; the fallback is owner-ruled
-- [ ] #4 All room-affecting spells are converted: blaze, mist of baazunga (including the mist move carrying the snapshot), haze, room-poison, and the builder-placed permanent affects via a no-caster snapshot; any future affect_to_room caller cannot omit it
-- [ ] #5 Poison kill credit (owner ruling): the poison char affect records the poisoner's abs_number at affect_to_char/affect_join time (from spell_poison's victim arm and from the room-poison tick, carrying the room snapshot's identity through), point_update's poison tick passes the resolved poisoner as damage()'s attacker (no credit when char_exists fails), and raw_kill's `died_to_player` poison heuristic is replaced by the recorded origin -- each pinned by a test (player poisoner, mob/snake poisoner, poisoner gone); asphyxiation is excluded as caster-less
-- [ ] #6 Boot goldens + seed42 golden byte-identical or regenerated with the behavior change named in the commit; ASan+UBSan clean; ledger/ceiling re-derived for any moved resolver site
+- [x] #1 A cast-time `caster_snapshot` (the thirteen scalar INPUTS above + name: level_a, mage/cleric prof levels, intel, wil, perception, spell_power, spell_pen, specialization, race, abs_number) is stored with every ROOMAFF_SPELL at affect_to_room time; it is POD, no raw char_data* is stored, and no stat is re-read from the caster at tick time
+- [x] #2 The formula helpers (get_mage_caster_level, get_magic_power, get_saving_throw_dc, spell-penetration, get_save_bonus's caster half, get_mystic_caster_level, saves_poison's caster half, is_friendly_taget's caster half) take `const caster_snapshot&`, with the live cast path capturing at entry so cast and tick share one path; a test changes the caster's stats (intel/wil/spell_power) and extracts the caster after the cast and proves the tick damage and save DC are unchanged, and that the per-tick stat-remainder roll still happens
+- [x] #3 A tick kill credits the snapshot's caster when char_exists(abs_number) (exp/group_gain, pkill/exploit path, "died to a player" semantics) and credits no one otherwise -- each pinned by a test; the fallback is owner-ruled
+- [x] #4 All room-affecting spells are converted: blaze, mist of baazunga (including the mist move carrying the snapshot), haze, room-poison, and the builder-placed permanent affects via a no-caster snapshot; any future affect_to_room caller cannot omit it
+- [x] #5 Poison kill credit (owner ruling): the poison char affect records the poisoner's abs_number at affect_to_char/affect_join time (from spell_poison's victim arm and from the room-poison tick, carrying the room snapshot's identity through), point_update's poison tick passes the resolved poisoner as damage()'s attacker (no credit when char_exists fails), and raw_kill's `died_to_player` poison heuristic is replaced by the recorded origin -- each pinned by a test (player poisoner, mob/snake poisoner, poisoner gone); asphyxiation is excluded as caster-less
+- [x] #6 Boot goldens + seed42 golden byte-identical or regenerated with the behavior change named in the commit; ASan+UBSan clean; ledger/ceiling re-derived for any moved resolver site
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-22: implemented and Done at HEAD a1449d14 on branch fix/task-020-021-room-affects (plan docs/superpowers/plans/2026-08-22-room-affect-caster-snapshot.md, SDD ledger .superpowers/sdd/2026-08-22-room-affect-caster-snapshot/progress.md, as-built write-up in docs/BUILD.md's "Room-affect caster snapshot (TASK-021)" subsection). Which commit met each AC:
+
+- AC#1 -- cc23a423 + b1ddce54 (the flat POD caster_snapshot and capture(); fix round 1 sized name at 64 for NPC short_descr and rebuilt resolve() on a characters_by_abs_number registry so identity_ptr is compared, never dereferenced) and 4ac23a8a (the (room->number, spell) side table; affected_type is embedded in the retained 32-bit char_file_u layout and must not grow, so the snapshot lives beside the affect, not inside it). No stat is re-read from the caster at tick time.
+- AC#2 -- 14a69a45 (eleven helpers gain a const caster_snapshot& overload that owns the body; the live forms forward, so cast and tick share one path) plus 2316aa30 (BlazeTickDamageComesFromTheSnapshotNotTheOccupant wrecks the live caster's intel/prof AFTER the cast and pins 34 vs 19 damage; the per-tick stat-remainder roll still fires because the snapshot stores INPUTS, not rolled levels). The snapshot gained one field the plan did not list, tactics, without which the live forwarders would have stripped tactics/2 from every battle mage.
+- AC#3 -- f7b9fa50 (damage_credited() splits engagement from kill credit) + 2316aa30 (BlazeTickKillCreditsTheRecordedCasterWhenAlive / ...CreditsNobodyWhenTheCasterIsGone). The owner-ruled fallback is NO CREDIT: with no resolvable caster the tick calls die(victim, nullptr), so a PC victim takes the stat-penalty arm rather than the old self-credit's "died to a player" hp/4 arm. Flagged in the BUILD.md inventory.
+- AC#4 -- 4ac23a8a (the two-argument affect_to_room records none() for any ROOMAFF_SPELL with no entry, so no caller -- including shaperom.cpp's builder-placed affects -- can omit a record) + 2316aa30 (the mist MOVE in affect_update_room reads the record into a local copy before affect_remove_room erases it) + 78f5f8ca/a1449d14 (all four casts record their caster and re-stamp only on a renewal that RAISED the affect; the mist's adjacent-room spread covered).
+- AC#5 -- f7b9fa50 (resolve_poisoner(), raw_kill's died_to_player now killer != NULL && !IS_NPC(killer), the attack_type == SPELL_POISON heuristic and its TODO(drelidan) gone) + 78f5f8ca (record_poison_origin() and its six production sites; the ORDINARY poison DoT at affect_update_person's case SPELL_POISON: converted -- the plan never scoped it, and without it AC#5 would not have been met, since that is what every poison affect a spell, bite or meal applies actually ticks through). Asphyxiation is excluded as caster-less; poisoned food and drink deliberately record nobody.
+- AC#6 -- every task's gates: macOS ctest green at every commit (1898 -> 1954, re-derived at HEAD with ctest --preset macos-arm64 -N), ASan clean at all six tasks, the seed42 characterization golden byte-identical throughout with no regeneration, the native boot golden matching at T2/T3/T4/T5/T6, the monolithic run and six-seed shuffle clean, and the ledger/ceiling re-derived -- MAXIMUM_TODO_COUNT 578 -> 576 in 78f5f8ca, --check-derived, from resolver hoists rather than proofs. UBSan is not a macOS preset here; the i386 battery and make smoke-account are controller finalization legs.
+
+Not zero-behavior-change: eight named items ride the wave, none golden-observable, enumerated in docs/BUILD.md's FLAGGED BEHAVIOR-CHANGE INVENTORY. Follow-ups filed: TASK-023 (ScopedZoneTableOwner one zone slot short under recalc_zone_power) and TASK-024 (character handles); Task 6's F1 (spell_haze/spell_poison deref before their own null test) folded into TASK-022's scope.
+<!-- SECTION:NOTES:END -->

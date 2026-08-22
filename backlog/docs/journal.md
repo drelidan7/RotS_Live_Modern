@@ -207,3 +207,10 @@ still takes the splash; a dead caster is unreachable by construction), plus hois
 friendly check above any hit. Red-first test drives the real damage/die/raw_kill pipeline with the extract_char
 seam stubbed to "unlink, don't free"; ledger row GUARDED; ceiling 579 → 578. Branch
 `fix/task-018-spell-fireball-uaf`; merge is the owner's call.
+
+## 2026-08-22 — TASK-019 fixed (spell_earthquake caster fall deferred)
+Filed from the TASK-018 review (the owner asked how earthquake handles the same problem: its
+damage loop excludes the caster, but its fall loop did not). Same principle applied: every
+other occupant falls first, the caster's own fall is the spell's final act; RNG draw order
+preserved. Red-first ordering test; ledger note; ceiling unchanged at 578. Same branch as
+TASK-018; merge is the owner's call.

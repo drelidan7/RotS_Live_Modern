@@ -39,6 +39,7 @@
 #include "char_utils.h"
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 extern const std::string_view pc_race_types[];
 
@@ -1558,28 +1559,72 @@ extern universal_list* affected_list;
 
 extern universal_list* affected_list_pool;
 
+// TASK-020: the walk below used to hold `tmplist->next` across the body, and
+// the body can free that very node -- affect_update_room()'s blaze tick kills
+// an occupant, raw_kill() strips the dead character's affects, and
+// affect_remove()'s tail from_list_to_pool()s (free()s) the character's own
+// affected_list node. So the list is SNAPSHOTTED first (identities only, no
+// body runs during that walk) and every entry is re-validated at its turn:
+// a character is updated only while it still exists and still carries an
+// affect; a room is always safe to visit (world[] rooms are never freed, and
+// a room whose last affect expired earlier in the tick simply has no affects
+// left to update). The housekeeping branch re-finds the live node instead of
+// reusing a pointer captured before the bodies ran.
+namespace {
+
+// One affected_list entry's identity, captured before any body runs.
+struct affected_list_entry {
+    int type; // TARGET_CHAR / TARGET_ROOM, as the node carried it
+    int number; // the character's abs_number (unused for rooms)
+    char_data* ch; // the node's character pointer (compared, never dereferenced unless char_exists)
+    room_data* room; // the node's room pointer
+};
+
+// Removes the live affected_list node that still names this character, if
+// any -- the node may already have been freed by a death earlier in the tick.
+void drop_stale_character_entry(const affected_list_entry& entry)
+{
+    for (universal_list* node = affected_list; node; node = node->next) {
+        if (node->type == TARGET_CHAR && node->ptr.ch == entry.ch && node->number == entry.number) {
+            from_list_to_pool(&affected_list, &affected_list_pool, node);
+            return;
+        }
+    }
+}
+
+} // namespace
+
 void affect_update()
 {
-    universal_list *tmplist, *tmplist2;
+    // Reused across ticks so the per-tick snapshot allocates only on growth.
+    static std::vector<affected_list_entry> snapshot;
+    snapshot.clear();
+    for (universal_list* node = affected_list; node; node = node->next) {
+        affected_list_entry entry { };
+        entry.type = node->type;
+        entry.number = node->number;
+        if (node->type == TARGET_CHAR)
+            entry.ch = node->ptr.ch;
+        else if (node->type == TARGET_ROOM)
+            entry.room = node->ptr.room;
+        snapshot.push_back(entry);
+    }
+
     char mybuf[1000];
-
-    for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
-        tmplist2 = tmplist->next;
-
-        if (tmplist->type == TARGET_CHAR) {
-
-            if (char_exists(tmplist->number) && tmplist->ptr.ch && tmplist->ptr.ch->affected) {
-                affect_update_person(tmplist->ptr.ch, 0);
+    for (const affected_list_entry& entry : snapshot) {
+        if (entry.type == TARGET_CHAR) {
+            if (char_exists(entry.number) && entry.ch && entry.ch->affected) {
+                affect_update_person(entry.ch, 0);
             } else {
-                if (char_exists(tmplist->number))
-                    strcpy(mybuf, std::format("Getting {} off the affected_list.", GET_NAME(tmplist->ptr.ch)).c_str());
+                if (char_exists(entry.number))
+                    strcpy(mybuf, std::format("Getting {} off the affected_list.", GET_NAME(entry.ch)).c_str());
                 else
                     strcpy(mybuf, "Getting Unknown char off the affected_list.");
                 mudlog(mybuf, CMP, LEVEL_GRGOD, TRUE);
-                from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
+                drop_stale_character_entry(entry);
             }
-        } else if (tmplist->type == TARGET_ROOM) {
-            affect_update_room(tmplist->ptr.room);
+        } else if (entry.type == TARGET_ROOM) {
+            affect_update_room(entry.room);
         }
     }
 }

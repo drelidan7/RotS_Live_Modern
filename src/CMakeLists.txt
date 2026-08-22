@@ -1367,6 +1367,7 @@ if(ROTS_BUILD_TESTS)
         tests/act_othe_tests.cpp
         tests/act_wiz_format_tests.cpp
         tests/act_wiz_tests.cpp
+        tests/affect_update_tests.cpp
         tests/battle_mage_handler_tests.cpp
         tests/big_brother_hooks_tests.cpp
         tests/boards_json_tests.cpp

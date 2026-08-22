@@ -873,3 +873,77 @@ git commit -m "spells: blaze/mist/haze/poison record their caster; poison rememb
 **Placeholder scan.** The `...fixture:` lines in Task 4/5/6 tests describe fixtures whose exact code is the file-local copy of `mage_tests.cpp`'s helpers (named there); the implementer copies them verbatim — acceptable per the "per-file copy" idiom, but the expected values must be computed from the snapshot fields, not hard-coded.
 
 **Type consistency.** `caster_snapshot::capture/none/resolve/same_character_as` (Task 1) used in Tasks 2, 3, 5, 6; `room_affect_caster`/`set_room_affect_caster`/`affect_to_room(room, af, snapshot)` (Task 3) used in Tasks 5, 6; `damage_credited`/`resolve_poisoner` (Task 4) used in Task 5; `room_affect_tick` (Task 5) used by `limits.cpp`. `new_saves_spell(const caster_snapshot&, const char_data*, int)` is required by Task 5 and must be added in Task 2 (listed in Task 5's notes; add it to Task 2's interface list when implementing).
+
+---
+
+## As built (2026-08-22, HEAD `a1449d14`)
+
+Every task landed; the full account is in `docs/BUILD.md`'s "Room-affect caster snapshot
+(TASK-021)" subsection (design, FLAGGED BEHAVIOR-CHANGE INVENTORY, known limits, gates) and
+AGENTS.md's chain entry (per-task deltas, 1898 -> 1954). The rulings behind each item below are
+in `.superpowers/sdd/2026-08-22-room-affect-caster-snapshot/progress.md`. Deviations from this
+plan, in the order they arose:
+
+1. **`caster_snapshot` gained a field the plan's own list does not have: `int tactics`** (Task 2).
+   `battle_mage_handler`'s bonus is `value + tactics/2 + mage_level/12`, so without it the live
+   `get_magic_power`/`get_saving_throw_dc` forwarders would have silently stripped `tactics/2`
+   from every battle mage. Verified as a real regression by sabotage, not assumed.
+2. **`name` is `char[64]`, not `char[MAX_NAME_LENGTH + 1]`** (Task 1 fix round). `GET_NAME()`
+   returns `player.short_descr` for an NPC, which routinely exceeds the 12-character PC
+   player-name limit — and NPC casters are the common case for room affects.
+3. **`resolve()` goes through a pointer registry and never dereferences `identity_ptr`** (Task 1
+   fix round). `abs_number` slots recycle and `free_char` releases the storage, so the plan's
+   `identity_ptr->abs_number == abs_number` read was a genuine use-after-free. Closed with a
+   parallel `characters_by_abs_number[MAX_CHARACTERS]` table beside the `char_exists` bit table,
+   a two-argument `set_char_exists(int, char_data*)`, and a bounds-checked `char_by_abs_number()`.
+   `resolve_poisoner()` (Task 4) uses the identical shape for the same reason.
+4. **`other_side`'s live form does not call `capture()`** (Task 2). Both public forms funnel into
+   one file-local `other_side_impl(is_npc, is_charmed, race, other)` — one body, byte-identical
+   inputs — because `other_side` runs inside per-character display and grouping loops where a
+   full capture (two `get_prof_level` lookups, a `GET_PERCEPTION` evaluation, a 64-byte
+   `snprintf`) for three fields is a hot-path regression. Every other helper is a plain
+   capture-forwarder exactly as planned.
+5. **`max_race_prof_level` lives in `src/core/include/rots/core/character.h`**, not beside the
+   macro in `src/utils.h` (Task 2). `RACE_*`/`PROF_*` are defined in `character.h` and `utils.h`
+   does not include it; putting the function next to the constants keeps exactly one table, which
+   is what the plan actually wanted, and `GET_MAX_RACE_PROF_LEVEL` forwards to it.
+6. **`tick_spell_damage` was never written; `apply_spell_damage_credited` replaced it** (Tasks
+   4/5). The plan's Task-5 sketch duplicated `apply_spell_damage`'s multiplier math. Instead Task
+   4 extracted one static `scale_spell_damage()` that both `apply_spell_damage` and the new
+   `apply_spell_damage_credited(who, attacker, victim, credited_killer, dam, spell, loc)` run, so
+   the saving-throw multiplier has one body.
+7. **Task 4 absorbed two items the plan put elsewhere, and handed two of its own to Task 6.**
+   Absorbed: `get_victim_saving_throw`'s snapshot overload (plan: Task 2) and
+   `apply_spell_damage_credited` (plan: Task 5's `tick_spell_damage`). Handed on: the ORDINARY
+   poison DoT at `affect_update_person`'s `case SPELL_POISON:` — which is what every poison affect
+   a spell, a bite or a meal applied actually ticks through, and which the plan never scoped, so
+   AC#5 would not have been met — plus four further poison sources the plan's file list omitted
+   (poisoned drink and food in `act_obj2.cpp`, black arrow in `mage.cpp`, the vampire huntress's
+   bite in `spec_pro.cpp`). Both moved into Task 6 and landed there.
+8. **The single shared writer `record_poison_origin()` is not in this plan at all**, and shipped
+   with BOTH parameters non-const (Task 6). The plan wrote the two `poisoned_by*` fields inline at
+   each site; a controller ruling replaced that with one writer, so a null poisoner CLEARS both
+   halves rather than leaving a half-set record that would answer for whoever holds that
+   `abs_number` slot today. The ruling's own signature took a `const char_data* poisoner`, but the
+   stored field is a mutable `char_data*`, so that would have forced a `const_cast` inside the one
+   function whose job is to write the pair honestly; every caller already holds a mutable pointer.
+9. **The removed-last-affect guard is `continue`, not the plan's `break`** (Task 5). That
+   statement sits inside `case ROOMAFF_SPELL:`, so `break` would leave only the *switch* and fall
+   straight into the duration/mist-move code that dereferences `tmpaf` — it would guard nothing.
+10. **`room_affect_tick.h` sits flat at `src/`**, as this plan directed. `src/combat/` would be
+    the layering-correct home (the implementation is `rots_combat`); recorded as a known
+    deviation from the physical-layout convention rather than silently moved.
+11. **The plan's self-review addition landed as written**: Task 5 threads the snapshot through
+    the mist MOVE in `affect_update_room`, reading the record into a local COPY before
+    `affect_remove_room()` erases it.
+12. **Two things landed that the plan did not ask for.** Task 5 repaired a pre-existing
+    use-after-free in `affect_update_room`'s mist-move branch (`tmpaf = nullptr` after the
+    removal; ASan-witnessed, observably a no-op). Task 6 lowered `MAXIMUM_TODO_COUNT` 578 -> 576,
+    which follows from the resolver hoists the brief did ask for — leaving the two drained sites
+    as ratchet slack would have let a future change add two unproven resolver sites for free.
+13. **Two follow-ups were filed rather than fixed**: TASK-023 (the shared `ScopedZoneTableOwner`
+    fixture is one zone slot short under `recalc_zone_power`, ASan-caught at Task 4; that suite
+    carries a file-local two-slot table) and TASK-024 (character handles — retire raw `char_data`
+    holders, from the design discussion this wave provoked). Task 6's own F1 — `spell_haze` and
+    `spell_poison` dereferencing `caster` before their `if (!caster)` test — was folded into
+    TASK-022's scope, which already carried the same shape in `spell_blaze`.

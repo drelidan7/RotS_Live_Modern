@@ -1514,6 +1514,254 @@ inventory by category, and the five recorded design inputs for R4 (chief among t
 **host** is never covered by the `activate_char_special` entry, which guards `victim` — one guard
 on `SPECIAL(shop_keeper)`'s host would drain 3 rows / 10 sites).
 
+### Room-affect caster snapshot (TASK-021)
+
+A behavior wave rather than a classification wave, landed on the same branch stack as
+TASK-018/019/020 (`fix/task-020-021-room-affects`, base `4c7a9931`, HEAD `a1449d14`), and the
+first work in this area to change what a room affect *is*. Before it, a `ROOMAFF_SPELL` written
+by `affect_to_room` remembered nothing about who cast it: `affected_type`
+(`src/core/include/rots/core/types.h:700`) carries only type/duration/time_phase/modifier/
+location/bitvector, and `affect_update_room` (`src/combat/limits.cpp`) re-cast the spell every
+tick with the OCCUPANT as both caster and victim
+(`spell_pointer(tmpch, "", SPELL_TYPE_SPELL, tmpch, ...)`). So a level-30 mage's blaze burned a
+level-5 victim as a level-5 spell, and every tick kill was a self-kill — no exp, no group gain,
+no pkill/exploit bookkeeping, and a PC victim took `raw_kill`'s "died to a player" `hp/4` arm
+because the killer was themselves.
+
+**The snapshot.** `struct caster_snapshot` (`src/core/include/rots/core/caster_snapshot.h`, new)
+is a flat POD copy of exactly the inputs the combat formulas read from a caster — `level_a`,
+`mage_prof_level`, `cleric_prof_level`, `intel`, `wil`, `perception`, `willpower`, `spell_power`,
+`spell_pen`, `tactics`, `specialization`, `race`, `is_npc`, `is_charmed`,
+`is_pc_for_spell_pen`, `master_mage_prof_level`, plus `abs_number`, `identity_ptr` and a
+`name[64]`. Two rules the plan set and the implementation kept: it snapshots **inputs, not rolled
+results** (`get_mage_caster_level`/`get_mystic_caster_level` roll `number()` on the stat
+remainder every call, so storing a computed level would have silently removed the per-tick
+variance), and it **splits stats from actor** — the formula helpers take `const caster_snapshot&`
+and the act()/damage()/set_fighting/kill-credit path still takes a live `char_data*`, which may
+legitimately be null.
+
+`tactics` is not in the plan's own field list and is load-bearing: `battle_mage_handler`'s bonus
+is `value + tactics/2 + mage_level/12`, so without it the live forwarders would have stripped
+`tactics/2` from every battle mage. `capture()` lives in `src/entity/caster_snapshot.cpp`
+(`rots_entity`, L2).
+
+**Stats/actor split, in practice.** Eleven helpers gained a `const caster_snapshot&` overload
+that owns the body, and their pre-existing live forms became one-line forwarders
+(`return f(caster_snapshot::capture(*caster), …)`): `get_mage_caster_level`, `get_magic_power`,
+`should_apply_spell_penetration`, `get_spell_pen_value`, `get_save_bonus`, `is_friendly_taget`,
+`get_victim_saving_throw` (`src/combat/mage.cpp`); `get_saving_throw_dc`, `new_saves_spell`
+(`src/combat/spell_pa.cpp`); `get_mystic_caster_level` (`src/combat/mystic.cpp`); `saves_poison`
+(`src/entity/char_utils_combat.cpp`). `other_side` (`src/entity/char_utils.cpp`) is the one
+exception: both forms funnel into one file-local `other_side_impl(is_npc, is_charmed, race,
+other)` instead of the live form capturing, because `other_side` runs inside per-character
+display and grouping loops (`list_char_to_char`, `do_who`, `do_group`) and a full `capture()`
+there — two `get_prof_level` lookups, a `GET_PERCEPTION` evaluation and a 64-byte `snprintf` —
+is a hot-path regression for three fields it reads. One body either way.
+
+**Where the snapshot is stored: a side table, not the affect.** `affected_type` must not grow.
+It is pooled and copied by value (`*affected_alloc = *af`), and its layout is embedded in the
+retained 32-bit legacy binary player format (`struct affected_type affected[MAX_AFFECT]` inside
+`char_file_u`, `src/persist/include/rots/persist/file_formats.h:39`) — widening it would break
+every `legacy_*_fixture.bin` golden and the migration decoders that read them. So the record
+lives in a file-local `std::map<std::pair<int, int>, caster_snapshot> g_room_affect_casters` in
+`src/entity/entity_lifecycle.cpp`, keyed **(room->number, spell)** — `room->number` is the same
+id `affect_to_room` already writes into `tmplist->number`. Three functions front it:
+`set_room_affect_caster(room, spell, snapshot)`, `room_affect_caster(room, spell)` (nullptr when
+absent), and a three-argument `affect_to_room(room, af, caster)`. The **two**-argument
+`affect_to_room` records `caster_snapshot::none()` for any `ROOMAFF_SPELL` that has no entry yet,
+so no caller — present or future, including `src/olc/shaperom.cpp`'s builder-placed permanent
+affects — can leave a room affect without a record; `affect_remove_room` erases the entry.
+
+**Why `resolve()` never dereferences the stored pointer.** `abs_number` slots recycle
+(`register_npc_char` reuses freed slots in the `MAX_CHARACTERS` table) and `free_char` releases
+the storage, so the obvious `char_exists(abs_number) && identity_ptr->abs_number == abs_number`
+is a genuine use-after-free — the same exposure `affected_list`'s (ptr, number) pairs already
+carry. It was closed rather than inherited: `entity_lifecycle.cpp`'s `char_exists` bit table
+gained a parallel `char_data* characters_by_abs_number[MAX_CHARACTERS]`, written by
+`register_npc_char()` (and by a new two-argument `set_char_exists(int, char_data*)`), cleared by
+`remove_char_exists()`, read through a new bounds-checked `char_by_abs_number(int)`
+(`src/handler.h`). `caster_snapshot::resolve()` returns the registry's pointer **iff it equals**
+`identity_ptr` — the stored pointer is only ever an identity token to compare, never a pointer to
+read. `resolve_poisoner()` (below) uses the identical shape.
+
+**`damage_credited()`: engagement vs. credit.** `damage()` conflated two roles in one `attacker`
+argument — who the victim fights, and who gets the kill. `int damage_credited(ch, victim,
+credited_killer, dam, attacktype, hit_location)` (`src/combat/fight.cpp`, declared in
+`src/handler.h`) splits them: the body is unchanged except that the `POSITION_DEAD` arm calls
+`die(victim, credited_killer, attacktype)` (with the same pet→master redirect). `damage()` is now
+a forwarder passing `attacker ? attacker : victim` — deliberately, not a bare `attacker`: the old
+body's own `if (!attacker) attacker = victim; /* emergency fix */` meant the credit followed that
+substitution, so forwarding a bare null would silently have turned every `damage(NULL, victim, …)`
+call into an uncredited death. `apply_spell_damage_credited(who, attacker, victim,
+credited_killer, dam, spell, loc)` is its spell-side sibling, sharing one static
+`scale_spell_damage()` with `apply_spell_damage` so the saving-throw multiplier has exactly one
+body.
+
+**`room_affect_tick`.** `src/room_affect_tick.h` / `src/combat/room_affect_tick.cpp` (`rots_combat`,
+L3) hold one tick body per room spell — blaze, room-poison, haze, mist — each reproducing its
+spell's arm statement for statement, including roll order and roll count, but reading the
+SNAPSHOT rather than the occupant. `affect_update_room()` calls
+`room_affect_tick(tmpaf->location, room, tmpch, *tmpaf)` and falls back to the historical
+`skills[loc].spell_pointer` self-re-cast **only when the tick reports no body** (an unknown
+spell), so nothing outside the four converted spells changes. With no recorded caster the tick
+falls back to `capture(*occupant)` and a null actor — the pre-TASK-021 formula inputs, and nobody
+credited. `engaging_attacker()` lets the recorded caster engage only when it still exists AND
+stands in the occupant's room, so `set_fighting` never pairs characters across rooms.
+
+**The mist's two long-standing quirks are preserved verbatim**, in both the cast and the tick:
+the renewal is silent (the "breathes out dark mists" messages only ever fired on a fresh cast,
+and a tick always finds an existing affect), and an adjacent room that already carries a mist is
+renewed against the MAIN room's `level / 5`, never the `level / 6` it would have been *seeded*
+with. Only the record moved. The mist MOVE in `affect_update_room` reads the record into a local
+COPY before `affect_remove_room()` erases it and republishes through the three-argument form, so
+a drifting mist carries its caster.
+
+**Poison origin.** `char_special_data` gained `int poisoned_by_abs_number = -1;` and
+`char_data* poisoned_by = nullptr;` (`src/core/include/rots/core/character.h`), written only
+through `record_poison_origin(victim, poisoner)` (`src/combat/fight.cpp`) — a null `poisoner`
+CLEARS both halves rather than leaving a half-set record that would answer for whoever holds that
+slot today. Six production sites call it: `spell_poison`'s victim arm (`mystic.cpp:1362`, the
+caster), black arrow's conditional poison (`mage.cpp:2203`, the caster), the vampire huntress's
+kidnap bite (`spec_pro.cpp:3073`, the host mob), poisoned drink and poisoned food
+(`act_obj2.cpp:212`/`:290`, deliberately **nobody**), and the room-poison tick
+(`room_affect_tick.cpp:104`, the resolved recorded caster). Two `rots_entity` sites CLEAR the
+pair and set it nowhere: `clear_char()` and `affect_remove()` once the last `SPELL_POISON` affect
+is gone.
+
+Both poison ticks read it back through `resolve_poisoner()`: the ordinary DoT
+(`affect_update_person`'s `case SPELL_POISON:`, which is what every poison affect a spell, a bite
+or a meal applied ticks through) and `point_update`'s gear-`AFF_POISON` arm. `raw_kill`'s
+`died_to_player` is therefore now simply `killer != NULL && !IS_NPC(killer)` — the
+`attack_type == SPELL_POISON ||` heuristic and its `TODO(drelidan)` are gone, the origin is
+recorded for real. (The `killer != NULL` term is not redundant: `!IS_NPC(nullptr)` is `true`,
+because `IS_NPC` null-guards at the macro.)
+
+#### FLAGGED BEHAVIOR-CHANGE INVENTORY
+
+TASK-021 is **not** a zero-behavior-change wave (the LS-3a `O-2` / LS-3b `O-5` precedent). None
+of it is golden-observable — no zone file places a room affect at boot, both boot goldens matched
+at every commit that ran them, and the seed42 characterization golden is byte-identical
+throughout with no regeneration of any kind — but each item below is a real live-behavior change,
+named here because a reviewer should not have to find it.
+
+1. **Room-affect damage and saves now come from the caster.** The headline change: every tick of
+   blaze, room-poison, haze and mist computes from the recorded caster's cast-time stats instead
+   of the victim's own. This is the feature.
+2. **Every poison death's `die()`/`raw_kill` arm now follows the recorded origin.** Player,
+   mob, or gone — where the retired heuristic made *every* poison death a player kill. A PC
+   killed by a mob's poison now takes the stat-penalty arm (stats × 2/3, hit = 1) instead of the
+   player-kill arm (hit = max/4); a PC killed by a player's poison is unchanged.
+3. **A room tick with no recorded caster credits nobody.** Builder-placed affects
+   (`shaperom.cpp`), and any affect predating the store, resolve to `none()`, so the kill goes to
+   `die(victim, nullptr)`. The old self-re-cast credited the victim itself — self `group_gain`, a
+   "killed by self" mudlog, and the "died to a player" `hp/4` arm for a PC. A PC now takes the
+   stat-penalty arm. Consistent with the owner's poison-origin ruling ("a player kill iff the
+   recorded origin is a player").
+4. **The same fallback in `point_update`'s gear-poison arm.** Previously the victim was its own
+   attacker, so `die()` ran the `EXPLOIT_POISON` capture and `pkill_create()`; a null credit takes
+   the `if (!killer)` branch and does neither. Rare (gear-granted `AFF_POISON` with no
+   `SPELL_POISON` affect behind it) and intended.
+5. **Poison's saved arm delivers both of the original messages.** Round 0's room tick, and the
+   pre-TASK-021 self-re-cast, delivered **nothing to anybody** on a save — `act_impl` gates on
+   `recipient != ch || type == TO_CHAR`, and `caster == victim` by construction. Now: the
+   occupant actually receives "You feel your body fend off the poison."; a recorded caster who is
+   alive and standing in that room receives "$N shrugs off your poison with ease." (gated on
+   `engaging_attacker(caster, occupant) == caster`); a caster who has walked away or is gone
+   receives nothing. A caster standing in its own poison is byte-identical to the old arm.
+6. **The mist-move use-after-free in `affect_update_room` is repaired.** Pre-existing, and
+   unrelated to the snapshot: the move branch ends in `affect_remove_room(room, tmpaf)`, whose
+   tail is `put_to_affected_type_pool(af)` — literally `free()` in every build, the pooling being
+   commented out "to aid bughunting" — and the loop then ran `if (tmpaf) if (tmpaf->duration == 0)`
+   on that freed pointer. The `if (tmpaf)` test was written as though something nulled `tmpaf`
+   after a move; nothing ever did. Fix: `tmpaf = nullptr;` after the move. Observably a no-op (the
+   branch is only entered when `duration > 0`, so the stale read almost always saw a non-zero
+   duration), a UB repair rather than a visible outcome. Found by the ASan preset on the new
+   mist-move test; the plain preset was green through it, because ctest runs each test in its own
+   process and the read lands on heap nothing has reused yet.
+7. **Black arrow, applied through the `APPLY_SPELL` login door, stamps the wearer as its own
+   poisoner.** `spell_black_arrow`'s poison arm stamps `caster`, and `affect_modify`'s
+   `APPLY_SPELL` arm re-runs a worn item's spell with the wearer as caster during the login/rent
+   load. Ruled to stay: the item IS the caster on its wearer, which is consistent with "credit =
+   the caster". A PC dying to that poison therefore reads as a player kill.
+8. **Gear-granted `AFF_POISON` is unstamped, so it credits nobody.** `point_update`'s arm reads
+   `resolve_poisoner()` for a bit that no site writes. Defensible (an item has no poisoner, like
+   the food and drink sites) but it is an answer by omission: a future item that *should* credit
+   its wielder has nowhere to say so.
+
+#### Known limits
+
+- **`g_room_affect_casters` keys on `room->number`, not on rnum.** Correct in production, where
+  VNUMs are unique and the loader forbids duplicates (and `delete_room()` has zero callers, so a
+  number is stable for the process's life); if two rooms ever shared a number the later cast
+  would win, costing one mis-credited tick.
+- **Every `ScopedTestWorld` room carries `.number == -1`** (`dummy_room_data`), so without help
+  every test room shares one map key and a record written for one answers for all of them.
+  `room_affect_tick_tests.cpp`'s `ScopedRoomNumbers` stamps distinct numbers on the rooms that
+  suite uses and restores them; two of its tests passed for the wrong reason before it existed. A
+  shared helper in `test_world.h` is the general fix and is not written.
+- **The one-argument `set_char_exists(int)` leaves the pointer slot null.** It has no production
+  caller today (only `register_npc_char`'s two-argument path registers characters), but a future
+  production caller reaching for it would register a character whose `char_by_abs_number()` — and
+  therefore every `resolve()`/`resolve_poisoner()` against it — answers "gone".
+- **`spell_haze` and `spell_poison` dereference `caster` before their own `if (!caster)` test**
+  (`if (!victim && !obj && !(caster->specials.fighting))`). Pre-existing, untouched here (each
+  wave's `capture()` was placed AFTER the null test, so no new window opened), and folded into
+  TASK-022's scope alongside its `spell_blaze` siblings.
+- **The shared `ScopedZoneTableOwner` fixture (`test_placement.h`) is one zone slot short under
+  `recalc_zone_power()`** — `zone_by_id_impl` reads `top_of_zone_table` as a count,
+  `recalc_zone_power` as an inclusive index and *writes* `zone_table[top_of_zone_table]`. Caught
+  by ASan while writing Task 4's tests; that suite carries a file-local two-slot table instead,
+  and the shared fixture is filed as TASK-023.
+
+#### Gates measured
+
+- **macOS arm64 native** (`ctest --preset macos-arm64`) green at every one of the wave's commits;
+  **1954/1954** at HEAD `a1449d14`, re-derived here with `ctest --preset macos-arm64 -N`.
+- **ASan** (`ctest --preset macos-arm64-asan`) built and run clean at every task that touched a
+  test file — Tasks 1-6 — with zero sanitizer diagnostics; it earned its keep on the mist-move
+  use-after-free above.
+- **Monolithic single-process run** (`build/macos-arm64/ageland_tests` from `src/tests`) exit 0 at
+  Tasks 4, 5 and 6: 1915/1839/76, 1927/1851/76 and 1940/1864/76 (ran/passed/skipped).
+- **Six-seed shuffle** (`--gtest_shuffle --gtest_repeat=3`, seeds 1/42/1234/98940/60928/777) at
+  Task 6: 0 crashes / 0 failures on every seed.
+- **Native boot golden** (`scripts/boot-golden.sh --native build/macos-arm64/ageland verify`)
+  matched at Tasks 2, 3, 4, 5, 6 and Task 6's fix round; the **seed42 characterization golden**
+  passed at every task, byte-identical, never regenerated.
+- **`rots64` container leg**, controller-run: at `78f5f8ca` it FAILED TO BUILD — gcc
+  `-Werror=nonnull-compare` on `caster_snapshot.cpp:32`, where `capture()`'s null-guarding macros
+  test an address that can never be null; clang does not diagnose it, so the macOS-only
+  implementer gate could not see it. Fixed in `9f24c589` by routing those macros through a local
+  pointer, and re-measured there: **0 warnings, 1953/1953, boot golden matches.** `a1449d14`'s
+  production edits are comment-only (it adds one test), so the container leg re-runs at
+  finalization for the 1954th test.
+- **`make smoke-account` and the i386 battery are finalization legs** and are measured there, not
+  per task — see AGENTS.md's "TASK-021 room-affect caster snapshot" chain entry. `smoke-account`
+  is required because `raw_kill`/`damage` moved (the login path itself is untouched, but the
+  death→save path did), and on this host it runs host-side through `tools/account_smoke.py`
+  against the native binary copied into `bin/`, per the RR Wave R3 method recorded above.
+- **All three censuses** (`room_resolve_census.py --check`/`--self-test`,
+  `location_read_census.py --check`/`--self-test`, `string_view_census.py --check`) exit 0 after
+  every ledger edit, and all nine `*LayerAcyclicity` linkchecks pass — `caster_snapshot.cpp`
+  joins `rots_entity` (L2), `room_affect_tick.cpp` joins `rots_combat` (L3), and no library
+  membership otherwise moved.
+
+#### Ledger movement
+
+Re-derived at HEAD by importing the census module's own `parse_ledger()` and by
+`room_resolve_census.py --check`, not from any task report. Rows **480 → 516**, sites
+**1296 → 1357**. `TODO` **578 → 576** sites (199 rows, unchanged) and `MAXIMUM_TODO_COUNT`
+**578 → 576** with it, lowered `--check`-derived in `78f5f8ca` with `run_self_test()`'s pin moved
+in the same commit. `PROVEN` **111 rows / 215 sites → 112 / 209**; `TEST-FIXTURE` **126 / 418 →
+161 / 487**; `DECL`, `GUARDED` and `RESOLVER-IMPL` unmoved. Token totals `room_of(` **321 → 315**
+and `room_by_id_total(` **633 → 700**. The drains are hoists, not proofs: Task 6 pulled each
+converted cast's repeated `room_of(caster)`/`room_by_id_total(...)` into ONE local
+(`spell_blaze · room_of(` 3 → 1, `spell_mist_of_baazunga · room_of(` 3 → 1 and
+`· room_by_id_total(` 4 → 1, `spell_haze · room_of(` 2 → 1, `spell_poison · room_of(` 2 → 1),
+and every affected row's proof text was rewritten so it is valid for its new site. The one new
+production row is `src/combat/room_affect_tick.cpp · <anon>::mist_tick · room_by_id_total(`,
+1 site, `PROVEN` / `entry-guard` — dominated by the exit-null-and-`NOWHERE` test one statement
+above it, with the sibling `affect_update_room` row's wording carried over in full.
+
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
 Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling

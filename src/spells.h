@@ -13,6 +13,7 @@
 
 #include "platdef.h" /* For sh_int, ush_int, byte, etc. */
 #include "rots/core/types.h" /* For the MAX_SKILLS macro */
+#include "rots/core/caster_snapshot.h" /* For the snapshot forms of the formula helpers */
 #include "rots/core/fwd.h"
 #include <algorithm>
 
@@ -496,7 +497,37 @@ ASPELL(spell_mass_insight);
 
 bool is_strong_enough_to_tame(struct char_data* tamer, struct char_data* animal, bool include_current_followers);
 
+// The mage/mystic formula helpers, each in two forms (TASK-021). The live
+// const char_data*/const char_data& form is a one-line forwarder onto the
+// caster_snapshot form, which owns the body: a room affect that ticks after
+// its caster died, levelled or re-spec'd re-runs the identical formula from
+// the cast-time copy, and never touches a possibly-freed character. Declared
+// here so the combat tier and the tests reach the same overload set.
 int get_mage_caster_level(const char_data* caster);
+int get_mage_caster_level(const caster_snapshot& caster);
+
 int get_mystic_caster_level(const char_data* caster);
+int get_mystic_caster_level(const caster_snapshot& caster);
+
+int get_magic_power(const char_data* caster);
+int get_magic_power(const caster_snapshot& caster);
+
+int get_saving_throw_dc(const char_data* caster);
+int get_saving_throw_dc(const caster_snapshot& caster);
+
+bool should_apply_spell_penetration(const char_data* caster);
+bool should_apply_spell_penetration(const caster_snapshot& caster);
+
+double get_spell_pen_value(const char_data* caster);
+double get_spell_pen_value(const caster_snapshot& caster);
+
+int get_save_bonus(const char_data& caster, const char_data& victim, game_types::player_specs primary_spec, game_types::player_specs opposing_spec);
+int get_save_bonus(const caster_snapshot& caster, const char_data& victim, game_types::player_specs primary_spec, game_types::player_specs opposing_spec);
+
+bool is_friendly_taget(const char_data* caster, const char_data* victim);
+bool is_friendly_taget(const caster_snapshot& caster, const char_data* victim);
+
+bool new_saves_spell(const char_data* caster, const char_data* victim, int save_bonus);
+bool new_saves_spell(const caster_snapshot& caster, const char_data* victim, int save_bonus);
 
 #endif /* SPELLS_H */

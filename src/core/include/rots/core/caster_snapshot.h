@@ -28,6 +28,7 @@ struct caster_snapshot {
     int willpower; // GET_WILLPOWER value (saves_poison offence input)
     int spell_power; // points.spell_power (battle_mage_handler bonus input)
     int spell_pen; // points.spell_pen (save DC / spell penetration input)
+    int tactics; // specials.tactics (battle_mage_handler spell-power/pen bonus input)
     game_types::player_specs specialization; // utils::get_specialization
     int race; // GET_RACE (other_side / friendly-fire / max-race-prof inputs)
     bool is_npc; // IS_NPC (other_side, spell penetration, get_prof_level inputs)

@@ -20,6 +20,7 @@ caster_snapshot caster_snapshot::capture(const char_data& caster)
     snap.willpower = GET_WILLPOWER(&caster);
     snap.spell_power = caster.points.spell_power;
     snap.spell_pen = caster.points.spell_pen;
+    snap.tactics = caster.specials.tactics;
     snap.specialization = utils::get_specialization(caster);
     snap.race = GET_RACE(&caster);
     snap.is_npc = utils::is_npc(caster);

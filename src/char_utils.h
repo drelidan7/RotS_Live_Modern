@@ -3,6 +3,7 @@
 #include "base_utils.h"
 #include "rots/core/fwd.h"
 #include "rots/core/types.h" /* For game_types::player_specs */
+#include "rots/core/caster_snapshot.h" /* For the snapshot forms declared at the bottom */
 
 struct weather_data;
 struct affected_type;
@@ -228,3 +229,13 @@ int get_current_hit(const char_data& character);
 // Gets max hit points of a mobile
 int get_max_hit(const char_data& character);
 }
+
+// Snapshot forms of the two entity-tier formula helpers a room affect still
+// needs once its caster is gone (TASK-021). Their live forms are declared
+// elsewhere -- other_side() in handler.h, saves_poison() in each caller's own
+// local prototype -- but this header is the one both the entity definitions
+// and every combat-tier consumer already include, so the snapshot overloads
+// live here. Both live forms keep their exact observable behavior.
+int other_side(const caster_snapshot& character, const char_data* other);
+char saves_poison(struct char_data* victim, struct char_data* caster);
+char saves_poison(struct char_data* victim, const caster_snapshot& caster);

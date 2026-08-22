@@ -416,6 +416,8 @@ void object_list_new_owner(struct obj_data* list, struct char_data* ch);
 void extract_obj(struct obj_data* obj);
 
 /* ******* characters ********* */
+// The caster_snapshot overload of other_side() is declared in char_utils.h
+// (TASK-021); this live form forwards nothing and keeps its own body.
 int other_side(const char_data* character, const char_data* other);
 int other_side_num(int ch_race, int i_race);
 

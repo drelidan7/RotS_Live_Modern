@@ -1030,14 +1030,21 @@ namespace {
 struct RecordedFireballExtraction {
     char_data* ch = nullptr;
     int calls = 0;
+    // Snapshot of the watched bystander's location at the moment of extraction
+    // (TASK-019's ordering witness); NOWHERE - 1 when nothing was watched.
+    int watched_location_at_extraction = NOWHERE - 1;
 };
 
 RecordedFireballExtraction g_recorded_fireball_extraction;
+// The bystander whose location the stub snapshots, or nullptr.
+const char_data* g_extraction_watch = nullptr;
 
 void unlinking_extract_char_stub(char_data* ch, int /*new_room*/)
 {
     g_recorded_fireball_extraction.ch = ch;
     ++g_recorded_fireball_extraction.calls;
+    if (g_extraction_watch != nullptr)
+        g_recorded_fireball_extraction.watched_location_at_extraction = location_of(g_extraction_watch);
     // The real NPC arm's first observable act, minus the free_char() that
     // would turn a stack fixture into a crash instead of a witness.
     char_from_room(ch);
@@ -1048,9 +1055,14 @@ public:
     ScopedFireballExtractCharHook()
     {
         g_recorded_fireball_extraction = RecordedFireballExtraction {};
+        g_extraction_watch = nullptr;
         rots::entity::set_extract_char_hook(unlinking_extract_char_stub);
     }
-    ~ScopedFireballExtractCharHook() { register_extract_char_hook(); }
+    ~ScopedFireballExtractCharHook()
+    {
+        g_extraction_watch = nullptr;
+        register_extract_char_hook();
+    }
     ScopedFireballExtractCharHook(const ScopedFireballExtractCharHook&) = delete;
     ScopedFireballExtractCharHook& operator=(const ScopedFireballExtractCharHook&) = delete;
 };
@@ -1189,3 +1201,68 @@ TEST_F(MageProcTest, FireballWithoutAFumbleStillDamagesTheVictimAndKeepsTheCaste
     EXPECT_EQ(location_of(&context.caster), kFireballRoom);
     EXPECT_LT(context.victim.tmpabilities.hit, 500) << "the primary hit must still land on the named victim";
 }
+
+// TASK-019 -- spell_earthquake's crack/fall loop. Its damage loop excludes the
+// caster, but the fall loop does not: on the coin flip the caster is moved into
+// the crevice and takes fall damage INSIDE the occupant loop, so a lethal fall
+// ran die() -> raw_kill() -> extract_char() on the caster and the loop then
+// kept using `caster` for every later occupant. Same defect class as TASK-018,
+// same fix shape: every other occupant falls first, the caster last.
+//
+// The witness is ORDER, recorded by the extract_char stub: where the bystander
+// stands at the instant the caster is extracted. Pre-fix the caster (head of
+// the chain) falls and dies first, so the bystander is still in the quake room;
+// post-fix the bystander has already fallen into the crack.
+TEST_F(MageProcTest, EarthquakeLetsEveryOtherOccupantFallBeforeTheCastersOwnFall) {
+    constexpr int kQuakeRoom = 7;
+    constexpr int kCrackRoom = 8;
+    MageTestContext context;
+    context.prepare_for_spell_damage();
+    context.caster.specials2.act = MOB_ISNPC;
+    context.caster.nr = 0;
+    context.caster.tmpabilities.hit = 1; // any fall damage is lethal
+    ScopedFireballMobIndex prototype_table;
+    ScopedZoneTableOwner zone_table_owner;
+    room_data* quake_room = room_by_id_total(kQuakeRoom);
+    room_data* crack_room = room_by_id_total(kCrackRoom);
+    // A door-less way down makes crack_chance certain (mage.cpp: `dir_option[DOWN]
+    // && !exit_info`), and an existing destination takes the "way down" arm.
+    room_direction_data way_down{};
+    way_down.to_room = kCrackRoom;
+    way_down.exit_info = 0;
+    room_direction_data* const previous_down = quake_room->dir_option[DOWN];
+    quake_room->dir_option[DOWN] = &way_down;
+    // Caster is the HEAD of the chain: the unfixed loop reaches it first.
+    ScopedRoomOccupants occupants { quake_room, kQuakeRoom, { &context.caster, &context.victim } };
+    obj_data* const previous_object_list = object_list;
+    ScopedFireballExtractCharHook extraction;
+    g_extraction_watch = &context.victim;
+
+    // All-0.0 rolls: number(0, 1) answers 0, so `!number(0, 1)` makes EVERY
+    // occupant fall, caster included; dam_value = 1 + caster level >= 1.
+    for (int i = 0; i < 60; ++i)
+        push_test_random_value(0.0);
+    testing::internal::CaptureStderr();
+    spell_earthquake(&context.caster, nullptr, 0, nullptr, nullptr, 0, 0);
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    // Teardown first, assertions after: the survivors now live in the crack
+    // room's chain and the corpse in its contents, both process globals.
+    const int victim_location_after = location_of(&context.victim);
+    if (location_of(&context.victim) != NOWHERE)
+        char_from_room(&context.victim);
+    release_fireball_corpse(crack_room, previous_object_list);
+    release_fireball_corpse(quake_room, previous_object_list);
+    quake_room->dir_option[DOWN] = previous_down;
+
+    ASSERT_EQ(g_recorded_fireball_extraction.calls, 1)
+        << "the fixture must actually kill the caster by its own fall; stderr was: " << captured;
+    ASSERT_EQ(g_recorded_fireball_extraction.ch, &context.caster);
+    EXPECT_EQ(victim_location_after, kCrackRoom) << "the bystander must still fall";
+    EXPECT_EQ(g_recorded_fireball_extraction.watched_location_at_extraction, kCrackRoom)
+        << "the bystander must have fallen BEFORE the caster's own fall killed the caster";
+    EXPECT_EQ(location_of(&context.caster), NOWHERE);
+    EXPECT_EQ(captured.find("world[] called for negative room number."), std::string::npos)
+        << "nothing may resolve the dead caster; stderr was: " << captured;
+}
+

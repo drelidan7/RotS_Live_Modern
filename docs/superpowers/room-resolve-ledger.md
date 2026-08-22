@@ -1130,6 +1130,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.HazeTickUsesTheSnapshotLevelForTheModifier · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.MistTickNeverShortensAStrongerMist · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.MistTickRenewsFromTheSnapshotLevel · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.PoisonTickSavedArmTellsTheOccupantAndTheInRoomCaster · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.PoisonTickDurationTracksTheRecordedCasterNotTheVictim · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.PoisonTickRecordsThePoisonerOnTheVictim · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.UnknownSpellHasNoTickBody · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
@@ -1206,7 +1207,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 321 |
-| `room_by_id_total(` | 672 |
+| `room_by_id_total(` | 674 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

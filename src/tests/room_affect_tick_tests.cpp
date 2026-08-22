@@ -37,10 +37,13 @@
 #include "../utils.h"
 #include "../zone.h"
 #include "rots/core/caster_snapshot.h"
+#include "../comm.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 
+#include "test_char_cleanup.h"
 #include "test_placement.h"
 #include "test_random_utils.h"
 #include "test_world.h"
@@ -380,6 +383,121 @@ void release_test_corpse(room_data* room, obj_data* previous_object_list)
     object_list = previous_object_list;
 }
 
+// Points a descriptor's output at its OWN small_outbuf so act()/SEND_TO_Q
+// output can be read back instead of going to a socket (comm_act_tests.cpp's
+// helper, verbatim in intent). CRITICAL, per that file's own warning: this
+// mutates the caller's descriptor_data in place and must never be replaced by
+// a version that returns one by value -- descriptor_data::output is a
+// self-pointer into the same object's small_outbuf[].
+void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character)
+{
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = 0; // CON_PLAYING
+    descriptor.character = character;
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup guards
+// ---------------------------------------------------------------------------
+//
+// Every one of these used to be a bare statement between the tick and the
+// assertions. A failing ASSERT_* returns from the test body immediately, so a
+// bare statement below one never runs -- and each of these leaves process-wide
+// or ScopedTestWorld-owned state pointing at storage this file's stack objects
+// own: a stack room_direction_data published in world[].dir_option[], a room on
+// the global affected_list whose storage ScopedTestWorld deletes, a
+// g_room_affect_casters entry keyed on a room number this suite stamped, a
+// heap corpse on the global object_list, a stack char_data on affected_list.
+// That is the LS-2 finalization battery's monolithic-SIGSEGV class. As RAII
+// they run on every exit path, red or green.
+
+// Publishes an exit on a room for the scope and restores whatever slot value
+// it displaced. The exit is normally a stack room_direction_data, so leaving
+// it published hands the next suite a dangling pointer.
+class ScopedRoomExit {
+public:
+    ScopedRoomExit(room_data* room, int direction, room_direction_data* exit)
+        : m_room(room)
+        , m_direction(direction)
+        , m_previous(room->dir_option[direction])
+    {
+        m_room->dir_option[m_direction] = exit;
+    }
+    ~ScopedRoomExit() { m_room->dir_option[m_direction] = m_previous; }
+    ScopedRoomExit(const ScopedRoomExit&) = delete;
+    ScopedRoomExit& operator=(const ScopedRoomExit&) = delete;
+
+private:
+    // The room and slot this scope owns, and the pointer it displaced.
+    room_data* m_room;
+    int m_direction;
+    room_direction_data* m_previous;
+};
+
+// Strips every affect from a room at scope exit -- for the rooms a tick body
+// seeds by ITSELF (the mist's spread and its move), which no
+// ScopedRoomSpellAffect manages. affect_remove_room() is what pops the room off
+// the global affected_list and erases its (room, spell) caster record.
+class ScopedRoomAffectCleanup {
+public:
+    explicit ScopedRoomAffectCleanup(room_data* room)
+        : m_room(room)
+    {
+    }
+    ~ScopedRoomAffectCleanup() { clear_room_affects(m_room); }
+    ScopedRoomAffectCleanup(const ScopedRoomAffectCleanup&) = delete;
+    ScopedRoomAffectCleanup& operator=(const ScopedRoomAffectCleanup&) = delete;
+
+private:
+    room_data* m_room; // the room this scope empties on the way out
+};
+
+// Strips every affect from a character and unlinks it from any fight at scope
+// exit: affect_to_char()/affect_join() push the character onto the global
+// affected_list, and a stack char_data left on that list outlives the test.
+class ScopedCharacterCleanup {
+public:
+    explicit ScopedCharacterCleanup(char_data& ch)
+        : m_ch(ch)
+    {
+    }
+    ~ScopedCharacterCleanup()
+    {
+        while (m_ch.affected)
+            affect_remove(&m_ch, m_ch.affected);
+        m_ch.specials.fighting = nullptr;
+        m_ch.next_fighting = nullptr;
+    }
+    ScopedCharacterCleanup(const ScopedCharacterCleanup&) = delete;
+    ScopedCharacterCleanup& operator=(const ScopedCharacterCleanup&) = delete;
+
+private:
+    char_data& m_ch; // the character whose affects/fight links this scope releases
+};
+
+// Takes the corpse a lethal tick left in a room back off world[].contents and
+// the global object_list, and frees it. Captures the object_list head at
+// construction, i.e. before the tick runs.
+class ScopedCorpseRelease {
+public:
+    explicit ScopedCorpseRelease(room_data* room)
+        : m_room(room)
+        , m_previous_object_list(object_list)
+    {
+    }
+    ~ScopedCorpseRelease() { release_test_corpse(m_room, m_previous_object_list); }
+    ScopedCorpseRelease(const ScopedCorpseRelease&) = delete;
+    ScopedCorpseRelease& operator=(const ScopedCorpseRelease&) = delete;
+
+private:
+    // The room the corpse lands in, and the object_list head to restore.
+    room_data* m_room;
+    obj_data* m_previous_object_list;
+};
+
 // ---------------------------------------------------------------------------
 // Characters
 // ---------------------------------------------------------------------------
@@ -494,6 +612,7 @@ TEST(RoomAffectTick, BlazeTickDamageComesFromTheSnapshotNotTheOccupant)
 
     room_data* const room = room_by_id_total(kAffectedRoom);
     Occupant occupant { 500 };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
 
     // --- the grandmaster's blaze -------------------------------------------
@@ -518,8 +637,6 @@ TEST(RoomAffectTick, BlazeTickDamageComesFromTheSnapshotNotTheOccupant)
     ASSERT_TRUE(room_affect_tick(SPELL_BLAZE, room, &occupant.ch, blaze.affect()));
     const int apprentice_drop = 500 - occupant.ch.tmpabilities.hit;
     clear_test_random_values();
-
-    occupant.ch.specials.fighting = nullptr;
 
     EXPECT_EQ(grandmaster_drop, 34)
         << "the tick must burn from the recorded PROF_MAGE 25 / intel 25 snapshot";
@@ -552,8 +669,10 @@ TEST(RoomAffectTick, BlazeTickKillCreditsTheRecordedCasterWhenAlive)
     ScopedTickCharExists occupant_exists { occupant.ch, kOccupantAbsNumber };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
     ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &mage.ch } };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
+    ScopedCharacterCleanup mage_cleanup { mage.ch };
 
-    obj_data* const previous_object_list = object_list;
+    ScopedCorpseRelease corpse { room };
     ScopedTickExtractCharHook extraction;
     ScopedTickCharacterDiedHook death;
     ScopedRoomSpellAffect blaze { room, SPELL_BLAZE, 5, 25, caster_snapshot::capture(mage.ch) };
@@ -564,9 +683,6 @@ TEST(RoomAffectTick, BlazeTickKillCreditsTheRecordedCasterWhenAlive)
 
     const char_data* const mage_was_fighting = mage.ch.specials.fighting;
     const int mage_location = location_of(&mage.ch);
-    mage.ch.specials.fighting = nullptr;
-    mage.ch.next_fighting = nullptr;
-    release_test_corpse(room, previous_object_list);
 
     ASSERT_EQ(g_recorded_extraction.calls, 1) << "the tick must kill the one-hit-point occupant";
     EXPECT_EQ(g_recorded_extraction.ch, &occupant.ch);
@@ -594,8 +710,10 @@ TEST(RoomAffectTick, BlazeTickKillCreditsNobodyWhenTheCasterIsGone)
     ScopedTickCharExists occupant_exists { occupant.ch, kOccupantAbsNumber };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
     ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &mage.ch } };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
+    ScopedCharacterCleanup mage_cleanup { mage.ch };
 
-    obj_data* const previous_object_list = object_list;
+    ScopedCorpseRelease corpse { room };
     ScopedTickExtractCharHook extraction;
     ScopedTickCharacterDiedHook death;
 
@@ -614,8 +732,6 @@ TEST(RoomAffectTick, BlazeTickKillCreditsNobodyWhenTheCasterIsGone)
     queue_mid_rolls(32);
     ASSERT_TRUE(room_affect_tick(SPELL_BLAZE, room, &occupant.ch, blaze.affect()));
     clear_test_random_values();
-
-    release_test_corpse(room, previous_object_list);
 
     ASSERT_EQ(g_recorded_extraction.calls, 1) << "the tick still kills";
     ASSERT_TRUE(g_recorded_death.called);
@@ -649,6 +765,7 @@ TEST(RoomAffectTick, PoisonTickRecordsThePoisonerOnTheVictim)
     ScopedTickCharExists mystic_exists { mystic.ch, kCasterAbsNumber };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
     ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &mystic.ch } };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
     ScopedTickExtractCharHook extraction;
     ScopedTickCharacterDiedHook death;
     ScopedRoomSpellAffect poison { room, SPELL_POISON, 5, 10,
@@ -659,27 +776,20 @@ TEST(RoomAffectTick, PoisonTickRecordsThePoisonerOnTheVictim)
     ASSERT_TRUE(room_affect_tick(SPELL_POISON, room, &occupant.ch, poison.affect()));
     clear_test_random_values();
 
+    // Asserted live: `occupant_cleanup` runs at scope exit, so nothing has
+    // stripped the affect yet -- and affect_remove() is what CLEARS the
+    // recorded origin (Task 4), so resolve_poisoner() must be reached first.
     affected_type* const applied = affected_by_spell(&occupant.ch, SPELL_POISON);
     ASSERT_NE(applied, nullptr) << "the save must fail and the poison must land";
-    const int applied_duration = applied->duration;
-    const int poisoner_abs_number = occupant.ch.specials.poisoned_by_abs_number;
-    char_data* const poisoner_ptr = occupant.ch.specials.poisoned_by;
-    // Read before the teardown below: affect_remove() CLEARS the recorded
-    // origin when the poison affect goes away (Task 4).
-    char_data* const resolved_poisoner = resolve_poisoner(occupant.ch);
-    const int hit_after = occupant.ch.tmpabilities.hit;
-
-    while (occupant.ch.affected)
-        affect_remove(&occupant.ch, occupant.ch.affected);
-    occupant.ch.specials.fighting = nullptr;
 
     // cleric prof 20 + wil 25 / 5 = 25; the affect's duration is level + 1.
-    EXPECT_EQ(applied_duration, 26) << "duration comes from the SNAPSHOT's cleric level";
-    EXPECT_EQ(poisoner_abs_number, kCasterAbsNumber);
-    EXPECT_EQ(poisoner_ptr, &mystic.ch);
-    EXPECT_EQ(resolved_poisoner, &mystic.ch)
+    EXPECT_EQ(applied->duration, 26) << "duration comes from the SNAPSHOT's cleric level";
+    EXPECT_EQ(occupant.ch.specials.poisoned_by_abs_number, kCasterAbsNumber);
+    EXPECT_EQ(occupant.ch.specials.poisoned_by, &mystic.ch);
+    EXPECT_EQ(resolve_poisoner(occupant.ch), &mystic.ch)
         << "the recorded origin must resolve back to the caster that cast it";
-    EXPECT_EQ(hit_after, 495) << "and the tick's own 5 points of damage still land";
+    EXPECT_EQ(occupant.ch.tmpabilities.hit, 495)
+        << "and the tick's own 5 points of damage still land";
     EXPECT_EQ(g_recorded_extraction.calls, 0);
 }
 
@@ -697,6 +807,7 @@ TEST(RoomAffectTick, PoisonTickDurationTracksTheRecordedCasterNotTheVictim)
     ScopedTickCharExists novice_exists { novice.ch, kSecondCasterAbsNumber };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
     ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &novice.ch } };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
     ScopedTickExtractCharHook extraction;
     ScopedTickCharacterDiedHook death;
     ScopedRoomSpellAffect poison { room, SPELL_POISON, 5, 10,
@@ -708,18 +819,12 @@ TEST(RoomAffectTick, PoisonTickDurationTracksTheRecordedCasterNotTheVictim)
 
     affected_type* const applied = affected_by_spell(&occupant.ch, SPELL_POISON);
     ASSERT_NE(applied, nullptr);
-    const int applied_duration = applied->duration;
-    const int poisoner_abs_number = occupant.ch.specials.poisoned_by_abs_number;
-
-    while (occupant.ch.affected)
-        affect_remove(&occupant.ch, occupant.ch.affected);
-    occupant.ch.specials.fighting = nullptr;
 
     // cleric prof 5 + wil 25 / 5 = 10; +1. The sibling test's identical
     // occupant, identical rolls and identical room produced 26.
-    EXPECT_EQ(applied_duration, 11) << "a different recorded caster gives a different duration";
-    EXPECT_NE(applied_duration, 26);
-    EXPECT_EQ(poisoner_abs_number, kSecondCasterAbsNumber)
+    EXPECT_EQ(applied->duration, 11) << "a different recorded caster gives a different duration";
+    EXPECT_NE(applied->duration, 26);
+    EXPECT_EQ(occupant.ch.specials.poisoned_by_abs_number, kSecondCasterAbsNumber)
         << "and the victim remembers THAT caster";
 }
 
@@ -740,6 +845,7 @@ TEST(RoomAffectTick, HazeTickUsesTheSnapshotLevelForTheModifier)
 
     room_data* const room = room_by_id_total(kAffectedRoom);
     Occupant occupant { 500 };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
 
     // --- an Illusion specialist: level 20 + 25/5 = 25, +6 for the spec ------
@@ -770,8 +876,6 @@ TEST(RoomAffectTick, HazeTickUsesTheSnapshotLevelForTheModifier)
     affected_type* const plain_haze = affected_by_spell(&occupant.ch, SPELL_HAZE);
     ASSERT_NE(plain_haze, nullptr);
     const int plain_modifier = plain_haze->modifier;
-    while (occupant.ch.affected)
-        affect_remove(&occupant.ch, occupant.ch.affected);
 
     EXPECT_EQ(illusion_modifier, 31) << "cleric 20 + wil 25/5 + the Illusion bonus";
     EXPECT_EQ(plain_modifier, 25) << "the same levels without the Illusion bonus";
@@ -795,10 +899,12 @@ TEST(RoomAffectTick, MistTickRenewsFromTheSnapshotLevel)
     room_data* const adjacent = room_by_id_total(kAdjacentRoom);
     room_direction_data exit_north {};
     exit_north.to_room = kAdjacentRoom;
-    room->dir_option[NORTH] = &exit_north;
     adjacent->room_flags = 0; // no SHADOWY: the seeded mist's modifier must be 0
+    ScopedRoomExit north_exit { room, NORTH, &exit_north };
+    ScopedRoomAffectCleanup adjacent_cleanup { adjacent };
 
     Occupant occupant { 500 };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
 
     // --- a level-30 mage: main room renews to 30 / 5, the exit gets 30 / 6 --
@@ -837,9 +943,6 @@ TEST(RoomAffectTick, MistTickRenewsFromTheSnapshotLevel)
     affected_type* const seeded_again = room_affected_by_spell(adjacent, SPELL_MIST_OF_BAAZUNGA);
     ASSERT_NE(seeded_again, nullptr);
     const int apprentice_there = seeded_again->duration;
-
-    clear_room_affects(adjacent);
-    room->dir_option[NORTH] = nullptr;
 
     EXPECT_EQ(grand_here, 6) << "level 30 / 5";
     EXPECT_EQ(grand_there, 5) << "level 30 / 6";
@@ -929,7 +1032,8 @@ TEST(RoomAffectTick, AffectUpdateRoomCarriesTheCasterWhenTheMistMoves)
     room_data* const adjacent = room_by_id_total(kAdjacentRoom);
     room_direction_data exit_north {};
     exit_north.to_room = kAdjacentRoom;
-    room->dir_option[NORTH] = &exit_north;
+    ScopedRoomExit north_exit { room, NORTH, &exit_north };
+    ScopedRoomAffectCleanup adjacent_cleanup { adjacent };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, {} };
 
     Caster mage { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
@@ -953,9 +1057,6 @@ TEST(RoomAffectTick, AffectUpdateRoomCarriesTheCasterWhenTheMistMoves)
         = moved ? room_affect_caster(adjacent, SPELL_MIST_OF_BAAZUNGA) : nullptr;
     const int moved_abs_number = moved_caster ? moved_caster->abs_number : -999;
     const bool moved_is_none = moved_caster ? moved_caster->is_none() : true;
-
-    clear_room_affects(adjacent);
-    room->dir_option[NORTH] = nullptr;
 
     ASSERT_NE(moved, nullptr) << "the mist must have drifted north; stderr was: " << captured;
     EXPECT_FALSE(source_kept_the_mist) << "and left its old room";
@@ -993,6 +1094,7 @@ TEST(RoomAffectTick, AffectUpdateRoomTicksBlazeFromTheRecordedCasterNotTheOccupa
 
     room_data* const room = room_by_id_total(kAffectedRoom);
     Occupant occupant { 500 };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
     ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
     Caster mage { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
     ScopedRoomSpellAffect blaze { room, SPELL_BLAZE, /*duration=*/5, /*modifier=*/25,
@@ -1006,11 +1108,135 @@ TEST(RoomAffectTick, AffectUpdateRoomTicksBlazeFromTheRecordedCasterNotTheOccupa
     clear_test_random_values();
 
     const int hit_after = occupant.ch.tmpabilities.hit;
-    occupant.ch.specials.fighting = nullptr;
 
     EXPECT_EQ(hit_after, 466)
         << "affect_update_room() must tick through room_affect_tick() (500 - 34), not re-cast "
            "the spell with the occupant as its own caster (which would leave 493)";
     EXPECT_NE(hit_after, 493) << "493 is the pre-TASK-021 self-re-cast result";
     EXPECT_NE(hit_after, 500) << "and the tick must have fired at all";
+}
+
+// ---------------------------------------------------------------------------
+// poison, saved arm: who is told about a save
+// ---------------------------------------------------------------------------
+//
+// The original saved arm (mystic.cpp:1337-1338) sent two lines, both anchored
+// on the caster. From a room tick the caster WAS the victim, so act()'s
+// `recipient != ch || type == TO_CHAR` gate suppressed the victim-facing
+// TO_VICT line outright and delivered only the self-addressed TO_CHAR one.
+// The tick re-aims both: the occupant always hears that its body fended the
+// poison off, and the caster-facing line goes out only when the recorded caster
+// is still alive AND standing in this room.
+//
+// The save is forced to SUCCEED by making the two draws in
+// `number(offence / 3, offence) < number(defense / 2, defense)` disjoint: a
+// caster at willpower 1 / perception 100 has offence 8, so its draw is at most
+// 8, while the occupant's defense of GET_CON * 5 = 50 puts its draw at 25 or
+// more. 8 < 25 for every queued value AND for either evaluation order of `<`'s
+// operands (which C++ does not sequence).
+TEST(RoomAffectTick, PoisonTickSavedArmTellsTheOccupantAndTheInRoomCaster)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickZoneTable zone_table_owner;
+    ScopedTickMobIndex prototype_table;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+
+    // --- the recorded caster is standing in the room ------------------------
+    std::string occupant_heard_in_room;
+    std::string caster_heard_in_room;
+    {
+        Occupant occupant { 500 };
+        Caster mystic { /*mage_prof=*/0, /*cleric_prof=*/20, game_types::PS_None };
+        mystic.ch.points.willpower = 1; // offence 8 against a defense floor of 25
+
+        descriptor_data occupant_descriptor {};
+        descriptor_data caster_descriptor {};
+        reset_capturing_descriptor(occupant_descriptor, &occupant.ch);
+        reset_capturing_descriptor(caster_descriptor, &mystic.ch);
+        occupant.ch.desc = &occupant_descriptor;
+        mystic.ch.desc = &caster_descriptor;
+        ScopedDescriptorLargeOutbufReturn occupant_outbuf { occupant_descriptor };
+        ScopedDescriptorLargeOutbufReturn caster_outbuf { caster_descriptor };
+
+        ScopedTickCharExists mystic_exists { mystic.ch, kCasterAbsNumber };
+        ScopedRoomOccupants affected_room { room, kAffectedRoom, { &mystic.ch, &occupant.ch } };
+        ScopedCharacterCleanup occupant_cleanup { occupant.ch };
+        ScopedCharacterCleanup caster_cleanup { mystic.ch };
+        ScopedRoomSpellAffect poison { room, SPELL_POISON, 5, 10,
+            caster_snapshot::capture(mystic.ch) };
+
+        queue_mid_rolls(32);
+        ASSERT_TRUE(room_affect_tick(SPELL_POISON, room, &occupant.ch, poison.affect()));
+        clear_test_random_values();
+
+        EXPECT_EQ(affected_by_spell(&occupant.ch, SPELL_POISON), nullptr)
+            << "the save must succeed, so no poison lands";
+        EXPECT_EQ(occupant.ch.specials.poisoned_by_abs_number, -1)
+            << "and a saved tick records no poisoner";
+        EXPECT_EQ(occupant.ch.tmpabilities.hit, 500) << "and deals no damage";
+
+        occupant_heard_in_room = occupant_descriptor.output;
+        caster_heard_in_room = caster_descriptor.output;
+        occupant.ch.desc = nullptr;
+        mystic.ch.desc = nullptr;
+    }
+
+    // --- the same caster, recorded from ANOTHER room ------------------------
+    std::string occupant_heard_remote;
+    std::string caster_heard_remote;
+    {
+        Occupant occupant { 500 };
+        Caster mystic { /*mage_prof=*/0, /*cleric_prof=*/20, game_types::PS_None };
+        mystic.ch.points.willpower = 1;
+
+        descriptor_data occupant_descriptor {};
+        descriptor_data caster_descriptor {};
+        reset_capturing_descriptor(occupant_descriptor, &occupant.ch);
+        reset_capturing_descriptor(caster_descriptor, &mystic.ch);
+        occupant.ch.desc = &occupant_descriptor;
+        mystic.ch.desc = &caster_descriptor;
+        ScopedDescriptorLargeOutbufReturn occupant_outbuf { occupant_descriptor };
+        ScopedDescriptorLargeOutbufReturn caster_outbuf { caster_descriptor };
+
+        ScopedTickCharExists mystic_exists { mystic.ch, kCasterAbsNumber };
+        ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
+        ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom,
+            { &mystic.ch } };
+        ScopedCharacterCleanup occupant_cleanup { occupant.ch };
+        ScopedCharacterCleanup caster_cleanup { mystic.ch };
+        ScopedRoomSpellAffect poison { room, SPELL_POISON, 5, 10,
+            caster_snapshot::capture(mystic.ch) };
+
+        queue_mid_rolls(32);
+        ASSERT_TRUE(room_affect_tick(SPELL_POISON, room, &occupant.ch, poison.affect()));
+        clear_test_random_values();
+
+        EXPECT_EQ(affected_by_spell(&occupant.ch, SPELL_POISON), nullptr);
+
+        occupant_heard_remote = occupant_descriptor.output;
+        caster_heard_remote = caster_descriptor.output;
+        occupant.ch.desc = nullptr;
+        mystic.ch.desc = nullptr;
+    }
+
+    // Substring, not equality: act() capitalizes and appends "\n\r", and the
+    // caster-facing line renders $N through PERS().
+    EXPECT_NE(occupant_heard_in_room.find("You feel your body fend off the poison."),
+        std::string::npos)
+        << "the occupant is always told its body fended the poison off; heard: "
+        << occupant_heard_in_room;
+    EXPECT_NE(caster_heard_in_room.find("shrugs off your poison with ease."), std::string::npos)
+        << "a caster standing in the room is told its poison failed; heard: "
+        << caster_heard_in_room;
+
+    EXPECT_NE(occupant_heard_remote.find("You feel your body fend off the poison."),
+        std::string::npos)
+        << "...and is told the same when the recorded caster is elsewhere; heard: "
+        << occupant_heard_remote;
+    EXPECT_EQ(caster_heard_remote, "")
+        << "but a caster who is not in the room is told nothing at all; heard: "
+        << caster_heard_remote;
 }

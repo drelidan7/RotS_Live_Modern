@@ -15,10 +15,12 @@
 //   * poison_tick() records the poisoner on the victim, so a later poison death
 //     resolves back to whoever cast it (resolve_poisoner(), fight.cpp).
 //
-// The two messages the original poison arm sent to the CASTER when the save
-// succeeded ("$N shrugs off your poison with ease.") are not reproduced: with
-// caster == victim they were self-addressed noise, and there is no live caster
-// to address here in the general case. The victim-facing message is kept.
+// The saved arm's two messages are both kept, but re-aimed: the victim-facing
+// line always reaches the occupant (the old caster == victim shape suppressed
+// it outright inside act()), and the caster-facing "$N shrugs off your poison
+// with ease." is delivered only when the recorded caster is still alive AND
+// standing in this room -- otherwise there is nobody to address. See
+// poison_tick() below for the full account.
 //
 // Tier: rots_combat (L3). It calls down into rots_entity (affect_join/
 // affect_to_char/saves_poison/saves_mystic) and rots_world (room lookups) and
@@ -97,7 +99,26 @@ void poison_tick(const caster_snapshot& who, char_data* caster, char_data* occup
         send_to_char("You feel very sick.\n\r", occupant);
         damage_credited(engaging_attacker(caster, occupant), occupant, caster, 5, SPELL_POISON, 0);
     } else {
-        act("You feel your body fend off the poison.", TRUE, occupant, 0, occupant, TO_VICT);
+        // The original saved arm (mystic.cpp:1337-1338) sent TWO lines, both
+        // anchored on the caster: a TO_VICT line to the poisoned character and
+        // a TO_CHAR line to whoever cast it. Anchoring the first on `caster` is
+        // also what lets it through act()'s `recipient != ch` gate -- with
+        // caster == victim, which is all the pre-TASK-021 room re-cast could
+        // produce, act() suppressed the victim's own line entirely and
+        // delivered only the (self-addressed) second one. With no caster left
+        // to anchor on there is nothing for act() to render, so the line is
+        // sent directly, the way this function's other victim-facing message
+        // ("You feel very sick.") already is.
+        if (caster != nullptr)
+            act("You feel your body fend off the poison.", TRUE, caster, 0, occupant, TO_VICT);
+        else
+            send_to_char("You feel your body fend off the poison.\n\r", occupant);
+
+        // ...and the caster-facing line only when there IS a caster to address:
+        // still alive AND standing in this room. A caster who walked away, or
+        // who is gone entirely, is told nothing.
+        if (engaging_attacker(caster, occupant) == caster)
+            act("$N shrugs off your poison with ease.", FALSE, caster, 0, occupant, TO_CHAR);
     }
 }
 

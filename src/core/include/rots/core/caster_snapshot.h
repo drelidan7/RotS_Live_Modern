@@ -5,11 +5,18 @@
 // char_data*: a caster who dies, levels, re-specs or is extracted after the
 // cast never changes an active spell, and nothing can dangle. POD on purpose
 // (copied by value, may live in pooled storage).
-#include "rots/core/types.h" // game_types::player_specs, MAX_NAME_LENGTH
+#include "rots/core/types.h" // game_types::player_specs
 
 struct char_data;
 
 struct caster_snapshot {
+    // GET_NAME() returns player.short_descr for an NPC ("a battle-scarred
+    // orc chieftain") -- routinely well past MAX_NAME_LENGTH (12), the PC
+    // player-name limit -- so NPC casters, the common case, need real
+    // headroom. 64 is the brief's own fallback figure (TASK-021 fix round 1,
+    // finding 1); snprintf in capture()/none() still bounds every write.
+    static constexpr int kNameCapacity = 64;
+
     int abs_number; // identity for kill credit only; never used to read stats
     char_data* identity_ptr; // the pointer at capture; meaningful only through resolve()
     int level_a; // GET_LEVELA at cast time
@@ -27,7 +34,7 @@ struct caster_snapshot {
     bool is_charmed; // IS_AFFECTED(AFF_CHARM) (other_side / spell pen inputs)
     bool is_pc_for_spell_pen; // should_apply_spell_penetration() at capture
     int master_mage_prof_level; // charmed NPC's master PROF_MAGE level (get_spell_pen_value), else 0
-    char name[MAX_NAME_LENGTH + 1]; // display name for messages when the caster is gone
+    char name[kNameCapacity]; // display name for messages when the caster is gone
 
     static caster_snapshot capture(const char_data& caster);
     static caster_snapshot none();

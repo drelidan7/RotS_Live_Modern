@@ -1043,6 +1043,15 @@ void put_to_affected_type_pool(struct affected_type* oldaf)
 // extern/declaration.
 char char_control_array[MAX_CHARACTERS / 8 + 1];
 
+// Parallel to char_control_array: the char_data* registered under each live
+// abs_number slot (TASK-021 fix round 1). caster_snapshot::resolve() needs
+// to recover the CURRENT owner of a slot without ever dereferencing its own
+// stale identity_ptr (a recycled slot can be a different, already-freed-and-
+// reallocated character) -- char_by_abs_number() is the only sanctioned way
+// to do that lookup. File-local: only this TU's char_by_abs_number()/
+// set_char_exists()/remove_char_exists() touch it.
+static char_data* characters_by_abs_number[MAX_CHARACTERS];
+
 int char_exists(int num)
 {
     return (char_control_array[num / 8] & (1 << (num % 8)));
@@ -1051,9 +1060,30 @@ void set_char_exists(int num)
 {
     char_control_array[num / 8] |= (1 << (num % 8));
 }
+// Overload used by register_npc_char()/register_pc_char(): records the
+// registering character's pointer alongside the existence bit so
+// char_by_abs_number() can recover it later (TASK-021 fix round 1).
+void set_char_exists(int num, char_data* ch)
+{
+    set_char_exists(num);
+    characters_by_abs_number[num] = ch;
+}
 void remove_char_exists(int num)
 {
     char_control_array[num / 8] &= ~(1 << (num % 8));
+    characters_by_abs_number[num] = nullptr;
+}
+
+// Bounds-checked lookup of the character CURRENTLY registered under num, or
+// nullptr if the slot is unallocated or num is out of range (TASK-021 fix
+// round 1). The only safe way to turn an abs_number back into a char_data*:
+// unlike dereferencing a previously-captured pointer, this never reads
+// through a stale/recycled pointer.
+char_data* char_by_abs_number(int num)
+{
+    if (num < 0 || num >= MAX_CHARACTERS || !char_exists(num))
+        return nullptr;
+    return characters_by_abs_number[num];
 }
 
 // handler.cpp -- register_npc_char() (+ its only global, last_control_set)
@@ -1087,7 +1117,7 @@ int register_npc_char(struct char_data* mob)
         log("register_char: MUD IS OVERFLOWED.");
         exit(0);
     }
-    set_char_exists(i);
+    set_char_exists(i, mob);
     mob->abs_number = i;
     last_control_set = i;
 

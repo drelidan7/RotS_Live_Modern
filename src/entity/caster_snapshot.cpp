@@ -48,7 +48,14 @@ bool caster_snapshot::same_character_as(const char_data& ch) const
 
 char_data* caster_snapshot::resolve() const
 {
-    if (is_none() || identity_ptr == nullptr || !char_exists(abs_number))
+    // Never dereferences identity_ptr: abs_number slots are recycled by
+    // register_npc_char() after free_char(), so a stale identity_ptr can
+    // point at freed storage that has since been reallocated to an
+    // unrelated character (TASK-021 fix round 1). char_by_abs_number()
+    // looks up the CURRENT owner of the slot instead; identity_ptr is only
+    // ever compared, never read through.
+    if (is_none())
         return nullptr;
-    return identity_ptr->abs_number == abs_number ? identity_ptr : nullptr;
+    char_data* live = char_by_abs_number(abs_number);
+    return (live != nullptr && live == identity_ptr) ? live : nullptr;
 }

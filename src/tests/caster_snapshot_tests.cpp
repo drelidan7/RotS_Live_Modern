@@ -57,15 +57,43 @@ TEST(CasterSnapshot, ResolveRequiresTheSameRegisteredCharacter) {
     char_data ch {};
     char_prof_data profs {};
     make_mage(ch, profs);
-    set_char_exists(ch.abs_number);
+    set_char_exists(ch.abs_number, &ch);
     const caster_snapshot snap = caster_snapshot::capture(ch);
     EXPECT_EQ(snap.resolve(), &ch);
     remove_char_exists(ch.abs_number);
     EXPECT_EQ(snap.resolve(), nullptr) << "an extracted caster resolves to nobody";
-    set_char_exists(ch.abs_number);
-    ch.abs_number = 7904; // the slot was recycled by a different character
+
+    // The slot is recycled: a DIFFERENT character is registered under the
+    // same abs_number. resolve() must recognize the mismatch without ever
+    // dereferencing snap's own (now-stale) identity_ptr -- it only compares
+    // that pointer value against char_by_abs_number()'s report of the
+    // CURRENT owner, so this stays safe even when the old pointer is
+    // dangling (a freed char_data, in real usage).
+    char_data other {};
+    char_prof_data other_profs {};
+    make_mage(other, other_profs); // make_mage always lands on abs_number 7903
+    set_char_exists(other.abs_number, &other);
     EXPECT_EQ(snap.resolve(), nullptr);
     remove_char_exists(7903);
+}
+
+TEST(CasterSnapshot, SameCharacterAsRequiresPointerAndNumberToMatch) {
+    char_data ch {};
+    char_prof_data profs {};
+    make_mage(ch, profs);
+    const caster_snapshot snap = caster_snapshot::capture(ch);
+    EXPECT_TRUE(snap.same_character_as(ch));
+
+    char_data other {};
+    char_prof_data other_profs {};
+    make_mage(other, other_profs); // a different char_data at the same abs_number
+    EXPECT_FALSE(snap.same_character_as(other));
+
+    ch.abs_number = 7904; // same pointer, but abs_number changed since capture
+    EXPECT_FALSE(snap.same_character_as(ch));
+
+    const caster_snapshot none = caster_snapshot::none();
+    EXPECT_FALSE(none.same_character_as(ch));
 }
 
 TEST(CasterSnapshot, NoneIsNeverResolvable) {

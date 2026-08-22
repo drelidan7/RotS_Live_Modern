@@ -605,7 +605,16 @@ char* money_message(int sum, int mode = 0);
 
 int char_exists(int num);
 void set_char_exists(int num);
+// Overload that also records the registering character's pointer, so
+// char_by_abs_number() can recover it later (TASK-021 fix round 1: resolve()
+// must never dereference a caller-held identity pointer, since abs_number
+// slots are recycled by register_npc_char() after free_char()).
+void set_char_exists(int num, struct char_data* ch);
 void remove_char_exists(int num);
+// Bounds-checked: nullptr for num < 0, num >= MAX_CHARACTERS, or an
+// unallocated slot. The only sanctioned way to turn an abs_number back into
+// a char_data* (TASK-021 fix round 1).
+struct char_data* char_by_abs_number(int num);
 int register_npc_char(struct char_data*);
 int register_pc_char(struct char_data*);
 

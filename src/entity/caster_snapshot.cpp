@@ -1,0 +1,54 @@
+// src/entity/caster_snapshot.cpp
+#include "rots/core/caster_snapshot.h"
+#include "char_utils.h"
+#include "handler.h"
+#include "utils.h"
+#include "rots/core/character.h"
+#include <cstdio>
+
+caster_snapshot caster_snapshot::capture(const char_data& caster)
+{
+    caster_snapshot snap {};
+    snap.abs_number = caster.abs_number;
+    snap.identity_ptr = const_cast<char_data*>(&caster);
+    snap.level_a = GET_LEVELA(&caster);
+    snap.mage_prof_level = utils::get_prof_level(PROF_MAGE, caster);
+    snap.cleric_prof_level = utils::get_prof_level(PROF_CLERIC, caster);
+    snap.intel = caster.tmpabilities.intel;
+    snap.wil = caster.tmpabilities.wil;
+    snap.perception = GET_PERCEPTION(snap.identity_ptr); // get_race_perception() takes a non-const char_data*
+    snap.willpower = GET_WILLPOWER(&caster);
+    snap.spell_power = caster.points.spell_power;
+    snap.spell_pen = caster.points.spell_pen;
+    snap.specialization = utils::get_specialization(caster);
+    snap.race = GET_RACE(&caster);
+    snap.is_npc = utils::is_npc(caster);
+    snap.is_charmed = utils::is_affected_by(caster, AFF_CHARM);
+    snap.is_pc_for_spell_pen = !snap.is_npc
+        || (utils::is_mob_flagged(caster, MOB_ORC_FRIEND) && snap.is_charmed && caster.master && utils::is_pc(*caster.master));
+    snap.master_mage_prof_level = (snap.is_npc && snap.is_charmed && caster.master)
+        ? utils::get_prof_level(PROF_MAGE, *caster.master) : 0;
+    const char* name = GET_NAME(&caster);
+    std::snprintf(snap.name, sizeof(snap.name), "%s", name ? name : "someone");
+    return snap;
+}
+
+caster_snapshot caster_snapshot::none()
+{
+    caster_snapshot snap {};
+    snap.abs_number = -1;
+    std::snprintf(snap.name, sizeof(snap.name), "%s", "nobody");
+    return snap;
+}
+
+bool caster_snapshot::same_character_as(const char_data& ch) const
+{
+    return !is_none() && identity_ptr == &ch && ch.abs_number == abs_number;
+}
+
+char_data* caster_snapshot::resolve() const
+{
+    if (is_none() || identity_ptr == nullptr || !char_exists(abs_number))
+        return nullptr;
+    return identity_ptr->abs_number == abs_number ? identity_ptr : nullptr;
+}

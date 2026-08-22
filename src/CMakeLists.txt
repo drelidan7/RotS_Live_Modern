@@ -174,7 +174,7 @@ set(ROTS_ENTITY_SOURCES
     entity/entity_lifecycle.cpp entity/object_utils.cpp entity/environment_utils.cpp
     entity/char_utils.cpp entity/char_utils_combat.cpp
     entity/placement.cpp entity/containment.cpp entity/equipment.cpp
-    entity/location_benchmark.cpp
+    entity/location_benchmark.cpp entity/caster_snapshot.cpp
 )
 
 # L3: persist layer (spec §3/§10 step 4; persist-split PS Task 4 payoff).
@@ -1370,6 +1370,7 @@ if(ROTS_BUILD_TESTS)
         tests/affect_update_tests.cpp
         tests/battle_mage_handler_tests.cpp
         tests/big_brother_hooks_tests.cpp
+        tests/caster_snapshot_tests.cpp
         tests/boards_json_tests.cpp
         tests/char_utils_tests.cpp
         tests/character_json_tests.cpp

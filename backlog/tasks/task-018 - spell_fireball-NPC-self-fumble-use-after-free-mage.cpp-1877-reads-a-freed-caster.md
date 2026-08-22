@@ -3,9 +3,10 @@ id: TASK-018
 title: >-
   spell_fireball: NPC self-fumble use-after-free (mage.cpp:1877 reads a freed
   caster)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 17:08'
+updated_date: '2026-08-22 16:53'
 labels: []
 milestone: m-0
 dependencies: []
@@ -24,7 +25,13 @@ Source: RR R3 census A overturn (2026-08-21). The RR program's ledger can only c
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Red-first test reproduces the NPC self-fumble path against the unfixed code (use ASan to witness the free)
-- [ ] #2 Fix lands with seed42 characterization + boot goldens byte-identical, or with a documented, regenerated golden if the fix is necessarily observable
-- [ ] #3 Ledger row src/combat/mage.cpp · spell_fireball · room_of( classified PROVEN or GUARDED and MAXIMUM_TODO_COUNT lowered --check-derived
+- [x] #1 Red-first test reproduces the NPC self-fumble path against the unfixed code (use ASan to witness the free)
+- [x] #2 Fix lands with seed42 characterization + boot goldens byte-identical, or with a documented, regenerated golden if the fix is necessarily observable
+- [x] #3 Ledger row src/combat/mage.cpp · spell_fireball · room_of( classified PROVEN or GUARDED and MAXIMUM_TODO_COUNT lowered --check-derived
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-22: fixed on fix/task-018-spell-fireball-uaf. AC#1 note — the literal free is NOT exercised by the test: a real extract_char() on the stack fixture would free() non-heap storage, so the test stubs the seam to the real unlink minus the free and witnesses the post-death resolve through the negative-room mudlog (deterministic, red-first); ASan+UBSan ran clean on the suite with the fix. The first two red attempts were fixture gaps in the death pipeline (no mob_index for an NPC caster), closed by a scoped one-entry table.
+<!-- SECTION:NOTES:END -->

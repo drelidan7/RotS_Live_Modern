@@ -9,27 +9,32 @@
 caster_snapshot caster_snapshot::capture(const char_data& caster)
 {
     caster_snapshot snap {};
+    // Macros like GET_LEVELA/GET_NAME null-guard their argument (e.g. IS_NPC's
+    // "(ch) && ..."), which gcc's -Wnonnull-compare flags as comparing a
+    // reference's address to NULL even though it can never be null here. Route
+    // every such macro through this pointer instead of taking &caster inline.
+    const char_data* const ch = &caster;
     snap.abs_number = caster.abs_number;
     snap.identity_ptr = const_cast<char_data*>(&caster);
-    snap.level_a = GET_LEVELA(&caster);
+    snap.level_a = GET_LEVELA(ch);
     snap.mage_prof_level = utils::get_prof_level(PROF_MAGE, caster);
     snap.cleric_prof_level = utils::get_prof_level(PROF_CLERIC, caster);
     snap.intel = caster.tmpabilities.intel;
     snap.wil = caster.tmpabilities.wil;
     snap.perception = GET_PERCEPTION(snap.identity_ptr); // get_race_perception() takes a non-const char_data*
-    snap.willpower = GET_WILLPOWER(&caster);
+    snap.willpower = GET_WILLPOWER(ch);
     snap.spell_power = caster.points.spell_power;
     snap.spell_pen = caster.points.spell_pen;
     snap.tactics = caster.specials.tactics;
     snap.specialization = utils::get_specialization(caster);
-    snap.race = GET_RACE(&caster);
+    snap.race = GET_RACE(ch);
     snap.is_npc = utils::is_npc(caster);
     snap.is_charmed = utils::is_affected_by(caster, AFF_CHARM);
     snap.is_pc_for_spell_pen = !snap.is_npc
         || (utils::is_mob_flagged(caster, MOB_ORC_FRIEND) && snap.is_charmed && caster.master && utils::is_pc(*caster.master));
     snap.master_mage_prof_level = (snap.is_npc && snap.is_charmed && caster.master)
         ? utils::get_prof_level(PROF_MAGE, *caster.master) : 0;
-    const char* name = GET_NAME(&caster);
+    const char* name = GET_NAME(ch);
     std::snprintf(snap.name, sizeof(snap.name), "%s", name ? name : "someone");
     return snap;
 }

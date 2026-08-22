@@ -6,6 +6,7 @@
 #include "rots/core/caster_snapshot.h"
 #include "rots/core/character.h"
 #include "test_random_utils.h"
+#include "test_world.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -432,4 +433,33 @@ TEST(CasterSnapshot, RaceWarSideAndFriendlyFireReadTheCapturedRace) {
     EXPECT_FALSE(is_friendly_taget(snap, &orc))
         << "the master recursion still decides for everyone else";
     ch.master = nullptr;
+}
+
+TEST(RoomAffectCaster, AffectToRoomRecordsTheSnapshotAndRemoveErasesIt) {
+    ScopedTestWorld world(4);
+    room_data* room = room_by_id_total(2);
+    char_data ch {};
+    char_prof_data profs {};
+    make_mage(ch, profs);
+    affected_type blaze {};
+    blaze.type = ROOMAFF_SPELL; blaze.duration = 3; blaze.modifier = 20; blaze.location = SPELL_BLAZE;
+    affect_to_room(room, &blaze, caster_snapshot::capture(ch));
+    const caster_snapshot* recorded = room_affect_caster(room, SPELL_BLAZE);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->mage_prof_level, 25);
+    EXPECT_EQ(room_affect_caster(room, SPELL_HAZE), nullptr);
+    affect_remove_room(room, room_affected_by_spell(room, SPELL_BLAZE));
+    EXPECT_EQ(room_affect_caster(room, SPELL_BLAZE), nullptr);
+}
+
+TEST(RoomAffectCaster, TheTwoArgumentFormRecordsNobody) {
+    ScopedTestWorld world(4);
+    room_data* room = room_by_id_total(2);
+    affected_type haze {};
+    haze.type = ROOMAFF_SPELL; haze.duration = 3; haze.modifier = 5; haze.location = SPELL_HAZE;
+    affect_to_room(room, &haze);
+    const caster_snapshot* recorded = room_affect_caster(room, SPELL_HAZE);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_TRUE(recorded->is_none());
+    affect_remove_room(room, room_affected_by_spell(room, SPELL_HAZE));
 }

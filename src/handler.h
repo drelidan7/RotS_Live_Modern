@@ -24,6 +24,7 @@
 // handler.h).
 #include "rots/core/character.h"
 #include "rots/core/room.h"
+#include "rots/core/caster_snapshot.h" /* For the room-affect caster-snapshot store below */
 
 #include <string_view>
 
@@ -41,6 +42,9 @@ void affect_total_room(struct room_data* room, int mode = AFFECT_TOTAL_UPDATE);
 void affect_modify_room(struct room_data* room, byte loc, int mod, long bitv, char add);
 void affect_to_room(struct room_data* room, struct affected_type* af);
 void affect_remove_room(struct room_data* room, struct affected_type* af);
+void affect_to_room(struct room_data* room, struct affected_type* af, const caster_snapshot& caster);
+const caster_snapshot* room_affect_caster(const room_data* room, int spell);
+void set_room_affect_caster(room_data* room, int spell, const caster_snapshot& caster);
 void affect_from_room(struct room_data* room, byte skill);
 
 void affect_total(struct char_data* ch, int mode = AFFECT_TOTAL_UPDATE);

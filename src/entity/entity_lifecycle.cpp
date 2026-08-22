@@ -99,10 +99,12 @@
 #include <format>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <new>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 // Cross-TU forward declarations for symbols init_char() below calls
@@ -2971,6 +2973,24 @@ void affect_total_room(struct room_data*, int)
 {
 }
 
+namespace {
+// The caster recorded for each live room affect, keyed by (room number,
+// spell). Lives beside the affect rather than inside affected_type, which
+// is embedded in the legacy binary player-file layout and must not grow.
+std::map<std::pair<int, int>, caster_snapshot> g_room_affect_casters;
+} // namespace
+
+void set_room_affect_caster(room_data* room, int spell, const caster_snapshot& caster)
+{
+    g_room_affect_casters[{ room->number, spell }] = caster;
+}
+
+const caster_snapshot* room_affect_caster(const room_data* room, int spell)
+{
+    auto it = g_room_affect_casters.find({ room->number, spell });
+    return it == g_room_affect_casters.end() ? nullptr : &it->second;
+}
+
 /* Standard mud call to put an affected structure to a room.  The room is added to
    the list of affected rooms if necessary, and its values are updated.  Similar to
    affect_to_char */
@@ -3005,6 +3025,16 @@ void affect_to_room(struct room_data* room, struct affected_type* af)
     affect_modify_room(room, af->location, af->modifier, af->bitvector,
         AFFECT_MODIFY_SET);
     affect_total_room(room);
+
+    if (af->type == ROOMAFF_SPELL && room_affect_caster(room, af->location) == nullptr)
+        set_room_affect_caster(room, af->location, caster_snapshot::none());
+}
+
+void affect_to_room(struct room_data* room, struct affected_type* af, const caster_snapshot& caster)
+{
+    affect_to_room(room, af);
+    if (af->type == ROOMAFF_SPELL)
+        set_room_affect_caster(room, af->location, caster);
 }
 
 /* Removes an affection from a room */
@@ -3014,6 +3044,8 @@ void affect_remove_room(struct room_data* room, struct affected_type* af)
     struct affected_type *hjp, *tmpaf;
     universal_list *tmplist, *tmplist2;
     int tmp, perms_only;
+    const int spell = af->location; // read before af is unlinked/pooled below
+    const bool is_room_spell = af->type == ROOMAFF_SPELL;
 
     //   assert(ch->affected);
     if (!room->affected)
@@ -3041,6 +3073,9 @@ void affect_remove_room(struct room_data* room, struct affected_type* af)
 
     //   RELEASE(af);
     put_to_affected_type_pool(af);
+
+    if (is_room_spell)
+        g_room_affect_casters.erase({ room->number, spell });
 
     perms_only = 1;
     for (tmpaf = room->affected; tmpaf; tmpaf = tmpaf->next)

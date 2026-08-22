@@ -1041,6 +1041,8 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/act_wiz_format_tests.cpp · ActWizInspection.StatRoomFormatsExitLineWithRealDestinationKeywordAndDescription · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/act_wiz_format_tests.cpp · ActWizWorldManip.DoRehashCollectsRoomsWithNonPermanentAffectsAndSkipsPermsOnlyRooms · room_by_id_total(` | 6 | TEST-FIXTURE | — | — |
 | `src/tests/act_wiz_format_tests.cpp · ActWizWorldManip.FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCallers · room_by_id_total(` | 9 | TEST-FIXTURE | — | — |
+| `src/tests/caster_snapshot_tests.cpp · RoomAffectCaster.AffectToRoomRecordsTheSnapshotAndRemoveErasesIt · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
+| `src/tests/caster_snapshot_tests.cpp · RoomAffectCaster.TheTwoArgumentFormRecordsNobody · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/characterization_combat_tests.cpp · CharacterizationCombatTest.DamageTranscriptSeed42 · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/damage_test_context.h · #decl · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/interpre_account_menu_tests.cpp · <anon>::InterpreAccountMenu.IntroduceCharForAccountBackedCharactersAvoidsLegacyFilesAndKeepsFirstLoginState · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
@@ -1183,7 +1185,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 321 |
-| `room_by_id_total(` | 633 |
+| `room_by_id_total(` | 635 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

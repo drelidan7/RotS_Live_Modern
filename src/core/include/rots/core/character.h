@@ -371,6 +371,21 @@ struct char_special_data {
     // change and never reaches char_file_u.
     int ls_load_room_vnum_ = NOWHERE; // LS1-ALLOW: representation-decl (the login-window VNUM channel's field itself -- not a call site; accessor-gated via stash_load_room_vnum/peek_load_room_vnum, placement.cpp)
 
+    // TASK-021: where this character's poison came from. Recorded when a
+    // poison affect is applied (the room-affect tick and the poison spells)
+    // and read back when a poison tick kills, so raw_kill() can tell a
+    // player's poison from a mob's or a trap's instead of assuming every
+    // poison death is a player kill. `poisoned_by_abs_number` is the
+    // poisoner's abs_number, -1 when no poisoner is recorded;
+    // `poisoned_by` is the pointer captured at the same moment.
+    // NEITHER IS SAFE TO USE ALONE: only resolve_poisoner() (fight.cpp) may
+    // hand the pointer back, and only while char_exists() still reports that
+    // abs_number live AND the pointer still claims it -- an extracted (or
+    // slot-recycled) poisoner resolves to nullptr instead of dangling. Not
+    // persisted; char_special_data never reaches char_file_u.
+    int poisoned_by_abs_number = -1;
+    char_data* poisoned_by = nullptr;
+
     int ENERGY; /* current energy */
     sh_int current_parry; /*parry currently affected by 'parry split' */
 

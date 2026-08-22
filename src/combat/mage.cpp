@@ -114,7 +114,7 @@ double get_spell_pen_value(const char_data* caster)
     return get_spell_pen_value(caster_snapshot::capture(*caster));
 }
 
-double get_victim_saving_throw(const char_data* caster, const char_data* victim)
+double get_victim_saving_throw(const caster_snapshot& caster, const char_data* victim)
 {
     double saving_throw = victim->specials2.saving_throw; // this value comes from gear and/or spells.
 
@@ -132,10 +132,20 @@ double get_victim_saving_throw(const char_data* caster, const char_data* victim)
     return saving_throw;
 }
 
-int apply_spell_damage(char_data* caster, char_data* victim, int damage_dealt, int spell_number, int hit_location)
+double get_victim_saving_throw(const char_data* caster, const char_data* victim)
 {
-    double saving_throw = get_victim_saving_throw(caster, victim);
+    // The live form forwards, like every other helper in this file since
+    // TASK-021 Task 2. Identical arithmetic: the two reads it used to make
+    // (should_apply_spell_penetration()/get_spell_pen_value()) each captured a
+    // snapshot of their own already.
+    return get_victim_saving_throw(caster_snapshot::capture(*caster), victim);
+}
 
+// TASK-021: the ONE place apply_spell_damage()'s saving-throw scaling lives.
+// Both forms below run it, so the snapshot-credited form used by the room
+// affect ticks can never drift from the live cast's own damage curve.
+static int scale_spell_damage(double saving_throw, int damage_dealt)
+{
     double damage_multiplier = 1.0;
     if (saving_throw > 0) {
         damage_multiplier = 20.0 / (20.0 + saving_throw);
@@ -143,9 +153,30 @@ int apply_spell_damage(char_data* caster, char_data* victim, int damage_dealt, i
         damage_multiplier = 2.0 - (20.0 / (20.0 - saving_throw));
     }
 
-    damage_dealt = int(damage_dealt * damage_multiplier);
+    return int(damage_dealt * damage_multiplier);
+}
+
+int apply_spell_damage(char_data* caster, char_data* victim, int damage_dealt, int spell_number, int hit_location)
+{
+    damage_dealt = scale_spell_damage(get_victim_saving_throw(caster, victim), damage_dealt);
 
     return damage(caster, victim, damage_dealt, spell_number, hit_location);
+}
+
+// TASK-021: apply_spell_damage() for a hit whose caster is a cast-time
+// SNAPSHOT rather than a live character -- a room affect ticking on an
+// occupant. `who` supplies the spell-penetration side of the saving throw (the
+// caster's stats AS THEY WERE at the cast, not as they are now, and readable
+// even if that character is gone); `attacker` engages the victim; and
+// `credited_killer` -- which may be null, and may stand in another room --
+// takes the kill. Reuses scale_spell_damage() above, so the damage curve is
+// the live cast's, not a copy of it.
+int apply_spell_damage_credited(const caster_snapshot& who, char_data* attacker, char_data* victim,
+    char_data* credited_killer, int damage_dealt, int spell_number, int hit_location)
+{
+    damage_dealt = scale_spell_damage(get_victim_saving_throw(who, victim), damage_dealt);
+
+    return damage_credited(attacker, victim, credited_killer, damage_dealt, spell_number, hit_location);
 }
 
 bool different_zone(int was_in, int to_room)

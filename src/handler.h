@@ -601,6 +601,17 @@ void hit(struct char_data* ch, struct char_data* victim, int type);
 void forget(struct char_data* ch, struct char_data* victim);
 void remember(struct char_data* ch, struct char_data* victim);
 int damage(struct char_data* ch, struct char_data* victim, int dam, int attacktype, int hit_location);
+// TASK-021: damage() with the kill credit named separately from the
+// character that engages the victim. `ch` engages exactly as damage()
+// always did; `credited_killer` (which may be null, may equal `ch`, and may
+// stand in another room) is what reaches die()/raw_kill(). damage() is a
+// forwarder onto this with credit == attacker.
+int damage_credited(struct char_data* ch, struct char_data* victim, struct char_data* credited_killer, int dam, int attacktype, int hit_location);
+// TASK-021: the live character recorded as the source of `victim`'s poison,
+// or null when no live character answers to that record any more (the
+// poisoner was extracted, or its abs_number slot was recycled). The only
+// sanctioned reader of char_special_data's poisoned_by* pair.
+struct char_data* resolve_poisoner(const struct char_data& victim);
 int check_sanctuary(char_data* ch, char_data* victim);
 // Registers fight.cpp's poison_removal_hook_impl() as entity_hooks.h's
 // poison-removal notification. Called once from run_the_game(), before

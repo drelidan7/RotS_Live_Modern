@@ -1045,6 +1045,14 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/caster_snapshot_tests.cpp · RoomAffectCaster.TheTwoArgumentFormRecordsNobody · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/characterization_combat_tests.cpp · CharacterizationCombatTest.DamageTranscriptSeed42 · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/damage_test_context.h · #decl · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · #decl · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · DamageCredited.TheCreditedKillerReachesRawKillNotTheEngagingAttacker · room_by_id_total(` | 3 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · DamageCredited.DamageForwardsWithTheAttackerAsCredit · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · DamageCredited.ANullCreditIsCarriedThroughToDieAsNoKiller · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · PoisonOrigin.RawKillTakesTheStatPenaltyArmWhenTheRecordedPoisonerIsAnNpc · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · PoisonOrigin.RawKillTakesThePlayerKillArmWhenTheRecordedPoisonerIsAPlayer · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · PoisonOrigin.PointUpdatePoisonTickCreditsTheResolvedPoisoner · room_by_id_total(` | 3 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · PoisonOrigin.PointUpdatePoisonTickCreditsNobodyWhenThePoisonerIsGone · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/interpre_account_menu_tests.cpp · <anon>::InterpreAccountMenu.IntroduceCharForAccountBackedCharactersAvoidsLegacyFilesAndKeepsFirstLoginState · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/load_room_placement_tests.cpp · #decl · room_by_id_total(` | 8 | TEST-FIXTURE | — | — |
 | `src/tests/load_room_placement_tests.cpp · <anon>::release_spawned_follower · room_of(` | 1 | TEST-FIXTURE | — | — |
@@ -1185,7 +1193,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 321 |
-| `room_by_id_total(` | 635 |
+| `room_by_id_total(` | 652 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

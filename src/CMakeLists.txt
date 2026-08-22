@@ -1395,6 +1395,7 @@ if(ROTS_BUILD_TESTS)
         tests/entity_lifecycle_tests.cpp
         tests/exploits_json_tests.cpp
         tests/fight_proc_tests.cpp
+        tests/fight_credit_tests.cpp
         tests/fp_determinism_smoke_tests.cpp
         tests/fp_interiors_reference_tests.cpp
         tests/gtest_main.cpp

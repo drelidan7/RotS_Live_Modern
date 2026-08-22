@@ -530,4 +530,19 @@ bool is_friendly_taget(const caster_snapshot& caster, const char_data* victim);
 bool new_saves_spell(const char_data* caster, const char_data* victim, int save_bonus);
 bool new_saves_spell(const caster_snapshot& caster, const char_data* victim, int save_bonus);
 
+// apply_spell_damage()'s two forms (TASK-021). The live form scales the damage
+// by the victim's saving throw against the LIVE caster and credits that caster
+// with the kill. The credited form takes a cast-time caster_snapshot for the
+// scaling and a separate credited_killer for the kill, so a room affect that
+// ticks after its caster changed, left the room, or left the game still scales
+// from the cast and still credits the right character (or nobody). Both run
+// the identical multiplier -- one shared helper in mage.cpp owns it.
+int apply_spell_damage(char_data* caster, char_data* victim, int damage_dealt, int spell_number, int hit_location);
+int apply_spell_damage_credited(const caster_snapshot& who, char_data* attacker, char_data* victim,
+    char_data* credited_killer, int damage_dealt, int spell_number, int hit_location);
+
+// The saving throw the two forms above scale by, in the same two shapes.
+double get_victim_saving_throw(const char_data* caster, const char_data* victim);
+double get_victim_saving_throw(const caster_snapshot& caster, const char_data* victim);
+
 #endif /* SPELLS_H */

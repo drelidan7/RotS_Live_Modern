@@ -872,6 +872,12 @@ void clear_char(struct char_data* ch, int mode)
     ch->specials.alias = 0;
     set_location(ch, NOWHERE); // LS1-ALLOW: write
     ch->specials.was_in_room = NOWHERE;
+    // TASK-021: a fresh character carries no poison and therefore no poisoner.
+    // (The declarations in character.h initialize these too; stated here as
+    // well because this function is the tree's "what a blank character looks
+    // like" statement, and test code calls it directly to reset a character.)
+    ch->specials.poisoned_by_abs_number = -1;
+    ch->specials.poisoned_by = nullptr;
     ch->specials.position = POSITION_STANDING;
     ch->specials.default_pos = POSITION_STANDING;
     SET_TACTICS(ch, TACTICS_NORMAL);
@@ -2672,6 +2678,11 @@ void affect_remove(struct char_data* ch, struct affected_type* af)
     if (!ch->affected)
         return;
 
+    // TASK-021: read before the unlink below returns *af to the pool -- the
+    // recorded poisoner belongs to the poison affect, so it has to be
+    // forgotten when the last one goes (see the tail of this function).
+    const int removed_type = af->type;
+
     affect_modify(ch, af->location, af->modifier, af->bitvector,
         AFFECT_MODIFY_REMOVE, af->counter);
 
@@ -2701,6 +2712,17 @@ void affect_remove(struct char_data* ch, struct affected_type* af)
             if ((tmplist->type == TARGET_CHAR) && (tmplist->ptr.ch == ch))
                 from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
         }
+    }
+
+    // TASK-021: the poison origin outlives no poison. Once the last
+    // SPELL_POISON affect is gone the record is stale -- the next poison,
+    // from whoever casts it, records its own origin. A character whose
+    // AFF_POISON bit comes from somewhere other than an affect (worn gear,
+    // point_update's own tick arm) keeps whatever was recorded, because
+    // nothing was removed here that owned it.
+    if (removed_type == SPELL_POISON && affected_by_spell(ch, SPELL_POISON) == nullptr) {
+        ch->specials.poisoned_by_abs_number = -1;
+        ch->specials.poisoned_by = nullptr;
     }
 
     affect_total(ch);

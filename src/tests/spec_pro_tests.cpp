@@ -3,6 +3,8 @@
 #include "rots/core/types.h"
 #include "../utils.h"
 #include "../interpre.h"
+#include "../handler.h"
+#include "test_world.h"
 #include "../combat_hooks.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/object.h"
@@ -68,6 +70,9 @@ extern int vampire_killer(char_data* host, char_data* ch, int cmd, char* arg, in
 // ("ALL SKILLS") caps skill index 1 at knowledge 100, which this suite uses as
 // its practice ceiling.
 extern struct skill_teach_data guildmasters[MAX_SKILLS];
+// The process-global delay queue WAIT_STATE_FULL() links a character into
+// (comm.cpp); the kidnap test below saves and restores its head.
+extern char_data* waiting_list;
 
 namespace {
 
@@ -1361,4 +1366,136 @@ TEST(SpecProFerryCaptain, LeavesADestinationCabinIntactWhenTheSourceCabinsChainI
         << "A character whose location field names the source room but which is not LINKED into "
            "its occupant chain is not relocated: the splice walks the chain, and the trailing "
            "cursor block restores whatever location the captain already had.";
+}
+
+// ---------------------------------------------------------------------------
+// SPECIAL(vampire_huntress) -- the KIDNAP branch's poison names its host
+// (TASK-021 Task 6)
+// ---------------------------------------------------------------------------
+//
+// This is the fourth and last production site that applies a SPELL_POISON
+// affect, and the only one whose poisoner is a mob rather than a spell's
+// caster. Since Task 4 retired raw_kill()'s "every poison death is a player
+// kill" heuristic, a poison affect with no recorded origin credits NOBODY when
+// it kills -- and a player who dies in Thuringwethil's cells should take the
+// mob-kill arm, which is what this record buys.
+//
+// The LS-2 follow-up (O-I3, see the note above the ExcludesAnNpcBystander test)
+// judged this branch too expensive to reach for the coverage it wanted there.
+// It is reached here because THIS assertion cannot be made any other way: the
+// stamp lives inside the branch. The fixture pays the price that note quotes --
+// a four-room graph (the huntress's start, the destination she flies to, the
+// cell she drops the captive in, and the corridor behind the cell's door,
+// since the branch SET_BIT()s through `dir_option[0]` and then through that
+// room's own `dir_option[2]` with no null guard) plus a saved/restored
+// waiting_list, because the branch ends in WAIT_STATE_FULL(host, ...), the
+// stack-char_data-into-a-process-global splice `2afaee9` bisected out of an
+// unrelated test.
+
+namespace {
+
+// Room numbers must ASCEND with the index: real_room() binary-searches
+// world[].number over [0, top_of_world].
+constexpr int kHuntressStartRoom = 0; // number 1 -- arbitrary; SUN_RISE overrides the wander target
+constexpr int kHuntressDestRoom = 1; // number 15379 -- where the wander block puts her
+constexpr int kCaptiveCellRoom = 2; // number 15398 -- where a race <= 5 captive lands
+constexpr int kCellCorridorRoom = 3; // number 15400 -- behind the cell's dir_option[0]
+
+struct VampireKidnapContext {
+    ScopedTestWorld test_world { 4 };
+    // char_to_room() resolves a PC's zone through zone_by_id(); the captive is
+    // a PC, and every room here reports zone 0.
+    ScopedZoneTableOwner zone_table_owner;
+    char_data host {};
+    char_data victim {};
+    char_prof_data victim_profs {};
+    char host_name[16] = "test_huntress";
+    char victim_name[16] = "test_captive";
+    // The two exits the branch SET_BIT()s through, published on the cell and on
+    // the corridor behind it for the scope.
+    room_direction_data cell_door {};
+    room_direction_data corridor_door {};
+    int saved_sunlight = 0;
+    // The process-global delay queue WAIT_STATE_FULL() splices the host into,
+    // captured before the call and put back afterwards.
+    char_data* saved_waiting_list = nullptr;
+
+    // One helper per room the test moves a character into or out of. Declared
+    // in the order the rooms are used and destroyed in reverse, so each chain
+    // head is put back before the room whose occupant list feeds it.
+    ScopedRoomOccupants start_occupants { room_by_id_total(kHuntressStartRoom), kHuntressStartRoom,
+        { &host } };
+    ScopedRoomOccupants dest_occupants { room_by_id_total(kHuntressDestRoom), kHuntressDestRoom,
+        { &victim } };
+    ScopedRoomOccupants cell_occupants { room_by_id_total(kCaptiveCellRoom), kCaptiveCellRoom, {} };
+
+    VampireKidnapContext()
+    {
+        saved_sunlight = weather_info.sunlight;
+        weather_info.sunlight = SUN_RISE; // pins the wander target to 15379
+        saved_waiting_list = waiting_list;
+
+        room_by_id_total(kHuntressStartRoom)->number = 1;
+        room_by_id_total(kHuntressDestRoom)->number = 15379;
+        room_by_id_total(kCaptiveCellRoom)->number = 15398;
+        room_by_id_total(kCellCorridorRoom)->number = 15400;
+        for (int room_id = kHuntressStartRoom; room_id <= kCellCorridorRoom; ++room_id)
+            room_by_id_total(room_id)->light = 1; // CAN_SEE()'s darkness check
+
+        cell_door.to_room = kCellCorridorRoom;
+        room_by_id_total(kCaptiveCellRoom)->dir_option[0] = &cell_door;
+        room_by_id_total(kCellCorridorRoom)->dir_option[2] = &corridor_door;
+
+        host.specials2.act = MOB_ISNPC;
+        host.player.name = host_name;
+        host.player.short_descr = host_name; // GET_NAME() reads short_descr for an NPC
+        host.specials.position = POSITION_STANDING; // must NOT be POSITION_FIGHTING
+
+        victim.profs = &victim_profs; // affect_total() dereferences it
+        victim.specials2.act = 0; // a PC: the walk's `!IS_NPC()` filter keeps it
+        victim.player.name = victim_name;
+        victim.player.race = RACE_HUMAN; // <= 5, so the cell is 15398 and not 15399
+        victim.player.level = 20; // < LEVEL_GOD
+        victim.abilities.hit = 500;
+        victim.tmpabilities.hit = 500;
+        victim.specials.position = POSITION_STANDING;
+    }
+
+    ~VampireKidnapContext()
+    {
+        while (victim.affected)
+            affect_remove(&victim, victim.affected);
+        room_by_id_total(kCaptiveCellRoom)->dir_option[0] = nullptr;
+        room_by_id_total(kCellCorridorRoom)->dir_option[2] = nullptr;
+        waiting_list = saved_waiting_list;
+        host.delay.next = nullptr; // the link WAIT_STATE_FULL() spliced through
+        weather_info.sunlight = saved_sunlight;
+    }
+};
+
+} // namespace
+
+TEST(SpecProVampireHuntress, TheKidnapBitesPoisonRecordsTheHuntressAsThePoisoner) {
+    VampireKidnapContext context;
+    context.host.abs_number = 7950; // a band no sibling suite registers in
+    context.victim.specials.poisoned_by_abs_number = 4242; // a stale, unrelated record
+    context.victim.specials.poisoned_by = &context.victim;
+
+    clear_test_random_values();
+    // `tmpno = number(0, 2)` must come up 1 -- the kidnap arm. A queued 0.5
+    // normalizes to `from + (to - from + 1) / 2` == 1.
+    push_test_random_value(0.5);
+
+    const int result = vampire_huntress(&context.host, nullptr, 0, mutable_arg(""), SPECIAL_SELF,
+        nullptr);
+    clear_test_random_values();
+
+    EXPECT_EQ(result, 0);
+    ASSERT_EQ(location_of(&context.victim), kCaptiveCellRoom)
+        << "the kidnap arm must have carried the captive into the cell";
+    ASSERT_NE(affected_by_spell(&context.victim, SPELL_POISON), nullptr)
+        << "and bitten it";
+    EXPECT_EQ(context.victim.specials.poisoned_by_abs_number, context.host.abs_number);
+    EXPECT_EQ(context.victim.specials.poisoned_by, &context.host)
+        << "the huntress owns this poison: a captive that dies of it died to a MOB";
 }

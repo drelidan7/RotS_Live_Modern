@@ -205,6 +205,11 @@ ACMD(do_drink)
         af.location = APPLY_NONE;
         af.bitvector = AFF_POISON;
         affect_join(ch, &af, FALSE, FALSE);
+        // TASK-021: a poisoned drink has NO poisoner -- whoever poisoned the
+        // container is long gone and was never recorded -- so this clears the
+        // record rather than leaving whatever an earlier poisoning wrote. A
+        // death by this poison credits nobody, which is the honest answer.
+        record_poison_origin(ch, nullptr);
     }
 
     call_trigger(ON_DRINK, temp, ch, 0);
@@ -280,6 +285,9 @@ ACMD(do_eat)
         af.location = APPLY_NONE;
         af.bitvector = AFF_POISON;
         affect_join(ch, &af, FALSE, FALSE);
+        // TASK-021: poisoned food, like poisoned drink above -- no poisoner to
+        // record, so the record is cleared instead of left stale.
+        record_poison_origin(ch, nullptr);
     }
 
     call_trigger(ON_EAT, food, ch, 0);

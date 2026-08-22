@@ -28,6 +28,8 @@
 #include "../big_brother.h"
 #include "../combat_hooks.h"
 #include "../handler.h"
+#include "../persist_hooks.h"
+#include "../pkill.h"
 #include "../spells.h"
 #include "../utils.h"
 #include "../zone.h"
@@ -51,9 +53,15 @@ extern obj_data* object_list;
 extern struct index_data* mob_index;
 extern int top_of_world;
 extern int mortal_start_room[];
+extern struct skill_data skills[];
 extern int r_mortal_start_room[];
 
 void point_update(void);
+// limits.cpp's per-character affect tick -- the ORDINARY poison DoT's home
+// (its `case SPELL_POISON:` arm), as distinct from point_update()'s
+// AFF_POISON-without-an-affect arm the tests further down already drive.
+// No header declares it.
+void affect_update_person(struct char_data* i, int mode);
 // fight.cpp's own declaration (no header carries it -- the local-extern
 // treatment poison_notification_tests.cpp already gives raw_kill()).
 void raw_kill(char_data* dead_man, char_data* killer, int attack_type);
@@ -900,4 +908,225 @@ TEST(ApplySpellDamageCredited, ScalesFromTheSnapshotsSpellPenetrationNotTheLiveC
         << "the live form must follow the caster's CURRENT proficiency";
     EXPECT_EQ(credited_after, credited_damage)
         << "the credited form must follow the SNAPSHOT, which the caster's collapse cannot touch";
+}
+
+// ---------------------------------------------------------------------------
+// The ORDINARY poison DoT credits the recorded poisoner too (TASK-021 Task 6)
+// ---------------------------------------------------------------------------
+//
+// point_update()'s arm above only fires for an AFF_POISON bit with no
+// SPELL_POISON affect behind it -- worn gear, essentially. Every poison a
+// character actually CASTS or eats produces a SPELL_POISON affect, and that
+// ticks one level down, in affect_update_person()'s `case SPELL_POISON:` arm.
+// Until this task that arm still ran `damage(i, i, 5, SPELL_POISON, 0)`, i.e.
+// credited the poisoned character with its own death, so the recorded poisoner
+// was never consulted for the DoT that does nearly all the killing (Task 4
+// finding F2).
+
+namespace {
+
+// gtest_main never runs boot_db(), so skills[] is consts.cpp's static table.
+// affect_update_person() only reaches an affect's arm when the skill is
+// fast-updating or the affect's time_phase matches the world clock's; pinning
+// is_fast for the scope makes the tick reachable without touching the clock.
+class ScopedFastPoisonSkill {
+public:
+    ScopedFastPoisonSkill()
+        : m_previous(skills[SPELL_POISON].is_fast)
+    {
+        skills[SPELL_POISON].is_fast = 1;
+    }
+    ~ScopedFastPoisonSkill() { skills[SPELL_POISON].is_fast = m_previous; }
+    ScopedFastPoisonSkill(const ScopedFastPoisonSkill&) = delete;
+    ScopedFastPoisonSkill& operator=(const ScopedFastPoisonSkill&) = delete;
+
+private:
+    byte m_previous; // the skills[] cell value this scope displaced
+};
+
+// Strips whatever affects a character still carries at scope exit:
+// affect_to_char() links a stack char_data onto the process-global
+// affected_list, and a death does not always take it back off.
+class ScopedAffectCleanup {
+public:
+    explicit ScopedAffectCleanup(char_data& ch)
+        : m_ch(ch)
+    {
+    }
+    ~ScopedAffectCleanup()
+    {
+        while (m_ch.affected)
+            affect_remove(&m_ch, m_ch.affected);
+    }
+    ScopedAffectCleanup(const ScopedAffectCleanup&) = delete;
+    ScopedAffectCleanup& operator=(const ScopedAffectCleanup&) = delete;
+
+private:
+    char_data& m_ch; // the character whose affect list this scope empties
+};
+
+void noop_pkill_create(char_data* /*victim*/) { }
+
+void noop_exploit_capture(int /*record_type*/, char_data* /*victim*/, int /*int_param*/,
+    const char* /*extra*/)
+{
+}
+
+// die()'s `killer != nullptr` arm -- the one a credited poison death now takes
+// -- runs the exploit capture and pkill_create() between the damage and the
+// stat penalty, and both of those PERSIST: the capture opens
+// ./exploits/<initials>/<name>.exploits.json.tmp relative to the runner's
+// working directory. Stubbed to no-ops for the scope so no test can write into
+// a runtime data tree, and restored to their real registrations afterwards
+// (ScopedNoOpCrashCrashsave's shape, one layer out).
+class ScopedNoOpDeathPersistence {
+public:
+    ScopedNoOpDeathPersistence()
+    {
+        rots::combat::set_pkill_create_hook(noop_pkill_create);
+        rots::persist::set_exploit_capture_hook(noop_exploit_capture);
+    }
+    ~ScopedNoOpDeathPersistence()
+    {
+        register_pkill_create_hook();
+        register_exploit_capture_hook();
+    }
+    ScopedNoOpDeathPersistence(const ScopedNoOpDeathPersistence&) = delete;
+    ScopedNoOpDeathPersistence& operator=(const ScopedNoOpDeathPersistence&) = delete;
+};
+
+// A real, lethal SPELL_POISON affect. Two things make the next tick fatal: one
+// hit point, and a constitution of 2 -- update_pos() (fight.cpp:230) only calls
+// a character dead at `GET_HIT <= -GET_CON / 2`, so the DoT's flat 5 points
+// would leave a con-90 player merely stunned. The hit points are set AFTER
+// affect_to_char(), which rebuilds tmpabilities from abilities through
+// affect_total(); the constitution therefore has to go into abilities, which
+// is what that rebuild reads.
+void arm_poison_affect_tick(char_data& victim)
+{
+    victim.abilities.con = 2;
+    victim.constabilities.con = 2; // affect_total() rebuilds tmpabilities from THIS one
+    victim.tmpabilities.con = 2;
+    affected_type af {};
+    af.type = SPELL_POISON;
+    af.duration = 5;
+    af.modifier = 0;
+    af.location = APPLY_NONE;
+    af.bitvector = AFF_POISON;
+    affect_to_char(&victim, &af);
+    victim.tmpabilities.hit = 1;
+    victim.specials.position = POSITION_STANDING;
+}
+
+} // namespace
+
+TEST(PoisonOrigin, AffectUpdatePersonPoisonTickTakesThePlayerKillArmForAPlayerPoisoner)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+    ScopedFastPoisonSkill fast_poison;
+
+    MortalPlayer player;
+    CreditedKiller mage { /*npc=*/false };
+    ScopedCharExists registered { mage.ch, kKillerAbsNumber };
+    player.ch.specials.poisoned_by_abs_number = mage.ch.abs_number;
+    player.ch.specials.poisoned_by = &mage.ch;
+
+    // The poisoner is somewhere else entirely -- the case the whole task exists
+    // for. A DoT that credited the engaging attacker could never name it.
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom, { &player.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &mage.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+    ScopedAffectCleanup player_affects { player.ch };
+
+    arm_poison_affect_tick(player.ch);
+    affect_update_person(&player.ch, /*mode=*/1);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    ASSERT_TRUE(g_recorded_death.called) << "the DoT tick must have killed the player";
+    EXPECT_EQ(g_recorded_death.killer, &mage.ch)
+        << "the ordinary poison DoT credits the recorded poisoner, not the victim itself";
+    EXPECT_EQ(mage.ch.specials.fighting, nullptr) << "and never engages it";
+    expect_player_kill_arm(player);
+}
+
+TEST(PoisonOrigin, AffectUpdatePersonPoisonTickTakesTheStatPenaltyArmForAMobPoisoner)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+    ScopedFastPoisonSkill fast_poison;
+
+    MortalPlayer player;
+    CreditedKiller snake { /*npc=*/true };
+    ScopedCharExists registered { snake.ch, kKillerAbsNumber };
+    player.ch.specials.poisoned_by_abs_number = snake.ch.abs_number;
+    player.ch.specials.poisoned_by = &snake.ch;
+
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &snake.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+    ScopedAffectCleanup player_affects { player.ch };
+
+    arm_poison_affect_tick(player.ch);
+    affect_update_person(&player.ch, /*mode=*/1);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    ASSERT_TRUE(g_recorded_death.called);
+    EXPECT_EQ(g_recorded_death.killer, &snake.ch);
+    // A mob's poison is not a player kill -- the retired heuristic said it was.
+    expect_stat_penalty_arm(player);
+}
+
+TEST(PoisonOrigin, AffectUpdatePersonPoisonTickCreditsNobodyWhenThePoisonerIsGone)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+    ScopedFastPoisonSkill fast_poison;
+
+    MortalPlayer player;
+    CreditedKiller mage { /*npc=*/false };
+    {
+        ScopedCharExists registered { mage.ch, kKillerAbsNumber };
+        player.ch.specials.poisoned_by_abs_number = mage.ch.abs_number;
+        player.ch.specials.poisoned_by = &mage.ch;
+    }
+    // The poisoner has been extracted: the record survives, the character does
+    // not, and nothing may dereference the recorded pointer to find that out
+    // (the ASan preset is what proves the "nothing").
+    ASSERT_EQ(resolve_poisoner(player.ch), nullptr);
+
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom, { &player.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+    ScopedAffectCleanup player_affects { player.ch };
+
+    arm_poison_affect_tick(player.ch);
+    affect_update_person(&player.ch, /*mode=*/1);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    ASSERT_TRUE(g_recorded_death.called) << "the tick still kills without a poisoner";
+    EXPECT_EQ(g_recorded_death.killer, nullptr);
 }

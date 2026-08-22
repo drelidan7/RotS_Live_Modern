@@ -1266,3 +1266,66 @@ TEST_F(MageProcTest, EarthquakeLetsEveryOtherOccupantFallBeforeTheCastersOwnFall
         << "nothing may resolve the dead caster; stderr was: " << captured;
 }
 
+
+// ---------------------------------------------------------------------------
+// black arrow's poison names its caster (TASK-021 Task 6)
+// ---------------------------------------------------------------------------
+//
+// spell_black_arrow() is one of the four production sites that apply a
+// SPELL_POISON affect. Since Task 4 retired raw_kill()'s "every poison death is
+// a player kill" heuristic, a poison affect with no recorded origin credits
+// NOBODY when it kills -- so a mage whose black arrow finishes a player off
+// would silently lose the kill unless the arrow records itself here.
+
+namespace {
+
+// Strips a character's affects at scope exit: affect_join() links a stack
+// char_data onto the process-global affected_list, which outlives the test.
+class ScopedBlackArrowAffectCleanup {
+  public:
+    explicit ScopedBlackArrowAffectCleanup(char_data &ch) : m_ch(ch) {}
+    ~ScopedBlackArrowAffectCleanup() {
+        while (m_ch.affected)
+            affect_remove(&m_ch, m_ch.affected);
+    }
+    ScopedBlackArrowAffectCleanup(const ScopedBlackArrowAffectCleanup &) = delete;
+    ScopedBlackArrowAffectCleanup &operator=(const ScopedBlackArrowAffectCleanup &) = delete;
+
+  private:
+    char_data &m_ch; // the character whose affect list this scope empties
+};
+
+// The abs_number the caster below registers as. In a band no sibling suite in
+// the monolithic runner uses (fight_credit_tests: 7920/7921;
+// room_affect_tick_tests: 7930-7933).
+constexpr int kBlackArrowCasterAbsNumber = 7940;
+
+} // namespace
+
+TEST_F(MageProcTest, BlackArrowsPoisonRecordsTheCasterAsThePoisoner) {
+    MageTestContext context;
+    ScopedBlackArrowAffectCleanup victim_affects{context.victim};
+    context.caster_profs.prof_level[PROF_MAGE] = 30;
+    context.caster.abs_number = kBlackArrowCasterAbsNumber;
+    context.prepare_for_spell_damage();
+
+    // A record from an unrelated earlier poisoning: the arm must overwrite it,
+    // not agree with a zero-initialized default.
+    context.victim.specials.poisoned_by_abs_number = 4242;
+    context.victim.specials.poisoned_by = &context.victim;
+
+    // Every queued roll answers its range's minimum, which is what puts the
+    // cast on the poisoning path: the save roll comes up 1 (so `saved` is
+    // false) and the poison gate's `number(1, 50)` comes up 1, comfortably
+    // under the caster's level. The queue is drained in TearDown().
+    for (int i = 0; i < 16; ++i)
+        push_test_random_value(0.0);
+
+    spell_black_arrow(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
+
+    ASSERT_NE(affected_by_spell(&context.victim, SPELL_POISON), nullptr)
+        << "the black arrow's conditional poison must have landed";
+    EXPECT_EQ(context.victim.specials.poisoned_by_abs_number, kBlackArrowCasterAbsNumber);
+    EXPECT_EQ(context.victim.specials.poisoned_by, &context.caster)
+        << "the mage that fired the arrow owns this poison";
+}

@@ -9,6 +9,7 @@
 #include "../comm.h"
 #include "../handler.h"
 #include "../interpre.h"
+#include "../spells.h" // SPELL_POISON, for the poisoned food/drink tests
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
@@ -319,4 +320,106 @@ TEST(DoBlowout, ExtinguishesALitTorchFoundInTheRoomAndDecrementsRoomLight) {
     EXPECT_EQ(room_by_id_total(0)->light, 0)
         << "Expected the kept-raw world[ch->in_room].light-- write to fire once the converted "
            "resolver found the torch.";
+}
+
+// ---------------------------------------------------------------------------
+// Poisoned food and drink record NO poison origin (TASK-021 Task 6)
+// ---------------------------------------------------------------------------
+//
+// Since Task 4 a poison death is a player kill only if the poison's recorded
+// origin resolves to a live player; the old "any poison death is a player
+// kill" heuristic is gone. That makes every site that applies a poison affect
+// responsible for saying where the poison came from -- including the two here,
+// whose honest answer is "nobody". A poisoned meal or drink has no character
+// behind it, so both stamp the pair EMPTY rather than leaving whatever the
+// character's last poisoning wrote (which would credit a long-departed
+// poisoner with this death), and rather than leaving one half of the pair set,
+// which resolve_poisoner() reads as a live record.
+
+namespace {
+
+// Strips a character's affects at scope exit: affect_join() links a stack
+// char_data onto the process-global affected_list, and nothing in
+// ActObj2Context takes it back off.
+class ScopedAffectCleanup {
+  public:
+    explicit ScopedAffectCleanup(char_data &ch) : m_ch(ch) {}
+    ~ScopedAffectCleanup() {
+        while (m_ch.affected)
+            affect_remove(&m_ch, m_ch.affected);
+    }
+    ScopedAffectCleanup(const ScopedAffectCleanup &) = delete;
+    ScopedAffectCleanup &operator=(const ScopedAffectCleanup &) = delete;
+
+  private:
+    char_data &m_ch; // the character whose affect list this scope empties
+};
+
+// A record left by an earlier, unrelated poisoning. Every assertion below is
+// that the site OVERWROTE this, not that it happened to agree with the
+// zero-initialized default a fresh fixture starts from.
+void seed_a_stale_poison_origin(char_data &ch) {
+    ch.specials.poisoned_by_abs_number = 4242;
+    ch.specials.poisoned_by = &ch;
+}
+
+} // namespace
+
+TEST(DoDrink, PoisonedDrinkRecordsNoPoisonOrigin) {
+    ActObj2Context context;
+    // affect_join() -> affect_total() rebuilds the character's abilities and
+    // reads ch->profs on the way; ActObj2Context leaves it null because no
+    // other test in this file applies an affect.
+    char_prof_data profs{};
+    context.ch.profs = &profs;
+    ScopedAffectCleanup affects{context.ch};
+    room_by_id_total(0)->room_flags = DRINK_WATER;
+    seed_a_stale_poison_origin(context.ch);
+
+    const obj_data saved_generic_water = generic_water;
+    generic_water.obj_flags.type_flag = ITEM_DRINKCON;
+    generic_water.obj_flags.value[1] = 10; // amount available.
+    generic_water.obj_flags.value[2] = 0;  // drinks[0] == "water".
+    generic_water.obj_flags.value[3] = 1;  // "The shit was poisoned!" (act_obj2.cpp:198).
+
+    do_drink(&context.ch, mutable_arg("water"), nullptr, 0, SCMD_DRINK);
+
+    generic_water = saved_generic_water;
+
+    ASSERT_NE(affected_by_spell(&context.ch, SPELL_POISON), nullptr)
+        << "the poisoned-drink branch must have applied its poison affect: " << context.output();
+    EXPECT_EQ(context.ch.specials.poisoned_by_abs_number, -1)
+        << "a poisoned drink has no poisoner to credit";
+    EXPECT_EQ(context.ch.specials.poisoned_by, nullptr);
+    EXPECT_EQ(resolve_poisoner(context.ch), nullptr)
+        << "so a death by this poison must credit nobody, not the stale record";
+}
+
+TEST(DoEat, PoisonedFoodRecordsNoPoisonOrigin) {
+    ActObj2Context context;
+    char_prof_data profs{}; // affect_total() reads ch->profs -- see the drink test above.
+    context.ch.profs = &profs;
+    ScopedAffectCleanup affects{context.ch};
+    obj_data bread{};
+    bread.item_number = -1;
+    bread.name = const_cast<char *>("bread");
+    bread.short_description = const_cast<char *>("a loaf of bread");
+    bread.obj_flags.type_flag = ITEM_FOOD;
+    // SCMD_TASTE, and value[0] kept above 1, so this stack obj_data with its
+    // string-literal name is never handed to extract_obj()/free_obj().
+    bread.obj_flags.value[0] = 5;
+    bread.obj_flags.value[3] = 1; // poisoned (act_obj2.cpp:272).
+    bread.in_room = 0;            // LS1-ALLOW: obj-location
+    bread.next_content = nullptr;
+    room_by_id_total(0)->contents = &bread;
+    seed_a_stale_poison_origin(context.ch);
+
+    do_eat(&context.ch, mutable_arg("bread"), nullptr, 0, SCMD_TASTE);
+
+    ASSERT_NE(affected_by_spell(&context.ch, SPELL_POISON), nullptr)
+        << "the poisoned-food branch must have applied its poison affect: " << context.output();
+    EXPECT_EQ(context.ch.specials.poisoned_by_abs_number, -1)
+        << "a poisoned meal has no poisoner to credit";
+    EXPECT_EQ(context.ch.specials.poisoned_by, nullptr);
+    EXPECT_EQ(resolve_poisoner(context.ch), nullptr);
 }

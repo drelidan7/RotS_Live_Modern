@@ -943,7 +943,15 @@ MINIMUM_PROOF_TEXT_LENGTH = 20
 # spell-reachable row. Both this ceiling and `run_self_test`'s pin were
 # `--check`-DERIVED at the flip (the gate reported "TODO total 717 exceeds
 # the ceiling of 716"), never hand-computed.
-MAXIMUM_TODO_COUNT = 578
+#
+# TASK-021 Task 6 lowers it 578 -> 576. Not a drain wave: converting the four
+# room casts to record their caster hoisted each arm's repeated
+# `room_of(caster)` / `room_by_id_total(roomnum)` resolve into ONE local, which
+# took `src/combat/mage.cpp · spell_mist_of_baazunga · room_of(` -- a TODO row
+# -- from 3 sites to 1. The two drained sites are given back to the ratchet
+# rather than left as slack. `--check`-derived, like every move above ("TODO
+# total 576 exceeds the ceiling of 0" under the self-test override).
+MAXIMUM_TODO_COUNT = 576
 
 # Same floor tools/location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT
 # uses, at the same value: measured at 315 files under src/ at this commit
@@ -3138,12 +3146,13 @@ def run_self_test():
 
     # Ceiling pin (F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's pin, T2 brief
     # direction 5), ACTIVATED (Task 3, the tracked review obligation): pinned
-    # at 578 -- the exact MAXIMUM_TODO_COUNT the module now holds (RR Wave R2
+    # at 576 -- the exact MAXIMUM_TODO_COUNT the module now holds (RR Wave R2
     # Task 1 lowered it 788 -> 748; Task 2 lowered it further, 748 -> 716; RR
     # Wave R3 Task 1a raised it 716 -> 717 for the R3-C-3 reopening, the
     # program's only raise -- see MAXIMUM_TODO_COUNT's own comment; R3's
     # T2p+T3p integration lowered it 717 -> 636 and T2d+T3d 636 -> 585, then
-    # T1c+T3e 585 -> 579, all `--check`-derived), measured
+    # T1c+T3e 585 -> 579, and TASK-021 Task 6 578 -> 576 for the two sites its
+    # resolver hoists drained, all `--check`-derived), measured
     # against the real ledger's TODO total. The two literals move together, in
     # one commit, always. An accidental RAISE (an
     # edit that loosens the ratchet without a deliberate, reviewed
@@ -3151,9 +3160,9 @@ def run_self_test():
     # value (a real drain wave) keeps passing `<=`, and that wave updates
     # this literal in the same commit that lowers MAXIMUM_TODO_COUNT itself
     # (the two literals are set together, never independently).
-    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 578:
+    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 576:
         failures.append(
-            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 578 -- "
+            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 576 -- "
             "an accidental raise must not silently loosen the ratchet."
         )
 

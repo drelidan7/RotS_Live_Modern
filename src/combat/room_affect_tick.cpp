@@ -90,11 +90,18 @@ void poison_tick(const caster_snapshot& who, char_data* caster, char_data* occup
         affect_join(occupant, &af, FALSE, FALSE);
 
         // The origin resolve_poisoner() reads when this poison eventually
-        // kills. identity_ptr is STORED, never dereferenced: resolve_poisoner()
-        // recovers the live character through char_by_abs_number() and only
-        // compares the two pointers (fight.cpp's own comment).
-        occupant->specials.poisoned_by_abs_number = who.abs_number;
-        occupant->specials.poisoned_by = who.identity_ptr;
+        // kills, written through the one shared writer (fight.cpp) so the two
+        // halves of the record can never disagree. `caster` is the RESOLVED
+        // character -- null when the recorded caster is gone, and null when
+        // this room affect never had one, in which case nobody is credited.
+        // (Task 5 stamped who.abs_number/who.identity_ptr directly here. For a
+        // live caster that is the same record; for a departed one it wrote a
+        // stale pair that resolve_poisoner() rejects anyway, and for an affect
+        // with NO record at all it named the occupant as its own poisoner --
+        // which would have made a player's death by a builder-placed poison
+        // read as a player kill, the opposite of this tick's documented
+        // "nobody credited" fallback.)
+        record_poison_origin(occupant, caster);
 
         send_to_char("You feel very sick.\n\r", occupant);
         damage_credited(engaging_attacker(caster, occupant), occupant, caster, 5, SPELL_POISON, 0);

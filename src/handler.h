@@ -612,6 +612,11 @@ int damage_credited(struct char_data* ch, struct char_data* victim, struct char_
 // poisoner was extracted, or its abs_number slot was recycled). The only
 // sanctioned reader of char_special_data's poisoned_by* pair.
 struct char_data* resolve_poisoner(const struct char_data& victim);
+// TASK-021: records where `victim`'s poison came from, for resolve_poisoner()
+// above to read back when it kills. `poisoner` may be null -- a poisoned meal
+// or drink has no character behind it -- and then the record is CLEARED, not
+// left half-set. The only sanctioned writer of the poisoned_by* pair.
+void record_poison_origin(struct char_data* victim, struct char_data* poisoner);
 int check_sanctuary(char_data* ch, char_data* victim);
 // Registers fight.cpp's poison_removal_hook_impl() as entity_hooks.h's
 // poison-removal notification. Called once from run_the_game(), before

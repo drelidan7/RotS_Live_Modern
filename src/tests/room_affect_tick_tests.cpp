@@ -63,6 +63,11 @@ extern struct skill_data skills[];
 
 void affect_update_room(struct room_data* room);
 ASPELL(spell_blaze);
+// The other three room-affect casts this suite drives end to end (Task 6).
+// spells.h declares neither; each ASPELL body is its own only declaration.
+ASPELL(spell_haze);
+ASPELL(spell_mist_of_baazunga);
+ASPELL(spell_poison);
 
 namespace {
 
@@ -79,6 +84,9 @@ constexpr int kAdjacentRoom = 3;
 constexpr int kCasterAbsNumber = 7930;
 constexpr int kSecondCasterAbsNumber = 7931;
 constexpr int kOccupantAbsNumber = 7932;
+// A third caster, for the renewal tests: one caster seeds the affect, a
+// stronger one raises it, a weaker one must fail to steal it.
+constexpr int kThirdCasterAbsNumber = 7933;
 
 // Every queued draw answers the same normalized value, so number(from, to)
 // returns `from + (to - from + 1) / 2` (integer truncation) at every call site
@@ -1239,4 +1247,309 @@ TEST(RoomAffectTick, PoisonTickSavedArmTellsTheOccupantAndTheInRoomCaster)
     EXPECT_EQ(caster_heard_remote, "")
         << "but a caster who is not in the room is told nothing at all; heard: "
         << caster_heard_remote;
+}
+
+// ---------------------------------------------------------------------------
+// The live casts record their caster (TASK-021 Task 6)
+// ---------------------------------------------------------------------------
+//
+// Every test above starts from a caster record some fixture wrote. These start
+// from a REAL cast: they drive the four ASPELL bodies themselves (never a
+// re-implementation of them) and assert the record the cast leaves behind.
+// Before this task each of those bodies published its affect through the
+// two-argument affect_to_room(), which records caster_snapshot::none() -- so
+// every tick in this file fell back to "no recorded caster" in production and
+// credited nobody, however carefully the tick read a snapshot.
+//
+// THE RENEWAL RULE, pinned in both directions: a re-cast into a room that
+// already carries the spell replaces the recorded caster only when it RAISED
+// the affect -- the modifier for blaze/haze/poison, the duration for mist. A
+// weaker caster must not steal a stronger character's spell (and so must not
+// take the blame, or the credit, for what it kills).
+//
+// Every caster below carries intel/wil 25, so get_mage_caster_level()/
+// get_mystic_caster_level()'s remainder roll is a number(0, 0) that draws
+// nothing: level == prof_level + 5 exactly, with no queued rolls needed. No
+// occupant of a cast room is ever damaged either -- every character here is a
+// same-side human, which is_friendly_taget() skips before blaze reaches its
+// first number() call.
+
+TEST(RoomAffectTick, PoisonTickWithNoRecordedCasterRecordsNoPoisoner)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickZoneTable zone_table_owner;
+    ScopedTickMobIndex prototype_table;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Occupant occupant { 500 };
+    ScopedTickCharExists occupant_exists { occupant.ch, kOccupantAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom, { &occupant.ch } };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
+    ScopedTickExtractCharHook extraction;
+    ScopedTickCharacterDiedHook death;
+    // A builder-placed room poison (or one predating the caster store): the
+    // affect is real, the record says none(). The tick falls back to the
+    // occupant's own stats -- the pre-TASK-021 self-re-cast's inputs -- and
+    // credits NOBODY, which is what the record it writes has to say.
+    ScopedRoomSpellAffect poison { room, SPELL_POISON, 5, 10, caster_snapshot::none() };
+    // Enough offence for that self-cast to beat the occupant's own save: the
+    // two draw ranges are [53, 160] against [55, 110], and the queued mid-rolls
+    // answer 107 and 83.
+    occupant.ch.points.willpower = 20;
+    occupant.ch.specials2.perception = 100;
+    // A stale record from an earlier, unrelated poisoning.
+    occupant.ch.specials.poisoned_by_abs_number = 4242;
+    occupant.ch.specials.poisoned_by = &occupant.ch;
+
+    queue_mid_rolls(32);
+    ASSERT_TRUE(room_affect_tick(SPELL_POISON, room, &occupant.ch, poison.affect()));
+    clear_test_random_values();
+
+    ASSERT_NE(affected_by_spell(&occupant.ch, SPELL_POISON), nullptr)
+        << "the fallback tick must still poison";
+    EXPECT_EQ(occupant.ch.specials.poisoned_by_abs_number, -1)
+        << "an affect with no recorded caster must not name the victim as its own poisoner";
+    EXPECT_EQ(occupant.ch.specials.poisoned_by, nullptr);
+    EXPECT_EQ(resolve_poisoner(occupant.ch), nullptr)
+        << "so a death by this poison credits nobody, as the tick's fallback promises";
+}
+
+TEST(RoomAffectCast, BlazeRecordsTheCasterSnapshotAndRenewalReplacesIt)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Caster first { /*mage_prof=*/20, /*cleric_prof=*/0, game_types::PS_None };
+    Caster stronger { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
+    Caster weaker { /*mage_prof=*/5, /*cleric_prof=*/0, game_types::PS_None };
+    ScopedTickCharExists first_exists { first.ch, kCasterAbsNumber };
+    ScopedTickCharExists stronger_exists { stronger.ch, kSecondCasterAbsNumber };
+    ScopedTickCharExists weaker_exists { weaker.ch, kThirdCasterAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom,
+        { &first.ch, &stronger.ch, &weaker.ch } };
+    ScopedRoomAffectCleanup room_cleanup { room };
+
+    spell_blaze(&first.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affected_type* affect = room_affected_by_spell(room, SPELL_BLAZE);
+    ASSERT_NE(affect, nullptr) << "the fresh cast must publish a room affect";
+    EXPECT_EQ(affect->modifier, 25) << "mage prof 20 + intel 25 / 5 = level 25";
+    const caster_snapshot* recorded = room_affect_caster(room, SPELL_BLAZE);
+    ASSERT_NE(recorded, nullptr);
+    ASSERT_FALSE(recorded->is_none())
+        << "the fresh cast must record its caster, not caster_snapshot::none()";
+    EXPECT_EQ(recorded->abs_number, kCasterAbsNumber);
+    EXPECT_EQ(recorded->mage_prof_level, 20) << "and the snapshot must be THIS caster's";
+
+    spell_blaze(&stronger.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_BLAZE);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 30) << "level 30 > level 25: this renewal RAISED the affect";
+    recorded = room_affect_caster(room, SPELL_BLAZE);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "a renewal that raised the modifier takes the spell over";
+    EXPECT_EQ(recorded->mage_prof_level, 25);
+
+    spell_blaze(&weaker.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_BLAZE);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 30)
+        << "level 10 < 30: the weaker cast leaves the affect exactly as it was";
+    recorded = room_affect_caster(room, SPELL_BLAZE);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "and must not steal the spell from the caster whose blaze is still burning";
+    EXPECT_EQ(recorded->mage_prof_level, 25);
+}
+
+TEST(RoomAffectCast, HazeRoomArmRecordsTheCasterAndOnlyAStrongerRenewalReplacesIt)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Caster first { /*mage_prof=*/0, /*cleric_prof=*/20, game_types::PS_None };
+    Caster stronger { /*mage_prof=*/0, /*cleric_prof=*/25, game_types::PS_None };
+    Caster weaker { /*mage_prof=*/0, /*cleric_prof=*/5, game_types::PS_None };
+    ScopedTickCharExists first_exists { first.ch, kCasterAbsNumber };
+    ScopedTickCharExists stronger_exists { stronger.ch, kSecondCasterAbsNumber };
+    ScopedTickCharExists weaker_exists { weaker.ch, kThirdCasterAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom,
+        { &first.ch, &stronger.ch, &weaker.ch } };
+    ScopedRoomAffectCleanup room_cleanup { room };
+
+    // The room arm needs victim == obj == nullptr AND a caster that is not
+    // fighting (mystic.cpp's `!victim && !obj && !(caster->specials.fighting)`).
+    spell_haze(&first.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affected_type* affect = room_affected_by_spell(room, SPELL_HAZE);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 12) << "cleric prof 20 + wil 25 / 5 = level 25; modifier = level / 2";
+    const caster_snapshot* recorded = room_affect_caster(room, SPELL_HAZE);
+    ASSERT_NE(recorded, nullptr);
+    ASSERT_FALSE(recorded->is_none());
+    EXPECT_EQ(recorded->abs_number, kCasterAbsNumber);
+
+    spell_haze(&stronger.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_HAZE);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 15) << "level 30 / 2: this renewal raised the modifier";
+    recorded = room_affect_caster(room, SPELL_HAZE);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber);
+
+    spell_haze(&weaker.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_HAZE);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 15) << "level 10 / 2 = 5, which raises nothing";
+    recorded = room_affect_caster(room, SPELL_HAZE);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "a weaker haze must not take the room over";
+}
+
+TEST(RoomAffectCast, PoisonRoomArmRecordsTheCasterAndOnlyAStrongerRenewalReplacesIt)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Caster first { /*mage_prof=*/0, /*cleric_prof=*/20, game_types::PS_None };
+    Caster stronger { /*mage_prof=*/0, /*cleric_prof=*/25, game_types::PS_None };
+    Caster weaker { /*mage_prof=*/0, /*cleric_prof=*/5, game_types::PS_None };
+    ScopedTickCharExists first_exists { first.ch, kCasterAbsNumber };
+    ScopedTickCharExists stronger_exists { stronger.ch, kSecondCasterAbsNumber };
+    ScopedTickCharExists weaker_exists { weaker.ch, kThirdCasterAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom,
+        { &first.ch, &stronger.ch, &weaker.ch } };
+    ScopedRoomAffectCleanup room_cleanup { room };
+
+    spell_poison(&first.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affected_type* affect = room_affected_by_spell(room, SPELL_POISON);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 12) << "cleric prof 20 + wil 25 / 5 = level 25; modifier = level / 2";
+    const caster_snapshot* recorded = room_affect_caster(room, SPELL_POISON);
+    ASSERT_NE(recorded, nullptr);
+    ASSERT_FALSE(recorded->is_none());
+    EXPECT_EQ(recorded->abs_number, kCasterAbsNumber);
+    EXPECT_EQ(recorded->cleric_prof_level, 20);
+
+    spell_poison(&stronger.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_POISON);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 15);
+    recorded = room_affect_caster(room, SPELL_POISON);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "the room's poison now answers to the stronger mystic -- who a poison death credits";
+
+    spell_poison(&weaker.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_POISON);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->modifier, 15);
+    recorded = room_affect_caster(room, SPELL_POISON);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber);
+}
+
+TEST(RoomAffectCast, MistRoomArmRecordsTheCasterAndFollowsTheDurationNotTheModifier)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Caster first { /*mage_prof=*/20, /*cleric_prof=*/0, game_types::PS_None };
+    Caster stronger { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
+    Caster weaker { /*mage_prof=*/5, /*cleric_prof=*/0, game_types::PS_None };
+    ScopedTickCharExists first_exists { first.ch, kCasterAbsNumber };
+    ScopedTickCharExists stronger_exists { stronger.ch, kSecondCasterAbsNumber };
+    ScopedTickCharExists weaker_exists { weaker.ch, kThirdCasterAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom,
+        { &first.ch, &stronger.ch, &weaker.ch } };
+    ScopedRoomAffectCleanup room_cleanup { room };
+
+    // The mist is the one room affect whose renewal raises the DURATION and
+    // never the modifier (the modifier carries the room's SHADOWY bit), so its
+    // record follows the duration instead.
+    spell_mist_of_baazunga(&first.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affected_type* affect = room_affected_by_spell(room, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->duration, 5) << "level 25 / 5";
+    const caster_snapshot* recorded = room_affect_caster(room, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(recorded, nullptr);
+    ASSERT_FALSE(recorded->is_none());
+    EXPECT_EQ(recorded->abs_number, kCasterAbsNumber);
+
+    spell_mist_of_baazunga(&stronger.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->duration, 6) << "level 30 / 5: this renewal raised the duration";
+    recorded = room_affect_caster(room, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber);
+
+    spell_mist_of_baazunga(&weaker.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affect = room_affected_by_spell(room, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(affect, nullptr);
+    EXPECT_EQ(affect->duration, 6) << "level 10 / 5 = 2, which raises nothing";
+    recorded = room_affect_caster(room, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "a weaker mist must not take the room over";
+}
+
+TEST(RoomAffectCast, PoisonVictimArmRecordsThePoisoner)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickZoneTable zone_table_owner;
+    ScopedTickMobIndex prototype_table;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Occupant victim { 500 };
+    Caster mystic { /*mage_prof=*/0, /*cleric_prof=*/20, game_types::PS_None };
+    ScopedTickCharExists mystic_exists { mystic.ch, kCasterAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom, { &mystic.ch, &victim.ch } };
+    ScopedCharacterCleanup victim_cleanup { victim.ch };
+    ScopedCharacterCleanup caster_cleanup { mystic.ch };
+
+    // A stale record from an earlier poison: the arm must overwrite BOTH halves,
+    // never leave one of them naming a character that has nothing to do with
+    // this poison (resolve_poisoner() reads the pair, not either field alone).
+    victim.ch.specials.poisoned_by_abs_number = 4242;
+    victim.ch.specials.poisoned_by = &victim.ch;
+
+    spell_poison(&mystic.ch, mutable_arg(""), SPELL_TYPE_SPELL, &victim.ch, nullptr, 0, 0);
+
+    // saves_poison()'s two draws cannot overlap here: the caster's offence is
+    // (willpower 20 * 8 * perception 100) / 100 = 160, drawn from [53, 160],
+    // against the victim's defense of GET_CON 10 * 5 + GET_WILLPOWER 0 * 3 = 50,
+    // drawn from [25, 50]. The save can never succeed, whatever the real PRNG
+    // answers and in whichever order C++ evaluates the two operands.
+    ASSERT_NE(affected_by_spell(&victim.ch, SPELL_POISON), nullptr)
+        << "the poison must have landed";
+    EXPECT_EQ(victim.ch.specials.poisoned_by_abs_number, kCasterAbsNumber);
+    EXPECT_EQ(victim.ch.specials.poisoned_by, &mystic.ch);
+    EXPECT_EQ(resolve_poisoner(victim.ch), &mystic.ch)
+        << "so a later poison tick credits the mystic that cast it";
+    EXPECT_EQ(victim.ch.tmpabilities.hit, 495) << "and the arm's own 5 points still land";
 }

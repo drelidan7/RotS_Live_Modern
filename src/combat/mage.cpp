@@ -2197,6 +2197,10 @@ ASPELL(spell_black_arrow)
         af.location = APPLY_STR;
         af.bitvector = AFF_POISON;
         affect_join(victim, &af, FALSE, FALSE);
+        // TASK-021: this poison's origin, for resolve_poisoner() to read back
+        // when the DoT kills -- without it the mage that fired the arrow is
+        // credited with nothing.
+        record_poison_origin(victim, caster);
 
         send_to_char("The vile magic poisons you!\n\r", victim);
         apply_spell_damage(caster, victim, min_poison_dam, SPELL_POISON, 0);
@@ -2312,11 +2316,21 @@ ASPELL(spell_blaze)
         if (!caster)
             return;
 
+        // TASK-021: the cast-time copy the room affect ticks from, and the
+        // character a kill by those ticks credits. Taken once, here, so a
+        // caster who dies, levels, re-specs or walks out afterwards cannot
+        // change a firestorm that is already burning.
+        const caster_snapshot who = caster_snapshot::capture(*caster);
+        // One resolve of the caster's own room for the whole arm. The damage
+        // loop below cannot move the caster: it skips friendly targets, and
+        // is_friendly_taget() counts a caster as friendly to itself.
+        room_data* const here = room_of(caster);
+
         act("$n breathes out a cloud of fire!", TRUE, caster, 0, 0, TO_ROOM);
         send_to_char("You breathe out fire.\n\r", caster);
 
         /* Damage everyone in the room */
-        for (tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
+        for (tmpch = rots::entity::first_occupant(here); tmpch; tmpch = tmpch_next) {
             tmpch_next = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
 
             // friends don't burn friends, at first...
@@ -2345,13 +2359,20 @@ ASPELL(spell_blaze)
         af.modifier = level;
         af.location = SPELL_BLAZE;
         af.bitvector = 0;
-        if ((oldaf = room_affected_by_spell(room_of(caster), SPELL_BLAZE))) {
+        if ((oldaf = room_affected_by_spell(here, SPELL_BLAZE))) {
             if (oldaf->duration < af.duration)
                 oldaf->duration = af.duration;
-            if (oldaf->modifier < af.modifier)
+            if (oldaf->modifier < af.modifier) {
                 oldaf->modifier = af.modifier;
+                // A renewal takes the room over only when it RAISED the
+                // affect. The modifier is the mage level every tick burns
+                // from, so raising it makes this caster's blaze the one
+                // burning; a weaker renewal changes neither the affect nor
+                // who answers for it.
+                set_room_affect_caster(here, SPELL_BLAZE, who);
+            }
         } else
-            affect_to_room(room_of(caster), &af);
+            affect_to_room(here, &af, who);
 
         act("The area suddenly bursts into a roaring firestorm!",
             FALSE, caster, 0, 0, TO_ROOM);
@@ -2446,6 +2467,9 @@ ASPELL(spell_mist_of_baazunga)
     if (!caster)
         return;
 
+    // TASK-021: as in spell_blaze() above -- the cast-time copy the drifting
+    // mist ticks from, carried into every room this cast seeds.
+    const caster_snapshot who = caster_snapshot::capture(*caster);
     room = room_of(caster);
     if ((oldaf = room_affected_by_spell(room, SPELL_MIST_OF_BAAZUNGA)))
         modifier = oldaf->modifier;
@@ -2464,10 +2488,17 @@ ASPELL(spell_mist_of_baazunga)
     af.bitvector = 0;
 
     /* Apply the full spell to main room */
-    if ((oldaf = room_affected_by_spell(room_of(caster),
+    if ((oldaf = room_affected_by_spell(room,
              SPELL_MIST_OF_BAAZUNGA))) {
-        if (oldaf->duration < af.duration)
+        if (oldaf->duration < af.duration) {
             oldaf->duration = af.duration;
+            // The mist is the one room affect whose renewal raises the
+            // DURATION and never the modifier (the modifier carries the
+            // room's SHADOWY bit, not a caster level), so its record follows
+            // the duration: a renewal that made the mist last longer is the
+            // one now hanging, a weaker one leaves the record alone.
+            set_room_affect_caster(room, SPELL_MIST_OF_BAAZUNGA, who);
+        }
         /*
          * This has been commented out for a pretty long time;
          * why exactly don't we want to output a message if the
@@ -2477,7 +2508,7 @@ ASPELL(spell_mist_of_baazunga)
          * send_to_char("You breathe out dark mists.\n\r", caster);
          */
     } else {
-        affect_to_room(room_of(caster), &af);
+        affect_to_room(room, &af, who);
         act("$n breathes out dark mists.", TRUE, caster, 0, 0, TO_ROOM);
         send_to_char("You breathe out dark mists.\n\r", caster);
     }
@@ -2487,11 +2518,14 @@ ASPELL(spell_mist_of_baazunga)
         if (room->dir_option[direction]) {
             if (room->dir_option[direction]->to_room != NOWHERE) {
                 roomnum = room->dir_option[direction]->to_room;
+                // One resolve of this exit's destination for the whole body
+                // below; nothing here can move a room.
+                room_data* const next = room_by_id_total(roomnum);
 
-                if ((oldaf = room_affected_by_spell(room_by_id_total(roomnum),
+                if ((oldaf = room_affected_by_spell(next,
                          SPELL_MIST_OF_BAAZUNGA)))
                     mod = oldaf->modifier;
-                else if (IS_SET(room_by_id_total(roomnum)->room_flags, SHADOWY))
+                else if (IS_SET(next->room_flags, SHADOWY))
                     mod = 1;
                 else
                     mod = 0;
@@ -2502,12 +2536,14 @@ ASPELL(spell_mist_of_baazunga)
                 af2.location = SPELL_MIST_OF_BAAZUNGA;
                 af2.bitvector = 0;
 
-                if ((oldaf = room_affected_by_spell(room_by_id_total(roomnum),
+                if ((oldaf = room_affected_by_spell(next,
                          SPELL_MIST_OF_BAAZUNGA))) {
-                    if (oldaf->duration < af.duration)
+                    if (oldaf->duration < af.duration) {
                         oldaf->duration = af.duration;
+                        set_room_affect_caster(next, SPELL_MIST_OF_BAAZUNGA, who);
+                    }
                 } else
-                    affect_to_room(room_by_id_total(roomnum), &af2);
+                    affect_to_room(next, &af2, who);
             }
         }
     }

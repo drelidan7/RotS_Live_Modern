@@ -470,8 +470,8 @@ set(ROTS_WORLD_SOURCES
 set(ROTS_COMBAT_SOURCES
     combat/battle_mage_handler.cpp combat/clerics.cpp combat/combat_hooks.cpp combat/fight.cpp
     combat/limits.cpp combat/mage.cpp combat/mystic.cpp combat/olog_hai.cpp combat/profs.cpp combat/ranger.cpp
-    combat/skill_timer.cpp combat/spell_pa.cpp combat/visibility.cpp combat/weapon_master_handler.cpp
-    combat/wild_fighting_handler.cpp
+    combat/room_affect_tick.cpp combat/skill_timer.cpp combat/spell_pa.cpp combat/visibility.cpp
+    combat/weapon_master_handler.cpp combat/wild_fighting_handler.cpp
 )
 
 # L4 band, lower tier: pathfind layer (spec §3/§10 step 4; the l4-seed
@@ -1432,6 +1432,7 @@ if(ROTS_BUILD_TESTS)
         tests/ranger_tests.cpp
         tests/render_cursor_tests.cpp
         tests/rng_seed_tests.cpp
+        tests/room_affect_tick_tests.cpp
         tests/rots_asprintf_tests.cpp
         tests/rots_convert_equivalence_tests.cpp
         tests/rots_crypt_tests.cpp

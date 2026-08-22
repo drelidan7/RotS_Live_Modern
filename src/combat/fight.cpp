@@ -970,15 +970,19 @@ char_data* resolve_poisoner(const char_data& victim)
     return (live != nullptr && live == ptr) ? live : nullptr;
 }
 
-// TASK-021: the write side of that record, and the ONLY one. Every production
-// site that applies a poison affect (or an AFF_POISON bit) says here where the
-// poison came from -- the spell's caster, the mob that bit, or NOBODY for a
-// poisoned meal or drink, which is what a null `poisoner` means. Writing both
-// halves in one place is the point: resolve_poisoner() above reads the pair,
-// so an abs_number left standing without its pointer (or the reverse) is a
-// record that can answer for whoever holds that slot today. `poisoner` is not
-// dereferenced beyond reading its abs_number here, and the pointer is stored
-// only as an identity token to compare against later.
+// TASK-021: the write side of that record, and the only writer that SETS an
+// origin. Every production site that applies a poison affect (or an AFF_POISON
+// bit) says here where the poison came from -- the spell's caster, the mob
+// that bit, or NOBODY for a poisoned meal or drink, which is what a null
+// `poisoner` means. Two rots_entity sites CLEAR the pair without going through
+// here, and neither ever sets one: entity_lifecycle.cpp:879-880 (clear_char()'s
+// blank-character statement) and entity_lifecycle.cpp:2724-2725 (affect_remove(),
+// once the last SPELL_POISON affect is gone). Writing both halves in one place
+// is the point: resolve_poisoner() above reads the pair, so an abs_number left
+// standing without its pointer (or the reverse) is a record that can answer for
+// whoever holds that slot today. `poisoner` is not dereferenced beyond reading
+// its abs_number here, and the pointer is stored only as an identity token to
+// compare against later.
 void record_poison_origin(char_data* victim, char_data* poisoner)
 {
     victim->specials.poisoned_by_abs_number = poisoner ? poisoner->abs_number : -1;

@@ -1516,6 +1516,74 @@ TEST(RoomAffectCast, MistRoomArmRecordsTheCasterAndFollowsTheDurationNotTheModif
         << "a weaker mist must not take the room over";
 }
 
+TEST(RoomAffectCast, MistSpreadsItsRecordIntoTheAdjacentRoomAndRenewsItOnTheSameRule)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    room_data* const adjacent = room_by_id_total(kAdjacentRoom);
+    // The mist is the only cast that seeds rooms it is not standing in, so it
+    // is the only one whose record has to travel. Without an exit the spread
+    // loop never runs at all -- which is why the sibling test above, cast in a
+    // room with no exits, says nothing about these two sites.
+    room_direction_data north_exit {};
+    north_exit.to_room = kAdjacentRoom;
+    ScopedRoomExit north { room, NORTH, &north_exit };
+
+    Caster first { /*mage_prof=*/20, /*cleric_prof=*/0, game_types::PS_None };
+    Caster stronger { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
+    Caster weaker { /*mage_prof=*/5, /*cleric_prof=*/0, game_types::PS_None };
+    ScopedTickCharExists first_exists { first.ch, kCasterAbsNumber };
+    ScopedTickCharExists stronger_exists { stronger.ch, kSecondCasterAbsNumber };
+    ScopedTickCharExists weaker_exists { weaker.ch, kThirdCasterAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom,
+        { &first.ch, &stronger.ch, &weaker.ch } };
+    ScopedRoomAffectCleanup room_cleanup { room };
+    ScopedRoomAffectCleanup adjacent_cleanup { adjacent };
+
+    spell_mist_of_baazunga(&first.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    affected_type* spread = room_affected_by_spell(adjacent, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(spread, nullptr) << "the cast must have seeded the room through the exit";
+    EXPECT_EQ(spread->duration, 4) << "a SEEDED adjacent mist gets level 25 / 6, the smaller figure";
+    const caster_snapshot* recorded = room_affect_caster(adjacent, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(recorded, nullptr);
+    ASSERT_FALSE(recorded->is_none())
+        << "the spread must carry the caster into the room it seeds, not none()";
+    EXPECT_EQ(recorded->abs_number, kCasterAbsNumber);
+    EXPECT_EQ(recorded->mage_prof_level, 20) << "and it must be THIS caster's snapshot";
+
+    spell_mist_of_baazunga(&stronger.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    spread = room_affected_by_spell(adjacent, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(spread, nullptr);
+    // THE QUIRK, asserted as the code actually behaves rather than as it reads:
+    // the adjacent renewal compares and assigns the MAIN room's `af.duration`
+    // (level 30 / 5 == 6), never the `af2.duration` (level 30 / 6 == 5) it
+    // would have been seeded with. Task 5's tick reproduces the same quirk, and
+    // this task preserved it verbatim -- only the record moved.
+    EXPECT_EQ(spread->duration, 6)
+        << "a renewed adjacent mist takes the MAIN room's level / 5, not its own level / 6";
+    recorded = room_affect_caster(adjacent, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "raising the adjacent room's duration hands that room over too";
+    EXPECT_EQ(recorded->mage_prof_level, 25);
+
+    spell_mist_of_baazunga(&weaker.ch, mutable_arg(""), SPELL_TYPE_SPELL, nullptr, nullptr, 0, 0);
+
+    spread = room_affected_by_spell(adjacent, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(spread, nullptr);
+    EXPECT_EQ(spread->duration, 6)
+        << "level 10 / 5 == 2 raises nothing, in the adjacent room as in the main one";
+    recorded = room_affect_caster(adjacent, SPELL_MIST_OF_BAAZUNGA);
+    ASSERT_NE(recorded, nullptr);
+    EXPECT_EQ(recorded->abs_number, kSecondCasterAbsNumber)
+        << "and a weaker mist must not take the seeded room over either";
+}
+
 TEST(RoomAffectCast, PoisonVictimArmRecordsThePoisoner)
 {
     ScopedTestWorld world { kWorldRoomCount };

@@ -4,10 +4,10 @@ title: >-
   Room affects snapshot the caster's casting state at cast time (damage/saves
   from the snapshot, kill credit to the caster) -- blaze, mist, haze,
   room-poison
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-22 17:44'
-updated_date: '2026-08-22 17:49'
+updated_date: '2026-08-22 18:05'
 labels: []
 milestone: m-0
 dependencies:

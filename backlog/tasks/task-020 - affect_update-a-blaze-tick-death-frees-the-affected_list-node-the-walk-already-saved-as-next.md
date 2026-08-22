@@ -3,9 +3,10 @@ id: TASK-020
 title: >-
   affect_update: a blaze-tick death frees the affected_list node the walk
   already saved as next
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-22 17:40'
+updated_date: '2026-08-22 18:05'
 labels: []
 milestone: m-0
 dependencies: []

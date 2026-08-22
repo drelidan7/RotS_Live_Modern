@@ -3,10 +3,10 @@ id: TASK-020
 title: >-
   affect_update: a blaze-tick death frees the affected_list node the walk
   already saved as next
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 17:40'
-updated_date: '2026-08-22 18:05'
+updated_date: '2026-08-22 18:19'
 labels: []
 milestone: m-0
 dependencies: []
@@ -27,8 +27,12 @@ Source: owner request after TASK-018/019 ("there are historic crashes with blaze
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Red-first test orders affected_list as [blaze room, affected low-hp occupant], forces the 1-in-13 re-cast roll, runs affect_update(), and fails against the current code (ASan use-after-free on the freed node, or a deterministic witness)
-- [ ] #2 Fix keeps affect_update's walk valid across deaths/removals triggered inside affect_update_room/affect_update_person without changing which entries get updated on a tick
-- [ ] #3 The blaze precedence bug and the pre-guard caster deref are fixed in the same change or split into their own task with a reason
-- [ ] #4 Boot goldens + seed42 golden byte-identical; ASan+UBSan clean on the touched suites; ledger/ceiling re-derived if any resolver site moves
+- [x] #1 Red-first test orders affected_list as [blaze room, affected low-hp occupant], forces the 1-in-13 re-cast roll, runs affect_update(), and fails against the current code (ASan use-after-free on the freed node, or a deterministic witness)
+- [x] #2 Fix keeps affect_update's walk valid across deaths/removals triggered inside affect_update_room/affect_update_person without changing which entries get updated on a tick
+- [x] #3 The blaze precedence bug and the pre-guard caster deref are fixed in the same change or split into their own task with a reason
+- [x] #4 Boot goldens + seed42 golden byte-identical; ASan+UBSan clean on the touched suites; ledger/ceiling re-derived if any resolver site moves
 <!-- AC:END -->
+
+## Notes
+
+2026-08-22: fixed (limits.cpp snapshot walk + affect_update_tests.cpp). AC#3 split into TASK-022 with the reason recorded there: the precedence fix changes blaze room-arm saves and deserves its own red-first test, not a ride on a crash fix. Witness is ASan (heap-use-after-free at limits.cpp:1567 against the old walk; the plain build reads the freed node sanely). Fixture lessons: sanctuary absorbs a blaze hit (fight.cpp:379), affect_to_char -> affect_total rebuilds tmpabilities from abilities, char_exists is a char[8001] table (abs_numbers must be < 8001), and the walk drops unregistered characters as unknown -- all four bit the first fixture.

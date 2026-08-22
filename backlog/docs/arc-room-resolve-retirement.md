@@ -85,3 +85,4 @@ proof, a guard, or a crash at the defect.
 - 2026-08-21 (close): all legs measured at `b5158d15` (macOS 1894/1894 + ASan, `rots64` 1894/1894, i386 battery 1894/0/7 with monolithic 1881/1857/24 reconciling, smoke-account PASSED); two review fix rounds closed every gating finding; TASK-001/TASK-002 Done at `04ccc2d1`. Merge pending owner.
 - 2026-08-22: TASK-018 fixed (`spell_fireball` self-fumble UAF, found by R3's census A): GUARDED row, ceiling 579 → 578, +2 tests (1896).
 - 2026-08-22: TASK-019 fixed (earthquake's caster fall deferred to the loop's end, the TASK-018 shape); +1 test (1897); ceiling unchanged.
+- 2026-08-22: TASK-020 fixed (affect_update snapshot walk; ASan-witnessed UAF at limits.cpp:1567); +1 test (1898); TASK-022 filed from its AC#3.

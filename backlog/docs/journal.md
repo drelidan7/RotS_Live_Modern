@@ -214,3 +214,11 @@ damage loop excludes the caster, but its fall loop did not). Same principle appl
 other occupant falls first, the caster's own fall is the spell's final act; RNG draw order
 preserved. Red-first ordering test; ledger note; ceiling unchanged at 578. Same branch as
 TASK-018; merge is the owner's call.
+
+## 2026-08-22 — TASK-020 fixed (the historic blaze crashes: affect_update's walk)
+Root cause confirmed with ASan: a blaze-tick death frees the `affected_list` node `affect_update`
+had already saved as next. Fix = snapshot the list's identities before the walk and re-validate
+each entry at its turn (char_exists + still affected; rooms are never freed); one new test file,
+both build systems. TASK-020's AC#3 (blaze's precedence bug + pre-guard deref) split into
+TASK-022 (LOW) so the crash fix stays a crash fix. Branch `fix/task-020-021-room-affects`,
+stacked on the TASK-018/019 branch.

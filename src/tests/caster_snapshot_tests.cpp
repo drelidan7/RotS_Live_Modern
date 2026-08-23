@@ -378,6 +378,81 @@ TEST(CasterSnapshot, SpellPenetrationReadsTheCapturedNpcAndMasterFields) {
     EXPECT_FALSE(should_apply_spell_penetration(plain_mob));
 }
 
+// The Task-1 deferred coverage gap the final whole-branch review reopened
+// (m-3): SpellPenetrationReadsTheCapturedNpcAndMasterFields above hand-SETS
+// is_pc_for_spell_pen / master_mage_prof_level on an already-captured
+// snapshot, so it pins the two CONSUMERS and nothing about how capture()
+// derives them -- dropping the charmed-orc-friend arm outright, or forcing
+// master_mage_prof_level to 0, leaves it green. This test drives capture()
+// itself over the one shape the arm exists for: a charmed MOB_ORC_FRIEND NPC
+// whose master is a player. mage.cpp's live forms read exactly these two
+// fields, so a charmed orc friend penetrates spell resistance on its master's
+// account rather than on its own.
+TEST(CasterSnapshot, CaptureDerivesTheCharmedOrcFriendSpellPenetrationPair) {
+    char_data master {};
+    char_prof_data master_profs {};
+    make_mage(master, master_profs); // a PC, PROF_MAGE 25
+    master_profs.prof_level[PROF_MAGE] = 30;
+
+    char_data pet {};
+    char_prof_data pet_profs {};
+    pet.profs = &pet_profs;
+    pet.player.level = 10;
+    pet.player.race = RACE_ORC;
+    pet.specials2.act = MOB_ISNPC | MOB_ORC_FRIEND;
+    pet.specials.affected_by = AFF_CHARM;
+    pet.master = &master;
+    pet.abs_number = 7906;
+
+    const caster_snapshot charmed = caster_snapshot::capture(pet);
+    EXPECT_TRUE(charmed.is_npc);
+    EXPECT_TRUE(charmed.is_charmed);
+    EXPECT_TRUE(charmed.is_pc_for_spell_pen)
+        << "a charmed orc friend with a PC master penetrates on its master's account";
+    EXPECT_EQ(charmed.master_mage_prof_level, 30)
+        << "and carries the MASTER's mage level, not its own";
+    EXPECT_TRUE(should_apply_spell_penetration(charmed));
+    // utils::get_prof_level()'s NPC arm returns the mob's own player.level, so
+    // the pet's captured mage_prof_level is 10 -- and the charmed-NPC arm of
+    // get_spell_pen_value() adds master_mage_prof_level / 3 on top.
+    EXPECT_EQ(charmed.mage_prof_level, 10);
+    EXPECT_DOUBLE_EQ(get_spell_pen_value(charmed), (10 + 30 / 3) / 5.0);
+
+    // Each of the arm's four conjuncts, dropped one at a time.
+    char_data not_orc_friend = pet;
+    not_orc_friend.specials2.act = MOB_ISNPC;
+    EXPECT_FALSE(caster_snapshot::capture(not_orc_friend).is_pc_for_spell_pen)
+        << "a charmed NPC that is not an orc friend does not qualify";
+
+    char_data uncharmed = pet;
+    uncharmed.specials.affected_by = 0;
+    const caster_snapshot uncharmed_snap = caster_snapshot::capture(uncharmed);
+    EXPECT_FALSE(uncharmed_snap.is_pc_for_spell_pen) << "nor an uncharmed orc friend";
+    EXPECT_EQ(uncharmed_snap.master_mage_prof_level, 0)
+        << "and an uncharmed follower carries no master level either";
+
+    char_data masterless = pet;
+    masterless.master = nullptr;
+    const caster_snapshot masterless_snap = caster_snapshot::capture(masterless);
+    EXPECT_FALSE(masterless_snap.is_pc_for_spell_pen) << "nor one with no master at all";
+    EXPECT_EQ(masterless_snap.master_mage_prof_level, 0);
+
+    char_data npc_master {};
+    char_prof_data npc_master_profs {};
+    npc_master.profs = &npc_master_profs;
+    npc_master_profs.prof_level[PROF_MAGE] = 30; // ignored: get_prof_level()'s NPC arm
+    npc_master.specials2.act = MOB_ISNPC;
+    npc_master.player.level = 12;
+    char_data mob_led = pet;
+    mob_led.master = &npc_master;
+    const caster_snapshot mob_led_snap = caster_snapshot::capture(mob_led);
+    EXPECT_FALSE(mob_led_snap.is_pc_for_spell_pen)
+        << "an NPC master does not lend its PC-ness";
+    EXPECT_EQ(mob_led_snap.master_mage_prof_level, 12)
+        << "but the master's mage level is captured whoever the master is -- and for an NPC "
+           "master that level is its own player.level, not its prof table";
+}
+
 TEST(CasterSnapshot, SaveBonusReadsTheCapturedSpecialization) {
     char_data ch {};
     char_prof_data profs {};

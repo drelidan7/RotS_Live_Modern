@@ -947,3 +947,14 @@ plan, in the order they arose:
     holders, from the design discussion this wave provoked). Task 6's own F1 — `spell_haze` and
     `spell_poison` dereferencing `caster` before their `if (!caster)` test — was folded into
     TASK-022's scope, which already carried the same shape in `spell_blaze`.
+
+14. **A new library TU must be listed in THREE build files, not two.** `caster_snapshot.cpp`
+    (`rots_entity`) and `room_affect_tick.cpp` (`rots_combat`) were wired into
+    `src/CMakeLists.txt`'s `ROTS_*_SOURCES` and `src/Makefile`'s `OBJNAMES`, and both of those
+    gates went green — but `src/tests/Makefile` carries its OWN production-object list
+    (`OBJFILES`, line 115), and the flat monolithic test binary link is the only gate that reads
+    it. The i386 battery's step 2 caught the omission as undefined references to
+    `caster_snapshot::capture/none/same_character_as` and `room_affect_tick(...)`; both objects
+    were added there (the `vpath` on line 113 already covers `../entity` and `../combat`). Same
+    class as the recurring "new linkcheck missing from the root Makefile" finding: CMake/flat
+    parity is part of the reconciliation method, and it now spans three lists.

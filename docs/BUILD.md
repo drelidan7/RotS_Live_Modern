@@ -1768,6 +1768,14 @@ named here because a reviewer should not have to find it.
   land on top of it and touch no source, so the LS-1 doc-only-after-battery precedent applies and
   the binary the battery certifies is the binary at HEAD. The six blocking CI jobs are measured on
   the PR.
+- **A new library TU must land in THREE build files.** `src/CMakeLists.txt`'s `ROTS_*_SOURCES`,
+  `src/Makefile`'s `OBJNAMES` **and** `src/tests/Makefile`'s own `OBJFILES` production-object
+  list. CMake and the flat game build both went green on `caster_snapshot.cpp`/
+  `room_affect_tick.cpp` while the third list was still missing them; the i386 battery's
+  monolithic step (step 2) is the only gate that reads `OBJFILES`, and it failed the link with
+  undefined references to `caster_snapshot::capture/none/same_character_as` and
+  `room_affect_tick(...)`. Same class as the recurring "new linkcheck missing from the root
+  Makefile" finding — CMake/flat parity spans three lists, not two.
 - **All three censuses** (`room_resolve_census.py --check`/`--self-test`,
   `location_read_census.py --check`/`--self-test`, `string_view_census.py --check`) exit 0 after
   every ledger edit, and all nine `*LayerAcyclicity` linkchecks pass — `caster_snapshot.cpp`

@@ -41,6 +41,7 @@
 #include "test_random_utils.h"
 #include "test_world.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <memory>
@@ -1626,4 +1627,243 @@ TEST(PkillContributorWalks, UpdatePkillTabWritesOneRecordPerValidContributor)
         << "the records follow the contributor list, skipping the invalid entry "
            "between them rather than shifting a record onto it";
     EXPECT_EQ(pkill_tab[1].victim_level, 30);
+}
+
+// ---------------------------------------------------------------------------
+// TASK-026 step 4: die()'s early-out is "nobody took part", not "poison"
+// ---------------------------------------------------------------------------
+//
+// die() used to skip pkill_create() whenever a poison death found the victim
+// not fighting anyone -- the TODO on that block asked for exactly this fix.
+// The condition is now the contributor set: no contributors, no record. A
+// poisoner who is not in the room, and a room-affect caster who ticked the
+// killing blow from another zone, are contributors, so their kills DO record.
+//
+// These drive the real die() (fight.cpp) with a capturing pkill hook. The
+// seven cases are TASK-026's acceptance criteria.
+
+// fight.cpp's own declaration (no header carries it).
+void die(char_data* dead_man, char_data* killer, int attack_type);
+
+namespace {
+
+struct RecordedPkillCreate {
+    // The victim die() named, and a copy of the set it handed over.
+    char_data* victim = nullptr;
+    rots::combat::kill_contributor_list contributors;
+    // How many times the hook fired -- 0 is the "no record" observable.
+    int calls = 0;
+};
+
+RecordedPkillCreate g_recorded_pkill;
+
+void capturing_pkill_create(char_data* victim,
+    const rots::combat::kill_contributor_list& contributors)
+{
+    g_recorded_pkill.victim = victim;
+    g_recorded_pkill.contributors = contributors;
+    ++g_recorded_pkill.calls;
+}
+
+// Which exploit record types the death captured, in order. The suite reads it
+// for EXPLOIT_MOBDEATH (was this a mob death?) and EXPLOIT_PK.
+std::vector<int> g_captured_exploits;
+
+void capturing_exploit_capture(int record_type, char_data* /*victim*/, int /*int_param*/,
+    const char* /*extra*/)
+{
+    g_captured_exploits.push_back(record_type);
+}
+
+bool captured(int record_type)
+{
+    return std::find(g_captured_exploits.begin(), g_captured_exploits.end(), record_type)
+        != g_captured_exploits.end();
+}
+
+// ScopedNoOpDeathPersistence's shape, with the no-ops replaced by recorders.
+class ScopedCapturingDeathPersistence {
+public:
+    ScopedCapturingDeathPersistence()
+    {
+        g_recorded_pkill = RecordedPkillCreate {};
+        g_captured_exploits.clear();
+        rots::combat::set_pkill_create_hook(capturing_pkill_create);
+        rots::persist::set_exploit_capture_hook(capturing_exploit_capture);
+    }
+    ~ScopedCapturingDeathPersistence()
+    {
+        register_pkill_create_hook();
+        register_exploit_capture_hook();
+    }
+    ScopedCapturingDeathPersistence(const ScopedCapturingDeathPersistence&) = delete;
+    ScopedCapturingDeathPersistence& operator=(const ScopedCapturingDeathPersistence&) = delete;
+};
+
+// Everything die() -> raw_kill() needs to run against stack fixtures without
+// touching a runtime data tree.
+struct DeathHarness {
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedCapturingDeathPersistence capturing_persistence;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+};
+
+// Records `poisoner` as the origin of `victim`'s poison for the caller's scope.
+class ScopedPoisonOrigin {
+public:
+    ScopedPoisonOrigin(char_data& victim, char_data& poisoner, int abs_number)
+        : m_registration(poisoner, abs_number)
+    {
+        victim.specials.poisoned_by_abs_number = poisoner.abs_number;
+        victim.specials.poisoned_by = &poisoner;
+    }
+    ScopedPoisonOrigin(const ScopedPoisonOrigin&) = delete;
+    ScopedPoisonOrigin& operator=(const ScopedPoisonOrigin&) = delete;
+
+private:
+    // Keeps the poisoner's abs_number slot live so resolve_poisoner() answers.
+    ScopedCharExists m_registration;
+};
+
+} // namespace
+
+// Case 1: player poison kills a non-fighting victim.
+TEST(DieContributorRecord, PlayerPoisonOnANonFightingVictimRecordsThePoisoner)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller mage { /*npc=*/false };
+    ScopedPoisonOrigin origin { player.ch, mage.ch, kKillerAbsNumber };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom, { &player.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &mage.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    ASSERT_EQ(player.ch.specials.fighting, nullptr);
+    die(&player.ch, &mage.ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    ASSERT_EQ(g_recorded_pkill.calls, 1)
+        << "the old early-out skipped the record entirely for a victim not in combat";
+    ASSERT_EQ(g_recorded_pkill.contributors.count, 1);
+    EXPECT_EQ(g_recorded_pkill.contributors.entries[0], &mage.ch);
+    EXPECT_TRUE(captured(EXPLOIT_POISON));
+    expect_player_kill_arm(player);
+}
+
+// Case 2: mob poison kills a non-fighting victim.
+TEST(DieContributorRecord, MobPoisonOnANonFightingVictimIsAMobDeath)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller snake { /*npc=*/true };
+    ScopedPoisonOrigin origin { player.ch, snake.ch, kKillerAbsNumber };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &snake.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    die(&player.ch, &snake.ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH)) << "a mob's poison is a mob death";
+    EXPECT_TRUE(captured(EXPLOIT_POISON));
+    expect_stat_penalty_arm(player);
+}
+
+// Case 3: a player's tick kills a victim who is fighting other players, with
+// the caster nowhere near the room.
+TEST(DieContributorRecord, ARemoteCastersTickRecordsBothTheCasterAndTheEngagedPlayers)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller caster { /*npc=*/false };
+    CreditedKiller brawler { /*npc=*/false };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &brawler.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &caster.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    set_fighting(&brawler.ch, &player.ch);
+    die(&player.ch, &caster.ch, SPELL_BLAZE);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    ASSERT_EQ(g_recorded_pkill.calls, 1);
+    EXPECT_EQ(g_recorded_pkill.contributors.count, 2);
+    EXPECT_TRUE(g_recorded_pkill.contributors.contains(&brawler.ch))
+        << "the players who were actually swinging are still in the record";
+    EXPECT_TRUE(g_recorded_pkill.contributors.contains(&caster.ch))
+        << "and so is the caster whose tick landed the killing blow, from another room";
+    expect_player_kill_arm(player);
+}
+
+// Case 4: mob poison kills a victim who is fighting players.
+TEST(DieContributorRecord, MobPoisonOnAnEngagedVictimStillRecordsTheEngagedPlayers)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller snake { /*npc=*/true };
+    CreditedKiller brawler { /*npc=*/false };
+    ScopedPoisonOrigin origin { player.ch, snake.ch, kKillerAbsNumber };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &snake.ch, &brawler.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    set_fighting(&brawler.ch, &player.ch);
+    die(&player.ch, &snake.ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH)) << "the mob still gets the death";
+    ASSERT_EQ(g_recorded_pkill.calls, 1);
+    EXPECT_TRUE(g_recorded_pkill.contributors.contains(&brawler.ch));
+    expect_stat_penalty_arm(player);
+}
+
+// Case 5: poisoned by player A, finished off by player B.
+TEST(DieContributorRecord, APoisonerContributesEvenWhenSomebodyElseLandsTheBlow)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller poisoner { /*npc=*/false };
+    CreditedKiller finisher { /*npc=*/false };
+    ScopedPoisonOrigin origin { player.ch, poisoner.ch, kKillerAbsNumber };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &finisher.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom,
+        { &poisoner.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    set_fighting(&finisher.ch, &player.ch);
+    die(&player.ch, &finisher.ch, TYPE_HIT);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    ASSERT_EQ(g_recorded_pkill.calls, 1);
+    EXPECT_EQ(g_recorded_pkill.contributors.count, 2);
+    EXPECT_TRUE(g_recorded_pkill.contributors.contains(&finisher.ch));
+    EXPECT_TRUE(g_recorded_pkill.contributors.contains(&poisoner.ch))
+        << "participation survives the poison not being what finally killed";
+}
+
+// Case 7: sourceless poison, victim fighting nobody. (Case 6 -- sourceless
+// poison on an ENGAGED victim -- is SourcelessKillCredit.* above, which drives
+// the same decision one layer down, in damage_credited().)
+TEST(DieContributorRecord, NobodyTookPartSoNoRecordIsCreated)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom, { &player.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    // The killer is the victim itself -- the shape a self-damaging tick with no
+    // resolvable source leaves behind. It is not a contributor to its own death.
+    die(&player.ch, &player.ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(g_recorded_pkill.calls, 0) << "no contributors, no PK record";
+    EXPECT_FALSE(captured(EXPLOIT_PK));
+    EXPECT_TRUE(captured(EXPLOIT_POISON)) << "the poison exploit is still captured, as before";
 }

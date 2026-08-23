@@ -1271,26 +1271,32 @@ void die(char_data* dead_man, char_data* killer, int attack_type)
     } else {
         rots::combat::gain_exp_regardless(dead_man, std::min(0, base_xp_gain / 10));
 
-        // TODO(drelidan):  I am unsure why this early out is here, but figure it out and potentially
-        // fix it... 'cause this could have all sorts of problems.
         if (attack_type == SPELL_POISON) {
             rots::persist::dispatch_exploit_capture(EXPLOIT_POISON, dead_man, 0, NULL);
-
-            // TODO(drelidan):  Only early-out if the dead man isn't in combat.  Otherwise continue
-            // so that proper exploits are given out.
-            if (dead_man->specials.fighting == NULL) {
-                raw_kill(dead_man, killer, attack_type);
-                return;
-            }
         }
 
-        // PK records are created regardless of death cause, but then early out if it's
-        // all NPCs killing the character.  Heh...
         // TASK-026: who took part is decided here, once, and handed to the
         // record builder -- pkill.cpp's own combat_list walks could not see a
         // poisoner or a remote room-affect caster.
-        rots::combat::pkill_create(dead_man, rots::combat::kill_contributors(dead_man, killer));
-        rots::persist::dispatch_exploit_capture(EXPLOIT_PK, dead_man, 0, NULL); /* pk records to killers */
+        //
+        // This replaces the `attack_type == SPELL_POISON && !fighting` early
+        // return that used to stand here, whose own TODO asked for exactly
+        // this: "Only early-out if the dead man isn't in combat. Otherwise
+        // continue so that proper exploits are given out." Being in combat was
+        // never the right question -- a poisoner standing two rooms away took
+        // part in this death and a walk of combat_list cannot see that, while a
+        // victim who happens to be swinging at a training dummy has nobody to
+        // credit. The question is whether ANYBODY took part, and an empty
+        // contributor set is the only case that records nothing.
+        //
+        // PK records are created regardless of death cause, but then early out
+        // if it's all NPCs killing the character.  Heh...
+        const rots::combat::kill_contributor_list contributors
+            = rots::combat::kill_contributors(dead_man, killer);
+        if (contributors.count > 0) {
+            rots::combat::pkill_create(dead_man, contributors);
+            rots::persist::dispatch_exploit_capture(EXPLOIT_PK, dead_man, 0, NULL); /* pk records to killers */
+        }
 
         /* add death records to dead player */
         /* Fingolfin: Jul 19: since we record mobdeaths earlier */

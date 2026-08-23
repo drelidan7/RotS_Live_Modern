@@ -1739,10 +1739,13 @@ named here because a reviewer should not have to find it.
 #### Gates measured
 
 - **macOS arm64 native** (`ctest --preset macos-arm64`) green at every one of the wave's commits;
-  **1954/1954** at HEAD `a1449d14`, re-derived here with `ctest --preset macos-arm64 -N`.
-- **ASan** (`ctest --preset macos-arm64-asan`) built and run clean at every task that touched a
-  test file — Tasks 1-6 — with zero sanitizer diagnostics; it earned its keep on the mist-move
-  use-after-free above.
+  **1954/1954** at the production-final commit `a1449d14`, re-derived with
+  `ctest --preset macos-arm64 -N`, and **1959/1959** after the final-review fix round below.
+- **ASan+UBSan** (`ctest --preset macos-arm64-asan`, which is `-fsanitize=address,undefined
+  -fno-sanitize-recover=all` — `src/CMakePresets.json:56`, so BOTH halves are measured here; an
+  earlier note in this wave's task and ledger claimed "UBSan is not a macOS preset", which was
+  wrong) built and run clean at every task that touched a test file — Tasks 1-6 — with zero
+  sanitizer diagnostics; it earned its keep on the mist-move use-after-free above.
 - **Monolithic single-process run** (`build/macos-arm64/ageland_tests` from `src/tests`) exit 0 at
   Tasks 4, 5 and 6: 1915/1839/76, 1927/1851/76 and 1940/1864/76 (ran/passed/skipped), and again at
   the production-final commit `a1449d14`: **1941 ran / 1865 passed / 76 skipped, exit 0**
@@ -1781,6 +1784,30 @@ named here because a reviewer should not have to find it.
   every ledger edit, and all nine `*LayerAcyclicity` linkchecks pass — `caster_snapshot.cpp`
   joins `rots_entity` (L2), `room_affect_tick.cpp` joins `rots_combat` (L3), and no library
   membership otherwise moved.
+
+#### Final-review fix round
+
+Two independent adversarial whole-branch reviews ran at `39225a5e`; the second returned
+**MERGE-SAFE conditional on two MAJORs**, both closed here on the branch's own principles:
+
+- **M-1 — ticks credit but never engage** (inventory item 9 above). Task 5's `engaging_attacker()`
+  let a same-room recorded caster be the ENGAGING attacker; overturned by owner ruling, the
+  engaging attacker is always the occupant. `+2` tests, sabotage-verified.
+- **M-2 — the TASK-020 snapshot walk validated by bit, not by identity.** `char_exists(number)`
+  is set again the moment `register_npc_char()`'s cursor recycles the slot, so a stale entry
+  could look live and `entry.ch->affected` read freed storage — the exact shape this branch
+  closed for `resolve()`/`resolve_poisoner()` and inherited here. Now
+  `char_by_abs_number(entry.number) == entry.ch`, both arms. `+2` tests; the freed-character
+  probe SEGFAULTs in the plain build under the reverted guard.
+
+Named minors closed in the same round: the `capture()` spell-penetration pair is now driven
+through `capture()` itself (`+1` test; the pre-existing test hand-set both fields, so dropping
+either arm left it green), the wrong "UBSan is not a macOS preset" note is corrected everywhere
+it was copied, `src/handler.h`'s one branch-added LF-only line is given `\r\n`, this ledger's
+`affect_update_room`/`mist_tick` line citations are re-derived at HEAD, and `src/tests/Makefile`'s
+`OBJFILES` gains the wave's two new library TUs (see the three-build-file bullet above). Test
+count **1954 → 1959**; the raw `^(TEST|TEST_F)\(` count over `src/tests/*.cpp` moves 1924 → 1929
+(1925 → 1930 counting the tree's single `TEST_P`), the same `+5`.
 
 #### Ledger movement
 

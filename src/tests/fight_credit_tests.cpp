@@ -1130,3 +1130,140 @@ TEST(PoisonOrigin, AffectUpdatePersonPoisonTickCreditsNobodyWhenThePoisonerIsGon
     ASSERT_TRUE(g_recorded_death.called) << "the tick still kills without a poisoner";
     EXPECT_EQ(g_recorded_death.killer, nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// TASK-026 step 1: a sourceless kill falls back to the engaged opponent
+// ---------------------------------------------------------------------------
+//
+// A poison/room tick whose caster cannot be resolved any more reaches
+// damage_credited() with a null credit. Before this task that death went to
+// die(NULL): no PK record for the players who were actually beating on the
+// victim, and the victim took the harsher non-player-kill penalty. The
+// fallback names the opponent the victim was engaged with at the moment it
+// died.
+//
+// WHERE the fallback reads that opponent is load-bearing and is a deliberate
+// deviation from the task brief, which put the read inside the death branch:
+// by then damage_credited() has already run
+// `if (!AWAKE(victim)) if (victim->specials.fighting) stop_fighting(victim);`
+// (fight.cpp), and stop_fighting() clears specials.fighting for a dead
+// character -- so a read in the death branch would answer nullptr every time
+// and the fallback could never fire. The capture therefore sits immediately
+// ABOVE that stop_fighting() call, which is the last instant the engagement is
+// still observable. NotFightingAnybody below is the positive control that the
+// fallback stays off when there is genuinely no opponent.
+
+namespace {
+
+// Puts `victim` one poison tick from death: one hit point, and a constitution
+// of 2 so update_pos()'s `GET_HIT <= -GET_CON / 2` death test is reachable
+// (arm_poison_affect_tick()'s two levers, without the affect -- these tests
+// call damage_credited() directly rather than ticking one).
+void arm_lethal_hit_points(char_data& victim)
+{
+    victim.abilities.con = 2;
+    victim.constabilities.con = 2; // affect_total() rebuilds tmpabilities from THIS one
+    victim.tmpabilities.con = 2;
+    victim.tmpabilities.hit = 1;
+    victim.specials.position = POSITION_STANDING;
+}
+
+} // namespace
+
+TEST(SourcelessKillCredit, FallsBackToTheEngagedPlayerOpponent)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+
+    MortalPlayer player;
+    CreditedKiller opponent { /*npc=*/false };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &opponent.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+
+    set_fighting(&player.ch, &opponent.ch);
+    set_fighting(&opponent.ch, &player.ch);
+    arm_lethal_hit_points(player.ch);
+
+    // The sourceless tick: nobody is credited, and the victim "attacks" itself.
+    const int died = damage_credited(&player.ch, &player.ch, nullptr, 5, SPELL_POISON, 0);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(died, 1);
+    ASSERT_TRUE(g_recorded_death.called) << "the tick must have killed the player";
+    EXPECT_EQ(g_recorded_death.killer, &opponent.ch)
+        << "a sourceless kill is credited to the opponent the victim was engaged with";
+    expect_player_kill_arm(player);
+}
+
+TEST(SourcelessKillCredit, FallsBackToTheEngagedMobOpponent)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+
+    MortalPlayer player;
+    CreditedKiller orc { /*npc=*/true };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &orc.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+
+    set_fighting(&player.ch, &orc.ch);
+    set_fighting(&orc.ch, &player.ch);
+    arm_lethal_hit_points(player.ch);
+
+    const int died = damage_credited(&player.ch, &player.ch, nullptr, 5, SPELL_POISON, 0);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(died, 1);
+    ASSERT_TRUE(g_recorded_death.called);
+    EXPECT_EQ(g_recorded_death.killer, &orc.ch)
+        << "the fallback names whatever the victim was fighting, mob or player";
+    // A mob kill is not a player kill: the harsher arm, exactly as before.
+    expect_stat_penalty_arm(player);
+}
+
+TEST(SourcelessKillCredit, CreditsNobodyWhenTheVictimIsNotFightingAnybody)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+
+    MortalPlayer player;
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom, { &player.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+
+    ASSERT_EQ(player.ch.specials.fighting, nullptr);
+    arm_lethal_hit_points(player.ch);
+
+    const int died = damage_credited(&player.ch, &player.ch, nullptr, 5, SPELL_POISON, 0);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(died, 1);
+    ASSERT_TRUE(g_recorded_death.called);
+    EXPECT_EQ(g_recorded_death.killer, nullptr)
+        << "with no opponent there is nothing to fall back to -- the nobody arm is unchanged";
+    expect_stat_penalty_arm(player);
+}

@@ -2150,6 +2150,13 @@ int damage_credited(char_data* attacker, char_data* victim, char_data* credited_
         victim->specials.was_in_room = location_of(victim);
     }
 
+    // TASK-026: the opponent the victim is engaged with at the instant it dies,
+    // captured HERE because the stop_fighting() call on the very next line
+    // clears specials.fighting for a dead character -- read any later (in the
+    // death branch below, where it is used) and the answer is always nullptr.
+    // Only the credit fallback reads it; nothing else in this function does.
+    char_data* const engaged_opponent = victim->specials.fighting;
+
     if (!AWAKE(victim))
         if (victim->specials.fighting)
             stop_fighting(victim);
@@ -2161,6 +2168,18 @@ int damage_credited(char_data* attacker, char_data* victim, char_data* credited_
         // applied to a local rather than to the parameter only because the
         // parameter is no longer the one going to die().
         char_data* killer = credited_killer;
+        // TASK-026: when nobody is credited -- a poison or room tick whose
+        // caster can no longer be resolved -- the death is credited to whoever
+        // the victim was fighting. Before this fallback such a death reached
+        // die(NULL), which skipped pkill_create() entirely (the players who
+        // were actually beating on the victim lost the PK record the
+        // pre-TASK-021 combat_list walk gave them) and put the victim on the
+        // harsher non-player-kill penalty arm. A victim fighting nobody still
+        // credits nobody: this only ever names a character the victim was
+        // already engaged with, never invents one.
+        if (killer == nullptr && engaged_opponent != nullptr) {
+            killer = engaged_opponent;
+        }
         // Redirect the attacker as the pet's master if the master is in the same room as the pet.
         if (killer && IS_NPC(killer)) {
             if (killer->master && (MOB_FLAGGED(killer, MOB_PET) || MOB_FLAGGED(killer, MOB_ORC_FRIEND)) && location_of(killer->master) == location_of(killer)) {

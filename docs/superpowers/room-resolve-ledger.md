@@ -1129,6 +1129,8 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/room_affect_tick_tests.cpp · #decl · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.AffectUpdateRoomCarriesTheCasterWhenTheMistMoves · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.AffectUpdateRoomTicksBlazeFromTheRecordedCasterNotTheOccupant · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
+| `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.BlazeTickBurnsAGroupMateWithoutTurningThePartyOnItself · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
+| `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.BlazeTickCreditsAnInRoomCasterWithoutEngagingIt · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.BlazeTickDamageComesFromTheSnapshotNotTheOccupant · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.BlazeTickKillCreditsNobodyWhenTheCasterIsGone · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/room_affect_tick_tests.cpp · RoomAffectTick.BlazeTickKillCreditsTheRecordedCasterWhenAlive · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
@@ -1219,7 +1221,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 315 |
-| `room_by_id_total(` | 700 |
+| `room_by_id_total(` | 702 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

@@ -15,6 +15,18 @@
 //   * poison_tick() records the poisoner on the victim, so a later poison death
 //     resolves back to whoever cast it (resolve_poisoner(), fight.cpp).
 //
+// ENGAGEMENT IS NOT ONE OF THEM. The ENGAGING attacker every tick hands to
+// damage_credited()/apply_spell_damage_credited() is always the OCCUPANT
+// itself -- exactly the `attacker == victim` shape the pre-TASK-021
+// self-re-cast produced -- so damage()'s whole `victim != attacker` block
+// (set_fighting both ways, remember(), the 1-in-11 charmed-pet `hit()` on the
+// pet's master) never runs from a room tick. Only the CREDITED killer moved:
+// it is the resolved caster, or nobody. Task 5 briefly engaged a same-room
+// caster; the final whole-branch review (M-1) overturned that -- a room affect
+// would otherwise put a resting caster into a fight with their own group-mates
+// and pets, and the pet-master `hit()` arm could free a character out from
+// under affect_update_room()'s occupant walk.
+//
 // The saved arm's two messages are both kept, but re-aimed: the victim-facing
 // line always reaches the occupant (the old caster == victim shape suppressed
 // it outright inside act()), and the caster-facing "$N shrugs off your poison
@@ -46,15 +58,14 @@ char saves_mystic(struct char_data* ch);
 
 namespace {
 
-// The attacker that ENGAGES the occupant for this tick's damage: the recorded
-// caster only when it still exists and stands in the same room (so set_fighting
-// never pairs characters across rooms); otherwise the occupant itself, exactly
-// as the old self-re-cast did.
-char_data* engaging_attacker(char_data* caster, char_data* occupant)
+// True when the recorded caster is still alive and standing in the occupant's
+// room -- the only situation in which there is somebody present to address a
+// caster-facing message to. This is about MESSAGES only: it never decides who
+// engages whom (see the file banner; the engaging attacker is always the
+// occupant).
+bool caster_is_present(const char_data* caster, const char_data* occupant)
 {
-    if (caster != nullptr && location_of(caster) == location_of(occupant))
-        return caster;
-    return occupant;
+    return caster != nullptr && location_of(caster) == location_of(occupant);
 }
 
 // mage.cpp's spell_blaze() victim arm. `dam = number(8, level) + 10`, halved on
@@ -71,8 +82,9 @@ void blaze_tick(const caster_snapshot& who, char_data* caster, char_data* occupa
     if (saved)
         dam >>= 1;
 
-    apply_spell_damage_credited(who, engaging_attacker(caster, occupant), occupant, caster,
-        dam, SPELL_BLAZE, 0);
+    // Engaging attacker == the occupant itself (never `caster`): a tick damages,
+    // it does not start a fight. Only the credit moves.
+    apply_spell_damage_credited(who, occupant, occupant, caster, dam, SPELL_BLAZE, 0);
 }
 
 // mystic.cpp's spell_poison() victim arm. `number(0, magus_save)` there is
@@ -104,7 +116,10 @@ void poison_tick(const caster_snapshot& who, char_data* caster, char_data* occup
         record_poison_origin(occupant, caster);
 
         send_to_char("You feel very sick.\n\r", occupant);
-        damage_credited(engaging_attacker(caster, occupant), occupant, caster, 5, SPELL_POISON, 0);
+        // Engaging attacker == the occupant itself; see blaze_tick() above and
+        // the file banner. limits.cpp's ordinary poison DoT ticks the same way
+        // (`damage_credited(i, i, resolve_poisoner(*i), ...)`).
+        damage_credited(occupant, occupant, caster, 5, SPELL_POISON, 0);
     } else {
         // The original saved arm (mystic.cpp:1337-1338) sent TWO lines, both
         // anchored on the caster: a TO_VICT line to the poisoned character and
@@ -124,7 +139,7 @@ void poison_tick(const caster_snapshot& who, char_data* caster, char_data* occup
         // ...and the caster-facing line only when there IS a caster to address:
         // still alive AND standing in this room. A caster who walked away, or
         // who is gone entirely, is told nothing.
-        if (engaging_attacker(caster, occupant) == caster)
+        if (caster_is_present(caster, occupant))
             act("$N shrugs off your poison with ease.", FALSE, caster, 0, occupant, TO_CHAR);
     }
 }

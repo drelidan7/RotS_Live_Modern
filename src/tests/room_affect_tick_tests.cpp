@@ -699,6 +699,7 @@ TEST(RoomAffectTick, BlazeTickKillCreditsTheRecordedCasterWhenAlive)
     EXPECT_EQ(g_recorded_death.killer, &mage.ch)
         << "die() must be told the RECORDED caster killed it, not the occupant itself";
     EXPECT_EQ(mage_was_fighting, nullptr) << "a caster in another room is credited, never engaged";
+    EXPECT_EQ(occupant.ch.specials.fighting, nullptr) << "and the victim engages nobody either";
     EXPECT_EQ(mage_location, kRemoteRoom) << "and never moved";
 }
 
@@ -747,6 +748,116 @@ TEST(RoomAffectTick, BlazeTickKillCreditsNobodyWhenTheCasterIsGone)
     EXPECT_EQ(g_recorded_death.killer, nullptr)
         << "a death from a departed caster's affect names no killer";
     EXPECT_EQ(mage.ch.specials.fighting, nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// A tick CREDITS, it never ENGAGES (final whole-branch review, M-1)
+// ---------------------------------------------------------------------------
+//
+// The engaging attacker every tick hands to damage_credited()/
+// apply_spell_damage_credited() is the OCCUPANT itself, whether or not the
+// recorded caster is standing right there -- exactly the `attacker == victim`
+// shape the pre-TASK-021 self-re-cast produced, so damage()'s whole
+// `victim != attacker` block (set_fighting both ways, remember(), the 1-in-11
+// charmed-pet hit() on the pet's master) is unreachable from a room tick. Only
+// the CREDITED killer moved. Task 5 briefly engaged a same-room caster; that
+// was overturned at the final review, because a room affect would otherwise
+// drag a resting caster into a fight with their own group-mates and pets.
+//
+// The remote case is covered by BlazeTickKillCredits...WhenAlive above; these
+// two cover the same-room case, lethal and non-lethal.
+
+TEST(RoomAffectTick, BlazeTickCreditsAnInRoomCasterWithoutEngagingIt)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickZoneTable zone_table_owner;
+    ScopedTickMobIndex prototype_table;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Occupant occupant { 1 }; // con 0 below -> update_pos() kills at hit <= 0
+    occupant.ch.abilities.con = 0;
+    occupant.ch.tmpabilities.con = 0;
+    Caster mage { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
+    ScopedTickCharExists mage_exists { mage.ch, kCasterAbsNumber };
+    ScopedTickCharExists occupant_exists { occupant.ch, kOccupantAbsNumber };
+    // The caster is standing in its own blaze, beside the victim.
+    ScopedRoomOccupants affected_room { room, kAffectedRoom, { &mage.ch, &occupant.ch } };
+    ScopedCharacterCleanup occupant_cleanup { occupant.ch };
+    ScopedCharacterCleanup mage_cleanup { mage.ch };
+
+    ScopedCorpseRelease corpse { room };
+    ScopedTickExtractCharHook extraction;
+    ScopedTickCharacterDiedHook death;
+    ScopedRoomSpellAffect blaze { room, SPELL_BLAZE, 5, 25, caster_snapshot::capture(mage.ch) };
+
+    queue_mid_rolls(32);
+    ASSERT_TRUE(room_affect_tick(SPELL_BLAZE, room, &occupant.ch, blaze.affect()));
+    clear_test_random_values();
+
+    // Both engagement witnesses have to be read before the cleanup guards fire.
+    const char_data* const mage_was_fighting = mage.ch.specials.fighting;
+    const char_data* const occupant_was_fighting = occupant.ch.specials.fighting;
+
+    ASSERT_TRUE(g_recorded_death.called) << "the tick must have killed the occupant";
+    EXPECT_EQ(g_recorded_death.dead_man, &occupant.ch);
+    EXPECT_EQ(g_recorded_death.killer, &mage.ch)
+        << "a caster in the room is still credited with the kill";
+    EXPECT_EQ(mage_was_fighting, nullptr)
+        << "but a tick never starts a fight -- the caster is not engaged with its victim";
+    EXPECT_EQ(occupant_was_fighting, nullptr) << "and the victim is not engaged with the caster";
+}
+
+// The review's own scenario: the recorded caster is standing in the room and
+// the character the tick burns is its GROUP-MATE (a follower). The tick still
+// burns -- room affects have never had a friendly-target test, only the CAST
+// arm does -- but nobody starts swinging, so a blaze cannot turn a party on
+// itself.
+TEST(RoomAffectTick, BlazeTickBurnsAGroupMateWithoutTurningThePartyOnItself)
+{
+    ScopedTestWorld world { kWorldRoomCount };
+    ScopedRoomNumbers room_numbers;
+    ScopedTickZoneTable zone_table_owner;
+    ScopedTickMobIndex prototype_table;
+    ScopedTickGlobalLists global_lists;
+
+    room_data* const room = room_by_id_total(kAffectedRoom);
+    Occupant group_mate { 500 };
+    Caster mage { /*mage_prof=*/25, /*cleric_prof=*/0, game_types::PS_None };
+    ScopedTickCharExists mage_exists { mage.ch, kCasterAbsNumber };
+    ScopedTickCharExists group_mate_exists { group_mate.ch, kOccupantAbsNumber };
+    ScopedRoomOccupants affected_room { room, kAffectedRoom, { &mage.ch, &group_mate.ch } };
+    ScopedCharacterCleanup group_mate_cleanup { group_mate.ch };
+    ScopedCharacterCleanup mage_cleanup { mage.ch };
+
+    // The group link, both halves: the occupant follows the caster.
+    follow_type membership {};
+    membership.fol_number = group_mate.ch.abs_number;
+    membership.follower = &group_mate.ch;
+    membership.next = nullptr;
+    group_mate.ch.master = &mage.ch;
+    mage.ch.followers = &membership;
+
+    ScopedRoomSpellAffect blaze { room, SPELL_BLAZE, 5, 25, caster_snapshot::capture(mage.ch) };
+
+    queue_mid_rolls(32);
+    ASSERT_TRUE(room_affect_tick(SPELL_BLAZE, room, &group_mate.ch, blaze.affect()));
+    clear_test_random_values();
+
+    const char_data* const mage_was_fighting = mage.ch.specials.fighting;
+    const char_data* const group_mate_was_fighting = group_mate.ch.specials.fighting;
+    const int group_mate_hit = group_mate.ch.tmpabilities.hit;
+    // Unlink the group before the cleanup guards run: `membership` is a stack
+    // object and must not outlive the caster's follower list.
+    mage.ch.followers = nullptr;
+    group_mate.ch.master = nullptr;
+
+    EXPECT_EQ(group_mate_hit, 466)
+        << "the tick burns friend and foe alike, from the recorded snapshot (500 - 34)";
+    EXPECT_EQ(mage_was_fighting, nullptr)
+        << "but the caster does not start a fight with its own group-mate";
+    EXPECT_EQ(group_mate_was_fighting, nullptr) << "and the group-mate does not swing back";
 }
 
 // ---------------------------------------------------------------------------

@@ -1605,8 +1605,10 @@ SNAPSHOT rather than the occupant. `affect_update_room()` calls
 `skills[loc].spell_pointer` self-re-cast **only when the tick reports no body** (an unknown
 spell), so nothing outside the four converted spells changes. With no recorded caster the tick
 falls back to `capture(*occupant)` and a null actor — the pre-TASK-021 formula inputs, and nobody
-credited. `engaging_attacker()` lets the recorded caster engage only when it still exists AND
-stands in the occupant's room, so `set_fighting` never pairs characters across rooms.
+credited. A tick CREDITS but never ENGAGES: the engaging attacker it hands
+`damage_credited()`/`apply_spell_damage_credited()` is always the occupant itself, exactly the
+`attacker == victim` shape the old self-re-cast produced, so `damage()`'s whole
+`victim != attacker` block is unreachable from a tick (inventory item 9).
 
 **The mist's two long-standing quirks are preserved verbatim**, in both the cast and the tick:
 the renewal is silent (the "breathes out dark mists" messages only ever fired on a fresh cast,
@@ -1666,7 +1668,8 @@ named here because a reviewer should not have to find it.
    `recipient != ch || type == TO_CHAR`, and `caster == victim` by construction. Now: the
    occupant actually receives "You feel your body fend off the poison."; a recorded caster who is
    alive and standing in that room receives "$N shrugs off your poison with ease." (gated on
-   `engaging_attacker(caster, occupant) == caster`); a caster who has walked away or is gone
+   `caster_is_present(caster, occupant)`, a message test only — it decides nothing about
+   engagement); a caster who has walked away or is gone
    receives nothing. A caster standing in its own poison is byte-identical to the old arm.
 6. **The mist-move use-after-free in `affect_update_room` is repaired.** Pre-existing, and
    unrelated to the snapshot: the move branch ends in `affect_remove_room(room, tmpaf)`, whose
@@ -1687,6 +1690,20 @@ named here because a reviewer should not have to find it.
    `resolve_poisoner()` for a bit that no site writes. Defensible (an item has no poisoner, like
    the food and drink sites) but it is an answer by omission: a future item that *should* credit
    its wielder has nowhere to say so.
+9. **Room ticks credit but never engage** — restoring the pre-branch non-engagement. Task 5 had a
+   tick hand `damage_credited()`/`apply_spell_damage_credited()` the recorded caster as the
+   ENGAGING attacker whenever that caster stood in the same room; the final whole-branch review
+   (M-1) overturned it and the engaging attacker is now always the occupant itself. What that
+   avoids, none of which the old self-re-cast could do: a caster's own blaze/poison
+   `set_fighting`-ing them against every occupant it burns — group-mates and a PC's own pet
+   included — and putting a resting or sleeping caster into fighting position; MOB_MEMORY mobs
+   `remember`ing the caster; and, for an NPC caster ticking on a charmed NPC whose master stands
+   in the room, `damage()`'s 1-in-11 arm delivering a full melee `hit(caster, victim->master)`
+   *instead* of the tick damage — a kill of a DIFFERENT occupant, inside
+   `affect_update_room()`'s occupant walk, which is exactly the lifetime hazard TASK-020 had just
+   closed one level up. Only the CREDITED killer moved (items 1-3); nobody's `specials.fighting`
+   changes from a tick. Pinned by `RoomAffectTick.BlazeTickCreditsAnInRoomCasterWithoutEngagingIt`
+   and `…BlazeTickBurnsAGroupMateWithoutTurningThePartyOnItself`.
 
 #### Known limits
 

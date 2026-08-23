@@ -267,3 +267,14 @@ and a bounded adversarial review. Merge is the owner's call. Follow-ups filed: T
 under `recalc_zone_power`) and TASK-024 (character handles — retire raw `char_data` holders);
 TASK-022's scope widened to cover `spell_haze`/`spell_poison`'s pre-guard caster dereference
 alongside `spell_blaze`'s.
+
+## 2026-08-23 — TASK-026 done (kill credit: contributors + engaged-opponent fallback)
+Rider on TASK-021's branch, owner-requested after two questions: who is credited when a casterless
+poison kills a player mid-fight (nobody, and the victim took the harsher non-PK death), and how a
+mob-vs-player death is classified (last hit for the type; everyone engaged for the PK record). The
+fix keeps that two-axis split and feeds both axes: primary killer = recorded caster → engaged
+opponent → nobody; PK contributors = fighters ∪ resolved poisoner ∪ the killing tick's caster
+(room affects: tick-kill only, owner ruling). 1959 → 1984 tests; production logic final at
+`601a9732`, disclosure/coverage fix round at `041e25a1`; all legs green (smoke-account, rots64,
+monolithic, six-seed shuffle, i386 battery). Spun off: TASK-027 (`pkill_valid_killer` ||/&&),
+TASK-028 (self-poison death-arm divergence + pet-redirect NOWHERE quirk). Unmerged — owner's call.

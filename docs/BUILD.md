@@ -1717,7 +1717,7 @@ named here because a reviewer should not have to find it.
 
    | axis | rule |
    |---|---|
-   | **Primary killer** (the death TYPE axis: player kill vs. mob/DT arm) | the recorded caster; else the opponent the victim was engaged with at the instant it died; else nobody. |
+   | **Primary killer** (the death TYPE axis: player kill vs. mob/DT arm) | the recorded caster; else the opponent the victim was engaged with at the instant it died; else nobody. That opponent is the KILLER, not a label: it goes through everything `die()` does with one -- `group_gain()`'s experience award, the `%s killed %s at %s` mudlog, and the `MOB_MEMORY` forget -- none of which a sourceless tick reached while it was still calling `die(NULL)`. Pinned by `SourcelessKillCredit.TheEngagedOpponentCollectsTheKillsExperience`. |
    | **Contributor set** (the PK RECORD axis) | everyone fighting the victim, plus `resolve_poisoner(victim)`, plus the primary -- deduplicated, pet/orc-friend redirected to a master standing in the same room, victim and immortals excluded, capacity 32. Room-affect casters get NO participation memory beyond the tick that kills (owner ruling). |
    | **When a record is written** | when the contributor set is non-empty. The retired condition was `attack_type == SPELL_POISON && !dead_man->specials.fighting`, whose own `TODO(drelidan)` asked for exactly this replacement. |
 
@@ -1727,17 +1727,38 @@ named here because a reviewer should not have to find it.
    NPCs included, and `pkill_opponents`/`pkill_update_pkill_tab` still apply `pkill_valid_killer`
    per entry. `pkill_valid_killer` itself is unchanged.
 
-   Two consequences worth naming. The fallback is read immediately above
-   `damage_credited()`'s `if (!AWAKE(victim)) stop_fighting(victim);` -- the last instant the
-   engagement is observable -- because `stop_fighting()` clears `specials.fighting` for a dead
-   character, so a read inside the death branch (where it is used) would answer `nullptr` every
-   time. And because the retired early-out *returned*, a poison death of a victim who was not
-   fighting now also runs `EXPLOIT_DEATH` (PC killer), the mob-death XP loss (NPC killer) and the
-   `GET_COND` resets, which that return used to skip; acceptance criterion 2 ("mob poison kills a
-   non-fighting victim -> mob death") is what asks for it. Pinned by `DieContributorRecord.*`
-   (six end-to-end cases through the real `die()`), `SourcelessKillCredit.*`,
-   `KillContributors.*` and `PkillContributorWalks.*` -- the last of which is the first test of
-   any kind for pkill.cpp's three walks.
+   **Where the fallback reads the engagement.** Immediately above `damage_credited()`'s
+   `if (!AWAKE(victim)) stop_fighting(victim);` -- the last instant the engagement is observable
+   -- because `stop_fighting()` clears `specials.fighting` for a dead character, so a read inside
+   the death branch (where the value is used) would answer `nullptr` every time and the fallback
+   could never fire.
+
+   **The retired early-out was a `return`, so a poison death of a non-fighting victim now runs
+   die()'s whole tail.** `EXPLOIT_DEATH` (PC killer), the `GET_COND` resets, and -- the one with
+   real weight -- the mob-death XP arm, `gain_exp_regardless(dead_man, std::min(0, base_xp_gain))`.
+   That class of death used to stop after the `base_xp_gain / 10` award, so **the XP loss for a
+   mob's poison kill of a victim who was not fighting is now ten times what it was**. Acceptance
+   criterion 2 ("mob poison kills a non-fighting victim -> mob death") is what asks for it, and
+   `DieContributorRecord.MobPoisonOnANonFightingVictimIsAMobDeath` pins the arithmetic
+   (15000 - 100 - 1000) rather than merely the exploit record.
+
+   **`pkill_weight`'s denominator changed shape, twice over.** It used to sum the level of every
+   character in `combat_list` fighting the victim, with no validity filter of any kind. Iterating
+   the contributor set instead means (a) **immortals are gone from it** -- an immortal lending a
+   hand used to inflate the total and shrink the weight of everybody else's kill; and (b) **a pet
+   or orc-friend contributes its MASTER's level, not its own**, wherever the master stands in the
+   room. Both are accepted as named consequences of one filter rather than three divergent ones;
+   (a) is pinned by `PkillContributorWalks.AnImmortalNeverEntersTheWeightDenominator`.
+
+   **A death with a non-null killer but an empty contributor set writes nothing.** killer ==
+   victim, or an immortal: previously such a death still wrote a zero-opponent pkill record and
+   an `EXPLOIT_PK`. This is the intended reading of "no contributors, no record"; the rest of the
+   death is untouched, which `DieContributorRecord.AnImmortalsKillWritesNoRecordAtAll` pins by
+   asserting `EXPLOIT_DEATH` is still captured.
+
+   Pinned overall by `DieContributorRecord.*` (seven end-to-end cases through the real `die()`),
+   `SourcelessKillCredit.*`, `KillContributors.*` and `PkillContributorWalks.*` -- the last of
+   which is the first test of any kind for pkill.cpp's three walks.
 
 #### Known limits
 

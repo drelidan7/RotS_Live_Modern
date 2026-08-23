@@ -208,10 +208,10 @@ void set_pkill_create_hook(pkill_create_fn hook)
     g_pkill_create_hook = hook;
 }
 
-void pkill_create(char_data* victim)
+void pkill_create(char_data* victim, const kill_contributor_list& contributors)
 {
     if (g_pkill_create_hook) {
-        g_pkill_create_hook(victim);
+        g_pkill_create_hook(victim, contributors);
         return;
     }
     rots::log::write_stderr(

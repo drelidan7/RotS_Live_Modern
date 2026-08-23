@@ -1339,15 +1339,22 @@ public:
 };
 
 struct RecordedPkillCreateCall {
+    // The victim the dispatch was handed.
     char_data* victim = nullptr;
+    // TASK-026: a copy of the contributor list the dispatch carried, so a test
+    // can prove the set survives the hop through the seam intact rather than
+    // merely that the call happened.
+    rots::combat::kill_contributor_list contributors;
+    // Whether the registered stub ran at all.
     bool called = false;
 };
 
 RecordedPkillCreateCall g_recorded_pkill_create_call;
 
-void recording_pkill_create_stub(char_data* victim)
+void recording_pkill_create_stub(char_data* victim,
+    const rots::combat::kill_contributor_list& contributors)
 {
-    g_recorded_pkill_create_call = RecordedPkillCreateCall { victim, true };
+    g_recorded_pkill_create_call = RecordedPkillCreateCall { victim, contributors, true };
 }
 
 class ScopedPkillCreateHook {
@@ -1456,11 +1463,35 @@ TEST(CombatHooksPkillCreate, DispatchReachesARegisteredStubWithArgsIntact)
     ScopedPkillCreateHook scoped(recording_pkill_create_stub);
     char_data victim {};
 
-    rots::combat::pkill_create(&victim);
+    rots::combat::pkill_create(&victim, rots::combat::kill_contributor_list {});
 
     EXPECT_TRUE(g_recorded_pkill_create_call.called)
         << "Expected the registered stub to have been reached.";
     EXPECT_EQ(g_recorded_pkill_create_call.victim, &victim);
+}
+
+// TASK-026: the seam's second argument is the whole point of the widening --
+// the real body no longer derives the participants for itself, so a list that
+// arrived truncated or reordered would silently rewrite every PK record.
+TEST(CombatHooksPkillCreate, DispatchCarriesTheContributorListIntact)
+{
+    g_recorded_pkill_create_call = RecordedPkillCreateCall {};
+    ScopedPkillCreateHook scoped(recording_pkill_create_stub);
+    char_data victim {};
+    char_data first {};
+    char_data second {};
+
+    rots::combat::kill_contributor_list contributors;
+    ASSERT_TRUE(contributors.add(&first));
+    ASSERT_TRUE(contributors.add(&second));
+
+    rots::combat::pkill_create(&victim, contributors);
+
+    ASSERT_TRUE(g_recorded_pkill_create_call.called);
+    ASSERT_EQ(g_recorded_pkill_create_call.contributors.count, 2);
+    EXPECT_EQ(g_recorded_pkill_create_call.contributors.entries[0], &first)
+        << "the list arrives in the order it was built";
+    EXPECT_EQ(g_recorded_pkill_create_call.contributors.entries[1], &second);
 }
 
 TEST(CombatHooksPkillCreate, DispatchDefaultsToANoOpWhenUnregistered)
@@ -1469,7 +1500,7 @@ TEST(CombatHooksPkillCreate, DispatchDefaultsToANoOpWhenUnregistered)
     ScopedPkillCreateHook unregistered(nullptr);
     char_data victim {};
 
-    rots::combat::pkill_create(&victim);
+    rots::combat::pkill_create(&victim, rots::combat::kill_contributor_list {});
 
     EXPECT_FALSE(g_recorded_pkill_create_call.called)
         << "Expected an unregistered pkill_create hook to leave the (unrelated) stub's own "

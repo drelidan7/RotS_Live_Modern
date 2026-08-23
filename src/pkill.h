@@ -24,7 +24,18 @@ typedef struct {
 } PKILL;
 
 void boot_pkills();
-void pkill_create(struct char_data*);
+
+// TASK-026: the participants are handed in rather than derived here. The
+// three record-building walks below used to read `combat_list` for
+// themselves, which can only ever see characters currently fighting the
+// victim; die() now builds one kill_contributor_list (combat_hooks.h) that
+// also carries the recorded poisoner and the killing tick's caster, and all
+// three walks iterate it. Forward-declared rather than included: this header
+// needs only the incomplete type for a reference parameter.
+namespace rots::combat {
+struct kill_contributor_list;
+}
+void pkill_create(struct char_data*, const rots::combat::kill_contributor_list&);
 
 // Registers the real pkill_create() body above as combat_hooks.h's
 // pkill_create hook (combat-pilot wave Task 4b; pilot-census.md section

@@ -967,7 +967,10 @@ private:
     char_data& m_ch; // the character whose affect list this scope empties
 };
 
-void noop_pkill_create(char_data* /*victim*/) { }
+void noop_pkill_create(char_data* /*victim*/,
+    const rots::combat::kill_contributor_list& /*contributors*/)
+{
+}
 
 void noop_exploit_capture(int /*record_type*/, char_data* /*victim*/, int /*int_param*/,
     const char* /*extra*/)
@@ -1505,4 +1508,122 @@ TEST(KillContributors, AddRefusesADuplicateAndAFullList)
     EXPECT_FALSE(list.add(&overflow.ch)) << "a full list refuses, and says so";
     EXPECT_EQ(list.count, rots::combat::kill_contributor_list::kCapacity);
     EXPECT_FALSE(list.contains(&overflow.ch));
+}
+
+// ---------------------------------------------------------------------------
+// TASK-026 step 3: pkill.cpp's three walks iterate the contributor list
+// ---------------------------------------------------------------------------
+//
+// All three used to walk `combat_list` themselves, filtering on
+// `c->specials.fighting == victim`. None of them had a test of any kind. They
+// are declared here rather than in a header because pkill.cpp declares them
+// nowhere else -- the local-extern treatment this file already gives
+// raw_kill() and affect_update_person().
+
+int pkill_weight(struct char_data* victim,
+    const rots::combat::kill_contributor_list& contributors);
+int pkill_opponents(struct char_data* victim,
+    const rots::combat::kill_contributor_list& contributors);
+int pkill_update_pkill_tab(struct char_data* victim, int w, int n,
+    const rots::combat::kill_contributor_list& contributors);
+extern PKILL* pkill_tab;
+extern int pkill_tab_len;
+
+namespace {
+
+// pkill_update_pkill_tab() appends to the process-wide record table and there
+// is no API that shrinks it again, so a test owns a private empty one for its
+// scope and frees whatever the call allocated.
+class ScopedEmptyPkillTable {
+public:
+    ScopedEmptyPkillTable()
+        : m_previous_tab(pkill_tab)
+        , m_previous_len(pkill_tab_len)
+    {
+        pkill_tab = nullptr;
+        pkill_tab_len = 0;
+    }
+    ~ScopedEmptyPkillTable()
+    {
+        std::free(pkill_tab);
+        pkill_tab = m_previous_tab;
+        pkill_tab_len = m_previous_len;
+    }
+    ScopedEmptyPkillTable(const ScopedEmptyPkillTable&) = delete;
+    ScopedEmptyPkillTable& operator=(const ScopedEmptyPkillTable&) = delete;
+
+private:
+    // The table and length this scope displaced, restored verbatim on exit.
+    PKILL* m_previous_tab;
+    int m_previous_len;
+};
+
+} // namespace
+
+TEST(PkillContributorWalks, WeightSumsEveryContributorsLevelIncludingNpcs)
+{
+    Contributor victim { /*npc=*/false, 30 };
+    Contributor player { /*npc=*/false, 20 };
+    Contributor orc { /*npc=*/true, 10 };
+
+    rots::combat::kill_contributor_list contributors;
+    ASSERT_TRUE(contributors.add(&player.ch));
+    ASSERT_TRUE(contributors.add(&orc.ch));
+
+    // GET_LEVEL(victim) * 1000 / (total * total), total = 20 + 10.
+    EXPECT_EQ(pkill_weight(&victim.ch, contributors), 30 * 1000 / (30 * 30))
+        << "an NPC contributor's level counts toward the weight, as every NPC "
+           "fighter's always did";
+    EXPECT_EQ(pkill_weight(&victim.ch, rots::combat::kill_contributor_list {}), 0)
+        << "no contributors, no weight -- and no division by zero";
+}
+
+TEST(PkillContributorWalks, OpponentsCountsOnlyValidKillers)
+{
+    Contributor victim { /*npc=*/false, 30 };
+    Contributor player { /*npc=*/false, 20 };
+    Contributor immortal { /*npc=*/false, LEVEL_IMMORT };
+    Contributor plain_mob { /*npc=*/true, 25 };
+
+    rots::combat::kill_contributor_list contributors;
+    ASSERT_TRUE(contributors.add(&player.ch));
+    ASSERT_TRUE(contributors.add(&immortal.ch));
+    ASSERT_TRUE(contributors.add(&plain_mob.ch));
+
+    EXPECT_EQ(pkill_opponents(&victim.ch, contributors), 1)
+        << "pkill_valid_killer() is applied per entry: the immortal and the "
+           "unaffiliated mob are not player killers";
+}
+
+TEST(PkillContributorWalks, UpdatePkillTabWritesOneRecordPerValidContributor)
+{
+    ScopedEmptyPkillTable private_table;
+
+    Contributor victim { /*npc=*/false, 30 };
+    Contributor first { /*npc=*/false, 20 };
+    Contributor second { /*npc=*/false, 25 };
+    Contributor immortal { /*npc=*/false, LEVEL_IMMORT };
+    victim.ch.specials2.idnum = 4001;
+    first.ch.specials2.idnum = 4002;
+    second.ch.specials2.idnum = 4003;
+    immortal.ch.specials2.idnum = 4004;
+
+    rots::combat::kill_contributor_list contributors;
+    ASSERT_TRUE(contributors.add(&first.ch));
+    ASSERT_TRUE(contributors.add(&immortal.ch));
+    ASSERT_TRUE(contributors.add(&second.ch));
+
+    const int opponents = pkill_opponents(&victim.ch, contributors);
+    ASSERT_EQ(opponents, 2);
+    const int start = pkill_update_pkill_tab(&victim.ch, /*w=*/1, opponents, contributors);
+
+    ASSERT_EQ(start, 0);
+    ASSERT_EQ(pkill_tab_len, 2);
+    EXPECT_EQ(pkill_tab[0].killer, first.ch.specials2.idnum);
+    EXPECT_EQ(pkill_tab[0].victim, victim.ch.specials2.idnum);
+    EXPECT_EQ(pkill_tab[0].killer_level, 20);
+    EXPECT_EQ(pkill_tab[1].killer, second.ch.specials2.idnum)
+        << "the records follow the contributor list, skipping the invalid entry "
+           "between them rather than shifting a record onto it";
+    EXPECT_EQ(pkill_tab[1].victim_level, 30);
 }

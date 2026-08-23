@@ -430,9 +430,14 @@ kill_contributor_list kill_contributors(char_data* victim, char_data* primary);
 
 // pkill_create() (pkill.h:27, pkill.cpp:598) -- void return, no
 // tripwire-semantics concern. Tripwire default: LOGGED no-op (void class).
-using pkill_create_fn = void (*)(char_data* victim);
+// TASK-026 widened this hook's signature: the real body no longer derives the
+// participants from `combat_list` for itself -- die() hands it the
+// kill_contributor_list built above, and the three record-building walks
+// iterate that. The list is owned by the caller's frame and never outlives
+// the call, hence the const reference.
+using pkill_create_fn = void (*)(char_data* victim, const kill_contributor_list& contributors);
 void set_pkill_create_hook(pkill_create_fn hook);
-void pkill_create(char_data* victim);
+void pkill_create(char_data* victim, const kill_contributor_list& contributors);
 
 
 // -----------------------------------------------------------------------

@@ -1286,7 +1286,10 @@ void die(char_data* dead_man, char_data* killer, int attack_type)
 
         // PK records are created regardless of death cause, but then early out if it's
         // all NPCs killing the character.  Heh...
-        rots::combat::pkill_create(dead_man);
+        // TASK-026: who took part is decided here, once, and handed to the
+        // record builder -- pkill.cpp's own combat_list walks could not see a
+        // poisoner or a remote room-affect caster.
+        rots::combat::pkill_create(dead_man, rots::combat::kill_contributors(dead_man, killer));
         rots::persist::dispatch_exploit_capture(EXPLOIT_PK, dead_man, 0, NULL); /* pk records to killers */
 
         /* add death records to dead player */

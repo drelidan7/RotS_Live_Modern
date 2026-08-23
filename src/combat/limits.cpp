@@ -1613,8 +1613,9 @@ extern universal_list* affected_list_pool;
 // affect_remove()'s tail from_list_to_pool()s (free()s) the character's own
 // affected_list node. So the list is SNAPSHOTTED first (identities only, no
 // body runs during that walk) and every entry is re-validated at its turn:
-// a character is updated only while it still exists and still carries an
-// affect; a room is always safe to visit (world[] rooms are never freed, and
+// a character is updated only while the abs_number it was captured under
+// still resolves back to that very pointer and it still carries an affect;
+// a room is always safe to visit (world[] rooms are never freed, and
 // a room whose last affect expired earlier in the tick simply has no affects
 // left to update). The housekeeping branch re-finds the live node instead of
 // reusing a pointer captured before the bodies ran.
@@ -1624,7 +1625,10 @@ namespace {
 struct affected_list_entry {
     int type; // TARGET_CHAR / TARGET_ROOM, as the node carried it
     int number; // the character's abs_number (unused for rooms)
-    char_data* ch; // the node's character pointer (compared, never dereferenced unless char_exists)
+    // The node's character pointer. Only ever COMPARED against the live
+    // char_by_abs_number(number) lookup -- never dereferenced on its own, so a
+    // character freed since the snapshot cannot be read through it.
+    char_data* ch;
     room_data* room; // the node's room pointer
 };
 
@@ -1661,11 +1665,20 @@ void affect_update()
     char mybuf[1000];
     for (const affected_list_entry& entry : snapshot) {
         if (entry.type == TARGET_CHAR) {
-            if (char_exists(entry.number) && entry.ch && entry.ch->affected) {
-                affect_update_person(entry.ch, 0);
+            // The abs_number slot can be RECYCLED between the snapshot and this
+            // turn: char_exists() is only a bit, and register_npc_char() hands a
+            // freed slot to the next character its cursor reaches (a death
+            // earlier in this very tick can run an ON_DIE script that loads a
+            // mobile). So the number is resolved back to a live pointer and that
+            // pointer must be the SAME one the node named -- the identity compare
+            // caster_snapshot::resolve()/resolve_poisoner() already use -- before
+            // anything is dereferenced.
+            char_data* const live = char_by_abs_number(entry.number);
+            if (live != nullptr && live == entry.ch && live->affected) {
+                affect_update_person(live, 0);
             } else {
-                if (char_exists(entry.number))
-                    strcpy(mybuf, std::format("Getting {} off the affected_list.", GET_NAME(entry.ch)).c_str());
+                if (live != nullptr && live == entry.ch)
+                    strcpy(mybuf, std::format("Getting {} off the affected_list.", GET_NAME(live)).c_str());
                 else
                     strcpy(mybuf, "Getting Unknown char off the affected_list.");
                 mudlog(mybuf, CMP, LEVEL_GRGOD, TRUE);

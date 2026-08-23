@@ -1582,7 +1582,13 @@ gained a parallel `char_data* characters_by_abs_number[MAX_CHARACTERS]`, written
 `remove_char_exists()`, read through a new bounds-checked `char_by_abs_number(int)`
 (`src/handler.h`). `caster_snapshot::resolve()` returns the registry's pointer **iff it equals**
 `identity_ptr` — the stored pointer is only ever an identity token to compare, never a pointer to
-read. `resolve_poisoner()` (below) uses the identical shape.
+read. `resolve_poisoner()` (below) uses the identical shape, and so, since the final review's
+M-2, does TASK-020's `affect_update()` snapshot walk: it validates each entry with
+`char_by_abs_number(entry.number) == entry.ch` rather than the bare `char_exists(entry.number)`
+bit it shipped with, because that bit is set again the moment `register_npc_char()`'s cursor
+hands the freed slot to somebody else — an ON_DIE / `SPECIAL_DEATH` script that `read_mobile()`s
+inside the same tick is enough. Pinned by `AffectUpdateWalk.DoesNotUpdateACharacterWhoseAbs
+NumberSlotWasRecycled` and `…DoesNotDereferenceAFreedCharacterThroughARecycledSlot`.
 
 **`damage_credited()`: engagement vs. credit.** `damage()` conflated two roles in one `attacker`
 argument — who the victim fights, and who gets the kill. `int damage_credited(ch, victim,

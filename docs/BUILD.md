@@ -1717,7 +1717,7 @@ named here because a reviewer should not have to find it.
 
    | axis | rule |
    |---|---|
-   | **Primary killer** (the death TYPE axis: player kill vs. mob/DT arm) | the recorded caster; else the opponent the victim was engaged with at the instant it died; else nobody. That opponent is the KILLER, not a label: it goes through everything `die()` does with one -- `group_gain()`'s experience award, the `%s killed %s at %s` mudlog, and the `MOB_MEMORY` forget -- none of which a sourceless tick reached while it was still calling `die(NULL)`. Pinned by `SourcelessKillCredit.TheEngagedOpponentCollectsTheKillsExperience`. |
+   | **Primary killer** (the death TYPE axis: player kill vs. mob/DT arm) | the recorded caster; else the opponent the victim was engaged with at the instant it died; else nobody. That opponent is the KILLER, not a label: it goes through everything `die()` does with one -- `group_gain()`'s experience award, the `%s killed by %s at %s` (or its `(%s)` pet variant) mudlog, and the `MOB_MEMORY` forget -- none of which a sourceless tick reached while it was still calling `die(NULL)`. Pinned by `SourcelessKillCredit.TheEngagedOpponentCollectsTheKillsExperience`. |
    | **Contributor set** (the PK RECORD axis) | everyone fighting the victim, plus `resolve_poisoner(victim)`, plus the primary -- deduplicated, pet/orc-friend redirected to a master standing in the same room, victim and immortals excluded, capacity 32. Room-affect casters get NO participation memory beyond the tick that kills (owner ruling). |
    | **When a record is written** | when the contributor set is non-empty. The retired condition was `attack_type == SPELL_POISON && !dead_man->specials.fighting`, whose own `TODO(drelidan)` asked for exactly this replacement. |
 
@@ -1742,13 +1742,15 @@ named here because a reviewer should not have to find it.
    `DieContributorRecord.MobPoisonOnANonFightingVictimIsAMobDeath` pins the arithmetic
    (15000 - 100 - 1000) rather than merely the exploit record.
 
-   **`pkill_weight`'s denominator changed shape, twice over.** It used to sum the level of every
+   **`pkill_weight`'s denominator changed shape, three ways.** It used to sum the level of every
    character in `combat_list` fighting the victim, with no validity filter of any kind. Iterating
    the contributor set instead means (a) **immortals are gone from it** -- an immortal lending a
    hand used to inflate the total and shrink the weight of everybody else's kill; and (b) **a pet
    or orc-friend contributes its MASTER's level, not its own**, wherever the master stands in the
-   room. Both are accepted as named consequences of one filter rather than three divergent ones;
-   (a) is pinned by `PkillContributorWalks.AnImmortalNeverEntersTheWeightDenominator`.
+   room; and (c) **when that master is already a contributor in its own right, the pet drops out
+   entirely** -- `kill_contributor_list::add`'s dedup rejects the duplicate, so the denominator
+   loses the pet's level and gains nothing. All three are accepted as named consequences of one
+   filter rather than three divergent ones; (a) is pinned by `PkillContributorWalks.AnImmortalNeverEntersTheWeightDenominator`.
 
    **A death with a non-null killer but an empty contributor set writes nothing.** killer ==
    victim, or an immortal: previously such a death still wrote a zero-opponent pkill record and

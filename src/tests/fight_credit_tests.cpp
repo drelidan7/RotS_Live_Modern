@@ -43,7 +43,9 @@
 
 #include <cstdlib>
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
+#include <vector>
 
 extern char_data* combat_list;
 extern char_data* combat_next_dude;
@@ -1266,4 +1268,241 @@ TEST(SourcelessKillCredit, CreditsNobodyWhenTheVictimIsNotFightingAnybody)
     EXPECT_EQ(g_recorded_death.killer, nullptr)
         << "with no opponent there is nothing to fall back to -- the nobody arm is unchanged";
     expect_stat_penalty_arm(player);
+}
+
+// ---------------------------------------------------------------------------
+// TASK-026 step 2: kill_contributors() -- who took part in this death
+// ---------------------------------------------------------------------------
+//
+// A pure function over the combat list, the recorded poisoner and the primary
+// killer. It answers the question pkill.cpp's three combat_list walks used to
+// answer for themselves, and answers it better: a poisoner who is not in the
+// room (and a room-affect caster who ticked the killing blow from another zone
+// entirely) can be a contributor, which no walk of combat_list can ever see.
+
+namespace {
+
+// A contributor candidate that is nothing but a level and an act-flag word --
+// kill_contributors() reads no more than that off anyone it considers, except
+// for the pet redirect, which also reads `master` and the two locations.
+struct Contributor {
+    char_data ch {};
+    char_prof_data profs {};
+    char name[16] = "contributor";
+
+    Contributor(bool npc, int level)
+    {
+        ch.profs = &profs;
+        if (npc) {
+            ch.specials2.act = MOB_ISNPC;
+            ch.nr = 0;
+            ch.player.short_descr = name;
+        } else {
+            ch.specials2.act = 0;
+            ch.player.name = name;
+        }
+        ch.player.race = RACE_HUMAN;
+        ch.player.level = level;
+        ch.specials.position = POSITION_STANDING;
+    }
+};
+
+// Links `fighter` into the process-wide combat list as an attacker of
+// `victim`, the way set_fighting() would -- done by hand so a test can seat a
+// character in the list without a room, a world or a two-way engagement.
+void engage(char_data& fighter, char_data& victim)
+{
+    fighter.specials.fighting = &victim;
+    fighter.next_fighting = combat_list;
+    combat_list = &fighter;
+}
+
+} // namespace
+
+TEST(KillContributors, CollectsEveryCharacterFightingTheVictim)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor first { /*npc=*/false, 20 };
+    Contributor second { /*npc=*/true, 25 };
+    Contributor bystander { /*npc=*/false, 30 };
+    Contributor other_victim { /*npc=*/false, 10 };
+
+    engage(first.ch, victim.ch);
+    engage(second.ch, victim.ch);
+    engage(bystander.ch, other_victim.ch); // fighting somebody else entirely
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, nullptr);
+
+    EXPECT_EQ(contributors.count, 2);
+    EXPECT_TRUE(contributors.contains(&first.ch));
+    EXPECT_TRUE(contributors.contains(&second.ch))
+        << "the fighter walk keeps NPCs: pkill_weight() has always summed their levels too";
+    EXPECT_FALSE(contributors.contains(&bystander.ch))
+        << "somebody fighting a different character is not a contributor to this death";
+}
+
+TEST(KillContributors, DeduplicatesACharacterThatArrivesByEveryRoute)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor killer { /*npc=*/false, 20 };
+    ScopedCharExists registered { killer.ch, kKillerAbsNumber };
+    victim.ch.specials.poisoned_by_abs_number = killer.ch.abs_number;
+    victim.ch.specials.poisoned_by = &killer.ch;
+    engage(killer.ch, victim.ch);
+
+    // Fighting the victim, recorded as its poisoner AND named as the primary.
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, &killer.ch);
+
+    EXPECT_EQ(contributors.count, 1) << "one character, one entry, whatever route it arrived by";
+    EXPECT_TRUE(contributors.contains(&killer.ch));
+}
+
+TEST(KillContributors, IncludesTheRecordedPoisonerAndAPrimaryThatIsNowhereNearTheFight)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor poisoner { /*npc=*/false, 20 };
+    Contributor caster { /*npc=*/false, 30 };
+    ScopedCharExists registered { poisoner.ch, kKillerAbsNumber };
+    victim.ch.specials.poisoned_by_abs_number = poisoner.ch.abs_number;
+    victim.ch.specials.poisoned_by = &poisoner.ch;
+
+    // Neither is fighting the victim, and neither is in its room -- the whole
+    // point: a combat_list walk could never find either of them.
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, &caster.ch);
+
+    EXPECT_EQ(contributors.count, 2);
+    EXPECT_TRUE(contributors.contains(&poisoner.ch));
+    EXPECT_TRUE(contributors.contains(&caster.ch));
+}
+
+TEST(KillContributors, DropsAPoisonRecordThatNoLiveCharacterAnswersFor)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor poisoner { /*npc=*/false, 20 };
+    {
+        ScopedCharExists registered { poisoner.ch, kKillerAbsNumber };
+        victim.ch.specials.poisoned_by_abs_number = poisoner.ch.abs_number;
+        victim.ch.specials.poisoned_by = &poisoner.ch;
+    }
+    ASSERT_EQ(resolve_poisoner(victim.ch), nullptr);
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, nullptr);
+
+    EXPECT_EQ(contributors.count, 0)
+        << "an extracted poisoner contributes nothing -- and is never dereferenced to find out";
+}
+
+TEST(KillContributors, ExcludesTheVictimItselfAndImmortals)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor immortal { /*npc=*/false, LEVEL_IMMORT };
+    engage(victim.ch, victim.ch); // a room tick's self-damage shape
+    engage(immortal.ch, victim.ch);
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, &victim.ch);
+
+    EXPECT_EQ(contributors.count, 0);
+    EXPECT_FALSE(contributors.contains(&victim.ch))
+        << "a character never contributes to its own death";
+    EXPECT_FALSE(contributors.contains(&immortal.ch))
+        << "immortals are not pkillers -- pkill_valid_killer() has always said so";
+}
+
+TEST(KillContributors, RedirectsAPetToItsMasterWhenTheMasterStandsWithIt)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor pet { /*npc=*/true, 15 };
+    Contributor master { /*npc=*/false, 20 };
+    SET_BIT(pet.ch.specials2.act, MOB_PET);
+    pet.ch.master = &master.ch;
+
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &victim.ch, &pet.ch, &master.ch } };
+    engage(pet.ch, victim.ch);
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, nullptr);
+
+    EXPECT_EQ(contributors.count, 1);
+    EXPECT_TRUE(contributors.contains(&master.ch))
+        << "the pet's kill belongs to whoever is holding its leash";
+    EXPECT_FALSE(contributors.contains(&pet.ch));
+}
+
+TEST(KillContributors, KeepsAPetWhoseMasterIsElsewhere)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 10 };
+    Contributor pet { /*npc=*/true, 15 };
+    Contributor master { /*npc=*/false, 20 };
+    SET_BIT(pet.ch.specials2.act, MOB_PET);
+    pet.ch.master = &master.ch;
+
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &victim.ch, &pet.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom, { &master.ch } };
+    engage(pet.ch, victim.ch);
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, nullptr);
+
+    EXPECT_EQ(contributors.count, 1);
+    EXPECT_TRUE(contributors.contains(&pet.ch))
+        << "damage_credited()'s own pet redirect has always required the same room; so does this";
+    EXPECT_FALSE(contributors.contains(&master.ch));
+}
+
+TEST(KillContributors, DropsContributorsPastCapacityInsteadOfOverrunningTheArray)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    constexpr int kCapacity = rots::combat::kill_contributor_list::kCapacity;
+    Contributor victim { /*npc=*/false, 10 };
+    std::vector<std::unique_ptr<Contributor>> crowd;
+    for (int i = 0; i < kCapacity + 3; ++i) {
+        crowd.push_back(std::make_unique<Contributor>(/*npc=*/false, 20));
+        engage(crowd.back()->ch, victim.ch);
+    }
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, nullptr);
+
+    EXPECT_EQ(contributors.count, kCapacity) << "the list never grows past its fixed capacity";
+    for (int i = 0; i < contributors.count; ++i) {
+        EXPECT_NE(contributors.entries[i], nullptr);
+    }
+}
+
+TEST(KillContributors, AddRefusesADuplicateAndAFullList)
+{
+    rots::combat::kill_contributor_list list;
+    Contributor first { /*npc=*/false, 20 };
+
+    EXPECT_TRUE(list.add(&first.ch));
+    EXPECT_EQ(list.count, 1);
+    EXPECT_FALSE(list.add(&first.ch)) << "a duplicate is refused, not appended";
+    EXPECT_EQ(list.count, 1);
+
+    std::vector<std::unique_ptr<Contributor>> filler;
+    while (list.count < rots::combat::kill_contributor_list::kCapacity) {
+        filler.push_back(std::make_unique<Contributor>(/*npc=*/false, 20));
+        ASSERT_TRUE(list.add(&filler.back()->ch));
+    }
+
+    Contributor overflow { /*npc=*/false, 20 };
+    EXPECT_FALSE(list.add(&overflow.ch)) << "a full list refuses, and says so";
+    EXPECT_EQ(list.count, rots::combat::kill_contributor_list::kCapacity);
+    EXPECT_FALSE(list.contains(&overflow.ch));
 }

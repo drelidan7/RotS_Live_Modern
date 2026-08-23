@@ -44,6 +44,7 @@
 #include "char_utils.h"
 #include "char_utils_combat.h"
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <format>
@@ -988,6 +989,92 @@ void record_poison_origin(char_data* victim, char_data* poisoner)
     victim->specials.poisoned_by_abs_number = poisoner ? poisoner->abs_number : -1;
     victim->specials.poisoned_by = poisoner;
 }
+
+namespace {
+
+// Normalizes one contributor candidate and offers it to `contributors`.
+//
+// The pet redirect runs BEFORE the exclusions rather than after them (the task
+// brief listed the exclusions first): applying them to the character that
+// actually lands in the list is what makes the two guarantees hold under every
+// route -- an immortal's pet would otherwise put its immortal master in the
+// list, and a victim's own pet would put the victim in its own kill record.
+void offer_kill_contributor(rots::combat::kill_contributor_list& contributors,
+    const char_data* victim, char_data* candidate)
+{
+    if (candidate == nullptr) {
+        return;
+    }
+
+    // damage_credited()'s death-branch redirect, to the letter: a pet or
+    // orc-friend kills on its master's behalf only while the master is
+    // standing with it.
+    if (IS_NPC(candidate) && candidate->master != nullptr
+        && (MOB_FLAGGED(candidate, MOB_PET) || MOB_FLAGGED(candidate, MOB_ORC_FRIEND))
+        && location_of(candidate->master) == location_of(candidate)) {
+        candidate = candidate->master;
+    }
+
+    if (candidate == victim || GET_LEVEL(candidate) >= LEVEL_IMMORT) {
+        return;
+    }
+
+    contributors.add(candidate);
+}
+
+} // namespace
+
+namespace rots::combat {
+
+bool kill_contributor_list::contains(const char_data* candidate) const
+{
+    return std::find(entries, entries + count, candidate) != entries + count;
+}
+
+bool kill_contributor_list::add(char_data* candidate)
+{
+    if (candidate == nullptr || contains(candidate)) {
+        return false;
+    }
+
+    if (count >= kCapacity) {
+        if (!overflow_logged) {
+            overflow_logged = true;
+            vmudlog(BRF, "More than %d contributors to one kill: the surplus is dropped.",
+                kCapacity);
+        }
+        return false;
+    }
+
+    entries[count] = candidate;
+    ++count;
+    return true;
+}
+
+// TASK-026: who took part in `victim`'s death. See combat_hooks.h for what
+// this set is for and why pkill.cpp's own combat_list walks could not produce
+// it. The three sources are unioned in a fixed order (fighters, poisoner,
+// primary) purely so the resulting records are reproducible; nothing downstream
+// reads a position.
+kill_contributor_list kill_contributors(char_data* victim, char_data* primary)
+{
+    kill_contributor_list contributors;
+    if (victim == nullptr) {
+        return contributors;
+    }
+
+    for (char_data* fighter = combat_list; fighter != nullptr; fighter = fighter->next_fighting) {
+        if (fighter->specials.fighting == victim) {
+            offer_kill_contributor(contributors, victim, fighter);
+        }
+    }
+
+    offer_kill_contributor(contributors, victim, resolve_poisoner(*victim));
+    offer_kill_contributor(contributors, victim, primary);
+    return contributors;
+}
+
+} // namespace rots::combat
 
 void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
 {

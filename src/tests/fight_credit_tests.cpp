@@ -339,6 +339,27 @@ void release_test_corpse(room_data* room, obj_data* previous_object_list)
     object_list = previous_object_list;
 }
 
+// Strips whatever affects a character still carries at scope exit:
+// affect_to_char() links a stack char_data onto the process-global
+// affected_list, and a death does not always take it back off.
+class ScopedAffectCleanup {
+public:
+    explicit ScopedAffectCleanup(char_data& ch)
+        : m_ch(ch)
+    {
+    }
+    ~ScopedAffectCleanup()
+    {
+        while (m_ch.affected)
+            affect_remove(&m_ch, m_ch.affected);
+    }
+    ScopedAffectCleanup(const ScopedAffectCleanup&) = delete;
+    ScopedAffectCleanup& operator=(const ScopedAffectCleanup&) = delete;
+
+private:
+    char_data& m_ch; // the character whose affect list this scope empties
+};
+
 // ---------------------------------------------------------------------------
 // Characters
 // ---------------------------------------------------------------------------
@@ -468,6 +489,12 @@ TEST(DamageCredited, DamageForwardsWithTheAttackerAsCredit)
 
     FragileNpc victim;
     CreditedKiller mage { /*npc=*/false };
+    // A PLAYER attacker striking somebody else is the one shape in this suite
+    // that reaches on_attacked_character()'s affect_to_char(): it puts a
+    // SPELL_ANGER affect on the ATTACKER (char_utils_combat.cpp:88-103).
+    // Release it, or the pool node leaks -- LeakSanitizer on the Linux
+    // sanitize CI job caught exactly that (run 32636344287).
+    ScopedAffectCleanup attacker_affects { mage.ch };
     ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
         { &mage.ch, &victim.ch } };
 
@@ -945,27 +972,6 @@ public:
 
 private:
     byte m_previous; // the skills[] cell value this scope displaced
-};
-
-// Strips whatever affects a character still carries at scope exit:
-// affect_to_char() links a stack char_data onto the process-global
-// affected_list, and a death does not always take it back off.
-class ScopedAffectCleanup {
-public:
-    explicit ScopedAffectCleanup(char_data& ch)
-        : m_ch(ch)
-    {
-    }
-    ~ScopedAffectCleanup()
-    {
-        while (m_ch.affected)
-            affect_remove(&m_ch, m_ch.affected);
-    }
-    ScopedAffectCleanup(const ScopedAffectCleanup&) = delete;
-    ScopedAffectCleanup& operator=(const ScopedAffectCleanup&) = delete;
-
-private:
-    char_data& m_ch; // the character whose affect list this scope empties
 };
 
 void noop_pkill_create(char_data* /*victim*/,

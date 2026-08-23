@@ -1837,9 +1837,13 @@ TEST(DieContributorRecord, MobPoisonOnANonFightingVictimIsAMobDeath)
 
     // The XP arithmetic this case now reaches. base_xp_gain is
     // -(exp - 3000) / (level + 2) = -(15000 - 3000) / 12 = -1000, which every
-    // arm below takes std::min(0, ...) of. Enough exp that the level-loss loop
-    // in gain_exp_regardless() cannot fire (xp_to_level(10) is far below
-    // 13900 + 20000), so the only movement is the two awards themselves.
+    // arm below takes std::min(0, ...) of. NOTE: 15000 exp is far below the
+    // level-10 threshold (xp_to_level(10) = 150000), so gain_exp_regardless()'s
+    // level-loss loop DOES fire during the first award (the fixture drops
+    // several levels) -- that loop never touches points.exp, so the assertion
+    // below still isolates the two awards: 15000 - 100 - 1000. (Corrected at
+    // the TASK-026 re-review; an earlier draft of this comment said the loop
+    // could not fire.)
     player.ch.points.exp = 15000;
     ASSERT_EQ(GET_LEVEL(&player.ch), 10);
 

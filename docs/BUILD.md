@@ -1710,6 +1710,34 @@ named here because a reviewer should not have to find it.
    closed one level up. Only the CREDITED killer moved (items 1-3); nobody's `specials.fighting`
    changes from a tick. Pinned by `RoomAffectTick.BlazeTickCreditsAnInRoomCasterWithoutEngagingIt`
    and `…BlazeTickBurnsAGroupMateWithoutTurningThePartyOnItself`.
+10. **The kill-credit model around all of that (TASK-026).** A rider on this branch, closing the
+   two defects the caster snapshot left standing: a tick with no resolvable caster reached
+   `die(NULL)` even mid-fight, and the PK record was built solely from `combat_list`, so a
+   poisoner or an out-of-room caster whose tick killed never appeared in it. Three changes:
+
+   | axis | rule |
+   |---|---|
+   | **Primary killer** (the death TYPE axis: player kill vs. mob/DT arm) | the recorded caster; else the opponent the victim was engaged with at the instant it died; else nobody. |
+   | **Contributor set** (the PK RECORD axis) | everyone fighting the victim, plus `resolve_poisoner(victim)`, plus the primary -- deduplicated, pet/orc-friend redirected to a master standing in the same room, victim and immortals excluded, capacity 32. Room-affect casters get NO participation memory beyond the tick that kills (owner ruling). |
+   | **When a record is written** | when the contributor set is non-empty. The retired condition was `attack_type == SPELL_POISON && !dead_man->specials.fighting`, whose own `TODO(drelidan)` asked for exactly this replacement. |
+
+   `pkill_create()`'s seam signature carries the set (`combat_hooks.h`'s
+   `kill_contributor_list`), and pkill.cpp's three record-building walks iterate it instead of
+   walking `combat_list` each for itself: `pkill_weight` still sums every contributor's level,
+   NPCs included, and `pkill_opponents`/`pkill_update_pkill_tab` still apply `pkill_valid_killer`
+   per entry. `pkill_valid_killer` itself is unchanged.
+
+   Two consequences worth naming. The fallback is read immediately above
+   `damage_credited()`'s `if (!AWAKE(victim)) stop_fighting(victim);` -- the last instant the
+   engagement is observable -- because `stop_fighting()` clears `specials.fighting` for a dead
+   character, so a read inside the death branch (where it is used) would answer `nullptr` every
+   time. And because the retired early-out *returned*, a poison death of a victim who was not
+   fighting now also runs `EXPLOIT_DEATH` (PC killer), the mob-death XP loss (NPC killer) and the
+   `GET_COND` resets, which that return used to skip; acceptance criterion 2 ("mob poison kills a
+   non-fighting victim -> mob death") is what asks for it. Pinned by `DieContributorRecord.*`
+   (six end-to-end cases through the real `die()`), `SourcelessKillCredit.*`,
+   `KillContributors.*` and `PkillContributorWalks.*` -- the last of which is the first test of
+   any kind for pkill.cpp's three walks.
 
 #### Known limits
 

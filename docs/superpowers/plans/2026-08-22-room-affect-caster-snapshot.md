@@ -958,3 +958,16 @@ plan, in the order they arose:
     were added there (the `vpath` on line 113 already covers `../entity` and `../combat`). Same
     class as the recurring "new linkcheck missing from the root Makefile" finding: CMake/flat
     parity is part of the reconciliation method, and it now spans three lists.
+
+15. **A rider closed the kill-credit model this plan left half-built (TASK-026, Task 8).** The
+    snapshot answers "who cast this", but two questions downstream of it were still answered by
+    `combat_list` alone: a tick with no resolvable caster reached `die(NULL)` even while the
+    victim was mid-fight, and the PK record could not name a poisoner or an out-of-room caster.
+    Task 8 added the engaged-opponent fallback in `damage_credited()`, a
+    `rots::combat::kill_contributor_list` built once per death, a widened `pkill_create` seam
+    that carries it into pkill.cpp's three walks, and a `die()` early-out re-based on "did
+    anybody take part" rather than "was the victim fighting" — the replacement that function's
+    own `TODO(drelidan)` had asked for. It is inventory item 10 in docs/BUILD.md; the tests are
+    `SourcelessKillCredit.*`, `KillContributors.*`, `PkillContributorWalks.*` (the first coverage
+    of any kind for pkill.cpp's three walks) and `DieContributorRecord.*`. Full account:
+    `.superpowers/sdd/2026-08-22-room-affect-caster-snapshot/task-8-report.md`.

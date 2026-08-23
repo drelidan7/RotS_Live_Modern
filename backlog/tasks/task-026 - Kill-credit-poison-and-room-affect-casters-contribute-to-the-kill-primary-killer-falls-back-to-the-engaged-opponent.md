@@ -3,7 +3,7 @@ id: TASK-026
 title: >-
   Kill credit: poison and room-affect casters contribute to the kill; primary
   killer falls back to the engaged opponent
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-23 10:05'
 labels: []
@@ -39,11 +39,20 @@ nobody, and the victim is penalised as a non-PK death) and how mob-vs-player dea
 acceptance criteria. Inventory item 10 on TASK-021's FLAGGED BEHAVIOR-CHANGE INVENTORY.
 
 ## Acceptance Criteria
-- [ ] Player poison kills a non-fighting victim → player death, poisoner gets the PK record.
-- [ ] Mob poison kills a non-fighting victim → mob death (EXPLOIT_MOBDEATH, stat penalty).
-- [ ] Player poison/tick kills a victim fighting other players, caster out of room → player death; caster AND the engaged players in the record.
-- [ ] Mob poison kills a victim fighting players → mob death; engaged players still get the record.
-- [ ] Poisoned by player A, killed by player B's blow → A in the record as a contributor.
-- [ ] Sourceless poison kills an engaged victim → type and credit follow `specials.fighting`.
-- [ ] Sourceless poison, not fighting → unchanged (nobody arm, no record).
-- [ ] Red-first tests for each; ASan clean; all standing gates; smoke-account, rots64, i386 battery at finalization.
+- [x] Player poison kills a non-fighting victim → player death, poisoner gets the PK record. — `DieContributorRecord.PlayerPoisonOnANonFightingVictimRecordsThePoisoner`
+- [x] Mob poison kills a non-fighting victim → mob death (EXPLOIT_MOBDEATH, stat penalty). — `DieContributorRecord.MobPoisonOnANonFightingVictimIsAMobDeath`
+- [x] Player poison/tick kills a victim fighting other players, caster out of room → player death; caster AND the engaged players in the record. — `DieContributorRecord.ARemoteCastersTickRecordsBothTheCasterAndTheEngagedPlayers`
+- [x] Mob poison kills a victim fighting players → mob death; engaged players still get the record. — `DieContributorRecord.MobPoisonOnAnEngagedVictimStillRecordsTheEngagedPlayers`
+- [x] Poisoned by player A, killed by player B's blow → A in the record as a contributor. — `DieContributorRecord.APoisonerContributesEvenWhenSomebodyElseLandsTheBlow`
+- [x] Sourceless poison kills an engaged victim → type and credit follow `specials.fighting`. — `SourcelessKillCredit.FallsBackToTheEngagedPlayerOpponent` / `…FallsBackToTheEngagedMobOpponent`
+- [x] Sourceless poison, not fighting → unchanged (nobody arm, no record). — `SourcelessKillCredit.CreditsNobodyWhenTheVictimIsNotFightingAnybody` (positive control, passes before and after) and `DieContributorRecord.NobodyTookPartSoNoRecordIsCreated`
+- [x] Red-first tests for each; ASan clean; all standing gates; smoke-account, rots64, i386 battery at finalization. — red-first where the change was observable against the old body (2 of the SourcelessKillCredit trio, 2 of the six DieContributorRecord cases); the rest are new-API/TDD tests proven non-vacuous by 16 sabotages, each RED-naming its own test. macOS ctest 1959 → 1981, ASan 1981/1981, native boot golden matches, seed42 golden unchanged, all three censuses exit 0 at every commit. **rots64, `make smoke-account` and the i386 battery are the controller's finalization legs and are NOT run here.**
+
+## Implementation notes
+
+Five commits on `fix/task-020-021-room-affects`: the engaged-opponent fallback in
+`damage_credited()`; `rots::combat::kill_contributor_list` / `kill_contributors()`
+(`combat_hooks.h` + `fight.cpp`); the `pkill_create` seam widened to carry the set, with
+pkill.cpp's three walks iterating it; `die()`'s early-out re-based on "did anybody take part";
+docs. Full account: `.superpowers/sdd/2026-08-22-room-affect-caster-snapshot/task-8-report.md`
+and docs/BUILD.md's FLAGGED BEHAVIOR-CHANGE INVENTORY item 10.

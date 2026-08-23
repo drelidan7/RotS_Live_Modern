@@ -28,3 +28,11 @@ Source: TASK-021 Task 4 review (2026-08-22, finding I-1). The next author who pa
 - [ ] #2 fight_credit_tests.cpp and room_affect_tick_tests.cpp file-local two-slot fixtures replaced by the shared one
 - [ ] #3 Boot golden byte-identical if db_world.cpp changes; ASan clean
 <!-- AC:END -->
+
+## Follow-on scope (2026-08-22, from the TASK-021 final re-review)
+Two TASK-021 tests use unscoped fixtures that are inert today but share this task's hygiene class:
+`RoomAffectTick.BlazeTickBurnsAGroupMateWithoutTurningThePartyOnItself` (stack `follow_type` unlinked
+only on the success path, declared after the cleanup guards) and
+`AffectUpdateWalk.DoesNotDereferenceAFreedCharacterThroughARecycledSlot` (hand-built `affected_list`
+node with no scoped guard). Also: `affect_update_tests.cpp:189-191`'s abs_number band-map comment is
+imprecise (7904/7906 usage), and the recycled-slot test pins the end state, not a mid-walk registration.

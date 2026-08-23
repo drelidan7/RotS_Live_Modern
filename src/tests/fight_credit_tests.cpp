@@ -1244,6 +1244,48 @@ TEST(SourcelessKillCredit, FallsBackToTheEngagedMobOpponent)
     expect_stat_penalty_arm(player);
 }
 
+// R2: naming the engaged opponent as the killer is not only a label -- it puts
+// that opponent through everything die() does with a killer. group_gain() is
+// the visible half (the kill mudlog and the MOB_MEMORY forget are the other
+// two), and it only runs for an NPC victim or a connected player, so this case
+// uses an NPC victim where the other three use a player to read raw_kill()'s
+// arms. Before the fallback the tick reached die(NULL) and the opponent
+// standing over the corpse earned nothing for it.
+TEST(SourcelessKillCredit, TheEngagedOpponentCollectsTheKillsExperience)
+{
+    ScopedTestWorld test_world { kWorldRoomCount };
+    ScopedCreditZoneTable zone_table_owner;
+    ScopedCreditMobIndex prototype_table;
+    ScopedRacialStartRooms start_rooms;
+    ScopedGlobalCharacterLists global_lists;
+    ScopedNoOpCrashCrashsave no_rent_file;
+    ScopedNoOpDeathPersistence no_death_files;
+
+    FragileNpc victim;
+    CreditedKiller brawler { /*npc=*/false };
+    victim.ch.points.exp = 1000000; // group_gain()'s share is GET_EXP(dead_man) / 10
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &victim.ch, &brawler.ch } };
+    obj_data* const previous_object_list = object_list;
+    ScopedRecordingExtractCharHook extraction;
+    ScopedRecordingCharacterDiedHook death;
+
+    set_fighting(&brawler.ch, &victim.ch);
+    set_fighting(&victim.ch, &brawler.ch);
+    ASSERT_EQ(brawler.ch.points.exp, 0);
+
+    const int died = damage_credited(&victim.ch, &victim.ch, nullptr, 5, SPELL_POISON, 0);
+
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(died, 1);
+    ASSERT_TRUE(g_recorded_death.called);
+    EXPECT_EQ(g_recorded_death.killer, &brawler.ch);
+    EXPECT_GT(brawler.ch.points.exp, 0)
+        << "the engaged opponent IS the killer, so group_gain() pays it for the kill; "
+           "a sourceless tick used to reach die(NULL) and award nobody";
+}
+
 TEST(SourcelessKillCredit, CreditsNobodyWhenTheVictimIsNotFightingAnybody)
 {
     ScopedTestWorld test_world { kWorldRoomCount };
@@ -1579,6 +1621,32 @@ TEST(PkillContributorWalks, WeightSumsEveryContributorsLevelIncludingNpcs)
         << "no contributors, no weight -- and no division by zero";
 }
 
+// R1: a named consequence of routing the walks through the contributor set.
+// pkill_weight()'s denominator used to be "every character in combat_list
+// fighting the victim", with no validity filter at all -- an immortal helping
+// out inflated it and shrank the weight of everybody else's kill. The
+// contributor set excludes immortals, so the denominator is now the mortals'
+// levels alone. (The set's pet redirect has the same character: a pet fighting
+// beside its master contributes the MASTER's level to this sum, not its own.)
+TEST(PkillContributorWalks, AnImmortalNeverEntersTheWeightDenominator)
+{
+    ScopedGlobalCharacterLists global_lists;
+
+    Contributor victim { /*npc=*/false, 30 };
+    Contributor mortal { /*npc=*/false, 20 };
+    Contributor immortal { /*npc=*/false, LEVEL_IMMORT };
+    engage(mortal.ch, victim.ch);
+    engage(immortal.ch, victim.ch);
+
+    const auto contributors = rots::combat::kill_contributors(&victim.ch, nullptr);
+    ASSERT_EQ(contributors.count, 1);
+
+    // GET_LEVEL(victim) * 1000 / (total * total), total = 20 -- NOT 20 + 91,
+    // which the pre-TASK-026 combat_list walk would have summed (30000 / 12321
+    // == 2, an eyewateringly different weight).
+    EXPECT_EQ(pkill_weight(&victim.ch, contributors), 30 * 1000 / (20 * 20));
+}
+
 TEST(PkillContributorWalks, OpponentsCountsOnlyValidKillers)
 {
     Contributor victim { /*npc=*/false, 30 };
@@ -1767,12 +1835,53 @@ TEST(DieContributorRecord, MobPoisonOnANonFightingVictimIsAMobDeath)
         { &player.ch, &snake.ch } };
     obj_data* const previous_object_list = object_list;
 
+    // The XP arithmetic this case now reaches. base_xp_gain is
+    // -(exp - 3000) / (level + 2) = -(15000 - 3000) / 12 = -1000, which every
+    // arm below takes std::min(0, ...) of. Enough exp that the level-loss loop
+    // in gain_exp_regardless() cannot fire (xp_to_level(10) is far below
+    // 13900 + 20000), so the only movement is the two awards themselves.
+    player.ch.points.exp = 15000;
+    ASSERT_EQ(GET_LEVEL(&player.ch), 10);
+
     die(&player.ch, &snake.ch, SPELL_POISON);
     release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
 
     EXPECT_TRUE(captured(EXPLOIT_MOBDEATH)) << "a mob's poison is a mob death";
     EXPECT_TRUE(captured(EXPLOIT_POISON));
+    // TASK-026's named consequence on this very criterion: the retired
+    // early-out RETURNED, so a mob's poison kill of a victim who was not
+    // fighting stopped after the -100 (base_xp_gain / 10) award and never
+    // reached die()'s own `if (IS_NPC(killer))` mob-death arm. It does now, and
+    // that arm is the full -1000 -- a ten-fold XP loss where AC#2 asks for
+    // "mob death (EXPLOIT_MOBDEATH, stat penalty)". 15000 - 100 - 1000.
+    EXPECT_EQ(player.ch.points.exp, 13900)
+        << "the mob-death XP arm applies to a non-fighting poison death now; the "
+           "old early-out charged only base_xp_gain / 10";
     expect_stat_penalty_arm(player);
+}
+
+// R4 / MINOR-4: an immortal is not a contributor, so its kill records nothing --
+// but everything else about the death still runs. The empty-set guard is the
+// only thing that skips, and this pins that it skips exactly two statements.
+TEST(DieContributorRecord, AnImmortalsKillWritesNoRecordAtAll)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller immortal { /*npc=*/false };
+    immortal.ch.player.level = LEVEL_IMMORT;
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &immortal.ch } };
+    obj_data* const previous_object_list = object_list;
+
+    ASSERT_EQ(player.ch.specials.fighting, nullptr);
+    die(&player.ch, &immortal.ch, TYPE_HIT);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(g_recorded_pkill.calls, 0)
+        << "immortals are excluded from the contributor set, so nobody took part";
+    EXPECT_FALSE(captured(EXPLOIT_PK));
+    EXPECT_TRUE(captured(EXPLOIT_DEATH))
+        << "the death record itself is unaffected -- only the PK pair is guarded";
 }
 
 // Case 3: a player's tick kills a victim who is fighting other players, with
@@ -1802,6 +1911,14 @@ TEST(DieContributorRecord, ARemoteCastersTickRecordsBothTheCasterAndTheEngagedPl
 }
 
 // Case 4: mob poison kills a victim who is fighting players.
+//
+// The engagement here is deliberately ONE-WAY -- the brawler fights the player,
+// the player's own `specials.fighting` stays null. That is the shape the old
+// early-out could not see (it asked only whether the VICTIM was fighting) and
+// it is a real shape in play: a victim who fled, was bashed out of the fight or
+// simply never swung back is still being beaten on by everyone in the room.
+// `kill_contributors()` walks combat_list for characters fighting the victim,
+// so it finds the brawler either way.
 TEST(DieContributorRecord, MobPoisonOnAnEngagedVictimStillRecordsTheEngagedPlayers)
 {
     DeathHarness harness;

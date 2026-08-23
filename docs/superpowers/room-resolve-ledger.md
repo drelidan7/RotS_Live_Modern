@@ -1062,6 +1062,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/fight_credit_tests.cpp · SourcelessKillCredit.FallsBackToTheEngagedPlayerOpponent · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · SourcelessKillCredit.FallsBackToTheEngagedMobOpponent · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · SourcelessKillCredit.CreditsNobodyWhenTheVictimIsNotFightingAnybody · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · SourcelessKillCredit.TheEngagedOpponentCollectsTheKillsExperience · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · KillContributors.RedirectsAPetToItsMasterWhenTheMasterStandsWithIt · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · KillContributors.KeepsAPetWhoseMasterIsElsewhere · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · DieContributorRecord.PlayerPoisonOnANonFightingVictimRecordsThePoisoner · room_by_id_total(` | 3 | TEST-FIXTURE | — | — |
@@ -1070,6 +1071,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/fight_credit_tests.cpp · DieContributorRecord.MobPoisonOnAnEngagedVictimStillRecordsTheEngagedPlayers · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · DieContributorRecord.APoisonerContributesEvenWhenSomebodyElseLandsTheBlow · room_by_id_total(` | 3 | TEST-FIXTURE | — | — |
 | `src/tests/fight_credit_tests.cpp · DieContributorRecord.NobodyTookPartSoNoRecordIsCreated · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
+| `src/tests/fight_credit_tests.cpp · DieContributorRecord.AnImmortalsKillWritesNoRecordAtAll · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/interpre_account_menu_tests.cpp · <anon>::InterpreAccountMenu.IntroduceCharForAccountBackedCharactersAvoidsLegacyFilesAndKeepsFirstLoginState · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/load_room_placement_tests.cpp · #decl · room_by_id_total(` | 8 | TEST-FIXTURE | — | — |
 | `src/tests/load_room_placement_tests.cpp · <anon>::release_spawned_follower · room_of(` | 1 | TEST-FIXTURE | — | — |
@@ -1232,7 +1234,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 315 |
-| `room_by_id_total(` | 726 |
+| `room_by_id_total(` | 730 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

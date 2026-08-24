@@ -1329,3 +1329,67 @@ TEST_F(MageProcTest, BlackArrowsPoisonRecordsTheCasterAsThePoisoner) {
     EXPECT_EQ(context.victim.specials.poisoned_by, &context.caster)
         << "the mage that fired the arrow owns this poison";
 }
+
+// ---------------------------------------------------------------------------
+// TASK-025: spell_summon body coverage (the spell had no body test anywhere in
+// the tree -- only spell_registry_tests.cpp's pointer-cell row). The body
+// itself has NO sight check by design; the dark-room targeting fix lives in
+// consts.cpp's mask and is pinned by visibility_tests.cpp's SummonTargeting
+// suite. This exercises the success arm end to end: a willing (PRF_SUMMONABLE
+// clear -- the flag is inverted: set == NOT summonable), non-fighting,
+// mortal player victim who fails the save is moved into the caster's room
+// through the real char_from_room()/char_to_room() pair.
+//
+// The victim deliberately has NO descriptor: a linkdead player is a legal
+// summon target, and the first run of this test caught the real
+// msdp_room_update_impl() (act_move.cpp) dereferencing ch->desc->pProtocol
+// with desc null -- a genuine production crash (summon a linkdead player,
+// SIGSEGV). The null-desc guard added there is pinned by this test staying
+// desc-less.
+// ---------------------------------------------------------------------------
+
+TEST_F(MageProcTest, SummonMovesAWillingPlayerVictimToTheCastersRoom) {
+    MageTestContext context;
+    // The victim is a player here (specials2.act stays 0), and act()'s $N
+    // formatting for the caster's success message reads a player's name.
+    char summon_victim_name[16] = "test_target";
+    context.victim.player.name = summon_victim_name;
+
+    // spell_summon reads zone_table[room->zone].x/y for its save-bonus
+    // distance term, and char_to_room() bumps the zone's power counters;
+    // both rooms are zone 0 in the shared test world.
+    ScopedZoneTableOwner zone_table_owner;
+
+    // The success arm dispatches char_from_room(); register the real
+    // handler.cpp body (the boot-time resting state, and the state
+    // entity_lifecycle_tests.cpp's ScopedCharFromRoomHook restores to).
+    register_char_from_room_hook();
+
+    // Place both characters with real occupant chains -- the spell unlinks
+    // and relinks the victim through char_from_room()/char_to_room().
+    char_to_room(&context.caster, 7);
+    char_to_room(&context.victim, 8);
+
+    descriptor_data caster_descriptor{};
+    reset_capturing_descriptor(caster_descriptor, &context.caster);
+    context.caster.desc = &caster_descriptor;
+
+    // new_saves_spell(): DC = 10 + 0 (mage prof) + (20-8)/4 = 13; save value
+    // = (20-8)/4 + save_bonus 4 (the same-zone XOR distance term) = 7; a
+    // minimum roll of 1 gives 8 > 13 false, so the victim fails to save.
+    push_test_random_value(0.0);
+
+    spell_summon(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
+
+    EXPECT_EQ(location_of(&context.victim), 7)
+        << "Expected the summoned victim to be moved into the caster's room.";
+    EXPECT_NE(std::string(caster_descriptor.output).find("appears in the room."),
+              std::string::npos)
+        << "Expected the caster to see the success message; output was: "
+        << caster_descriptor.output;
+
+    // Fixture hygiene: take both stack characters back out of the shared
+    // world's occupant chains before they go out of scope.
+    detach_char_from_room(&context.victim);
+    detach_char_from_room(&context.caster);
+}

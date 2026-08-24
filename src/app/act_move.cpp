@@ -560,6 +560,13 @@ void msdp_room_update_impl(char_data* ch)
         return;
     }
 
+    // A player without a descriptor (linkdead) has nothing to update -- and
+    // dereferencing ch->desc below would crash. Reachable via spell_summon
+    // targeting a linkdead player (TASK-025's body test pins this).
+    if (!ch->desc) {
+        return;
+    }
+
     if (!ch->desc->pProtocol) {
         return;
     }

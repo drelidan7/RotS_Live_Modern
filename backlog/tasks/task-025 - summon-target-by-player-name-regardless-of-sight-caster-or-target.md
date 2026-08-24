@@ -1,10 +1,10 @@
 ---
 id: TASK-025
 title: 'summon: target by player name regardless of sight (caster or target)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-23 00:15'
-updated_date: '2026-08-24 00:50'
+updated_date: '2026-08-24 14:54'
 labels: []
 milestone: m-3
 dependencies: []
@@ -77,4 +77,13 @@ golden, all three censuses. The i386 battery was started at HEAD e2ffffb2 (step 
 step 1 in flight) and then stopped at the owner's direction to free the machine for another
 agent's work; it MUST be re-run to completion before merge (AGENTS.md finalization rule). CI
 matrix pending on the PR. Task stays In Progress until battery + CI are measured.
+
+2026-08-24 (battery measured, task Done): i386 battery re-run to completion at HEAD 294fcdc2
+(log/i386-battery/ step1-20260824T140047Z.log / step2-20260824T142536Z.log /
+step3-20260824T145322Z.log): ctest 1989 total / 0 failed / 7 skips (the standing 6 plus the
+env-gated LocationBenchmark); monolithic 1952 passed + 24 skipped = 1976 of 1989 gtest-visible
+(the remaining 13 are the CMake-ctest-only checks; 24 - 17 monolithic-only
+PerRace/ConvertEquivalence.* skips leaves the identical 7-test remainder both ways -- exact,
+the standing reconciliation method); boot golden matches. All six required CI jobs pass on
+PR #32. Every finalization leg is measured; merge is the owner's call.
 <!-- SECTION:NOTES:END -->

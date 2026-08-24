@@ -278,3 +278,18 @@ opponent → nobody; PK contributors = fighters ∪ resolved poisoner ∪ the ki
 `601a9732`, disclosure/coverage fix round at `041e25a1`; all legs green (smoke-account, rots64,
 monolithic, six-seed shuffle, i386 battery). Spun off: TASK-027 (`pkill_valid_killer` ||/&&),
 TASK-028 (self-poison death-arm divergence + pet-redirect NOWHERE quirk). Unmerged — owner's call.
+
+## 2026-08-24 — TASK-025 done (summon: TAR_DARK_OK targeting + linkdead-msdp crash guard)
+
+Summon's skills[] mask gained TAR_DARK_OK (owner ruling option (a), the tell precedent), so
+'cast summon <player>' resolves a target standing in a dark room; AC#1's repro was
+code-confirmed as the dark-TARGET-room CAN_SEE arm and is pinned by a standing test, and the
+hiding/invisibility/caster-blind refusals stay deliberately unlifted. The new spell_summon body
+test (the spell's first anywhere in the tree) found a real crash red-first: msdp_room_update_impl
+dereferenced ch->desc->pProtocol for a desc-less (linkdead) player, so summoning a linkdead
+player segfaulted — fixed with a null-desc guard pinned by that same test. A second observation
+there (the location_of(ch) >= 0 early-return that appears to dead-code MSDP room updates for
+every placed character) is filed as TASK-030, not fixed in passing. 1984 → 1989 tests; all
+finalization legs measured green (both hosts, ASan, monolithic, six-seed shuffle, i386 battery,
+three censuses, boot + seed42 goldens, six CI jobs on PR #32). Branch
+fix/task-025-summon-dark-ok, PR #32; merge is the owner's call.

@@ -1178,6 +1178,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | `src/tests/spec_pro_tests.cpp · SpecProVampireKiller.FindsAndDispatchesMoveWhenRoom15398HasAnEligibleVictim · room_by_id_total(` | 4 | TEST-FIXTURE | — | — |
 | `src/tests/spec_pro_tests.cpp · SpecProVampireKiller.FindsAndDispatchesMoveWhenRoom15399HasAnEligibleVictim · room_by_id_total(` | 4 | TEST-FIXTURE | — | — |
 | `src/tests/test_world.h · #decl · world[` | 3 | TEST-FIXTURE | — | — |
+| `src/tests/visibility_tests.cpp · #decl · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
 | `src/tests/zone_reset_guard_tests.cpp · ResetZoneTest.SkipsTheLCommandSettingLastMobFromZoneWhenTheWorldHasFewerThanSevenRooms · room_by_id_total(` | 3 | TEST-FIXTURE | — | — |
 | `src/tests/zone_reset_guard_tests.cpp · ResetZoneTest.SkipsTheLCommandSettingLastMobWhenItsRoomArgFailedToResolveAtLoadTime · room_by_id_total(` | 1 | TEST-FIXTURE | — | — |
 | `src/tests/zone_reset_guard_tests.cpp · ResetZoneTest.SkipsTheLCommandSettingLastObjWhenItsRoomArgFailedToResolveAtLoadTime · room_by_id_total(` | 2 | TEST-FIXTURE | — | — |
@@ -1234,7 +1235,7 @@ later (review-1 F-5/F-6/F-7/W-12):
 | Token | Sites |
 | --- | --- |
 | `room_of(` | 315 |
-| `room_by_id_total(` | 730 |
+| `room_by_id_total(` | 732 |
 | `world[` | 34 |
 | `world_room_vnum(` | 4 |
 | `dispatch_room_vnum(` | 2 |

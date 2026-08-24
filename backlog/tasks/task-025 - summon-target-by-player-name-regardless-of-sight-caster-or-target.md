@@ -1,10 +1,10 @@
 ---
 id: TASK-025
 title: 'summon: target by player name regardless of sight (caster or target)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-23 00:15'
-updated_date: '2026-08-23 00:50'
+updated_date: '2026-08-24 00:50'
 labels: []
 milestone: m-3
 dependencies: []
@@ -36,11 +36,11 @@ Notes: the spell_summon banner comment says 'We don't use this spell anymore sho
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Exact repro confirmed and recorded in the task (which CAN_SEE arm fired: dark target room, caster blind, target hiding/invis) before code changes
-- [ ] #2 Refusal messaging is uniform so name-lookup success/failure does not leak a wizinvis immortal's presence beyond what 'who' already shows; decision recorded
-- [ ] #3 Other spells' target masks are unchanged (only summon's mask/lookup path moves); tell's TAR_DARK_OK behavior unchanged
-- [ ] #4 Stale 'We don't use this spell anymore' comment on spell_summon retired; boot goldens + seed42 golden byte-identical; ASan clean on new test file; room_resolve_census --check green (any new room_of/room_by_id_total site classified in the ledger)
-- [ ] #5 summon's target mask gains TAR_DARK_OK (consts.cpp:492, the tell precedent at interpre.cpp:1506); 'cast summon <name>' succeeds against a target standing in a dark room; red-first tests for target_from_word/target_check_one on the summon mask, plus a spell_summon body test
+- [x] #1 Exact repro confirmed and recorded in the task (which CAN_SEE arm fired: dark target room, caster blind, target hiding/invis) before code changes
+- [x] #2 Refusal messaging is uniform so name-lookup success/failure does not leak a wizinvis immortal's presence beyond what 'who' already shows; decision recorded
+- [x] #3 Other spells' target masks are unchanged (only summon's mask/lookup path moves); tell's TAR_DARK_OK behavior unchanged
+- [x] #4 Stale 'We don't use this spell anymore' comment on spell_summon retired; boot goldens + seed42 golden byte-identical; ASan clean on new test file; room_resolve_census --check green (any new room_of/room_by_id_total site classified in the ledger)
+- [x] #5 summon's target mask gains TAR_DARK_OK (consts.cpp:492, the tell precedent at interpre.cpp:1506); 'cast summon <name>' succeeds against a target standing in a dark room; red-first tests for target_from_word/target_check_one on the summon mask, plus a spell_summon body test
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -49,4 +49,32 @@ Notes: the spell_summon banner comment says 'We don't use this spell anymore sho
 2026-08-22: filed from an owner-reported bug + investigation in this session; Housekeeping milestone because it is a gameplay fix belonging to no active arc. Medium: a real, reproducible player-facing failure of a live spell, no crash.
 
 2026-08-22 (owner ruling): option (a) chosen -- add TAR_DARK_OK to summon's mask, matching tell. Rationale: the target-mask machinery (target_from_word / target_check_one) has no precedent for a no-sight name lookup flag, so a new TAR_ flag would be a first; the owner prefers the established idiom. Partial precedent recorded for the record: a no-visibility name lookup DOES exist as a plain function, get_char(name) (entity_lifecycle.cpp:3372), used by do_tell's non-parser fallback arm (act_comm.cpp:247) and wiz commands (act_wiz.cpp:1352/:1720) -- but never through the target parser. If AC#1's repro turns out to be caster-blind / target-hiding / target-invisible rather than dark-room, (a) will not cover it; reopen the (b) decision then, with get_char() as the lookup to reuse rather than writing a new walk. AC#2 rewritten to (a)'s scope; AC#3 (refusal-message uniformity) stays, now a lighter check since no new lookup path is added.
+
+2026-08-23 (implementation): AC#1 repro code-confirmed: the refusing arm is the dark-TARGET-room
+CAN_SEE light arm (visibility.cpp's light_mode==0 block). Pinned by
+SummonTargeting.TargetFromWordWithoutDarkOkStillRefusesADarkRoomTarget, whose fixture has no
+blindness/hiding/invisibility and still refuses under the old mask 6 -- and resolves under the
+new mask. Caster-blind/sleeping arms are NOT lifted by (a), as ruled; reopen (b) with get_char()
+if the reporter's case turns out to be one of those.
+
+2026-08-23 (AC#2 decision): with (a), GET_INVIS_LEV/AFF_INVISIBLE refusals still happen inside
+get_char_vis before any name confirmation, so a wizinvis immortal produces the identical
+'Nobody by that name.' as a nonexistent player -- no new information channel; the spell body's
+'You failed.' for immortals is only reachable when the immortal is visible. No message change
+needed.
+
+2026-08-23 (rider): the new spell_summon body test found a real pre-existing crash --
+msdp_room_update_impl (act_move.cpp) dereferenced ch->desc->pProtocol for a desc-less (linkdead)
+player; summoning a linkdead player segfaulted the server. Fixed with a null-desc guard in the
+same wave, pinned by the body test's deliberately desc-less victim. A second observation there
+(the location_of(ch) >= 0 early-return that appears to dead-code the MSDP update for every
+placed character) is filed as its own follow-up task, not fixed here.
+
+2026-08-23 (finalization state): implementation complete on branch fix/task-025-summon-dark-ok,
+PR #32 open. Measured green: macOS ctest + ASan 1989/1989, monolithic single-process exit 0,
+six-seed shuffle 0 failures x3 all six seeds, rots64 1989/1989 + boot golden, native boot
+golden, all three censuses. The i386 battery was started at HEAD e2ffffb2 (step 0 complete,
+step 1 in flight) and then stopped at the owner's direction to free the machine for another
+agent's work; it MUST be re-run to completion before merge (AGENTS.md finalization rule). CI
+matrix pending on the PR. Task stays In Progress until battery + CI are measured.
 <!-- SECTION:NOTES:END -->

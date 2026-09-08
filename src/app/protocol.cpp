@@ -204,13 +204,25 @@ static variable_name_t VariableNameTable[eMSDP_MAX + 1] = {
     { eMDSP_DODGE, "DODGE", NUMBER_READ_ONLY },
     { eMDSP_ATTACK_SPEED, "ATTACK_SPEED", NUMBER_READ_ONLY },
     { eMDSP_TACTIC, "TACTIC", STRING_READ_ONLY },
+    { eMDSP_SPECIALIZATION, "SPECIALIZATION", STRING_READ_ONLY },
     { eMDSP_PERCEPTION, "PERCEPTION", NUMBER_READ_ONLY },
     { eMDSP_WILLPOWER, "WILLPOWER", NUMBER_READ_ONLY },
     { eMDSP_SKILL_ENCUMBRANCE, "SKILL_ENCUMBRANCE", NUMBER_READ_ONLY },
     { eMDSP_MOVEMENT_ENCUMBRANCE, "MOVEMENT_ENCUMBRANCE", NUMBER_READ_ONLY },
+    { eMDSP_CARRIED_WEIGHT, "CARRIED_WEIGHT", NUMBER_READ_ONLY },
+    { eMDSP_WARRIOR_LEVEL, "WARRIOR_LEVEL", NUMBER_READ_ONLY },
+    { eMDSP_WARRIOR_LEVEL_MAX, "WARRIOR_LEVEL_MAX", NUMBER_READ_ONLY },
+    { eMDSP_RANGER_LEVEL, "RANGER_LEVEL", NUMBER_READ_ONLY },
+    { eMDSP_RANGER_LEVEL_MAX, "RANGER_LEVEL_MAX", NUMBER_READ_ONLY },
+    { eMDSP_MYSTIC_LEVEL, "MYSTIC_LEVEL", NUMBER_READ_ONLY },
+    { eMDSP_MYSTIC_LEVEL_MAX, "MYSTIC_LEVEL_MAX", NUMBER_READ_ONLY },
+    { eMDSP_MAGE_LEVEL, "MAGE_LEVEL", NUMBER_READ_ONLY },
+    { eMDSP_MAGE_LEVEL_MAX, "MAGE_LEVEL_MAX", NUMBER_READ_ONLY },
     { eMDSP_HEALTH_REGENERATION, "HEALTH_REGENERATION", NUMBER_READ_ONLY },
     { eMDSP_STAMINA_REGENERATION, "STAMINA_REGENERATION", NUMBER_READ_ONLY },
     { eMDSP_MOVEMENT_REGENERATION, "MOVEMENT_REGENERATION", NUMBER_READ_ONLY },
+
+    { eMSDP_GROUP, "GROUP", STRING_READ_ONLY },
 
     /* Combat */
     { eMSDP_OPPONENT_HEALTH, "OPPONENT_HEALTH", NUMBER_READ_ONLY },
@@ -379,7 +391,10 @@ protocol_t* ProtocolCreate(void)
     for (i = eMSDP_NONE + 1; i < eMSDP_MAX; ++i) {
         pProtocol->pVariables[i] = new MSDP_t;
         pProtocol->pVariables[i]->bReport = true;
-        pProtocol->pVariables[i]->bDirty = false;
+        // Send the initial server snapshot even when its numeric values remain zero.
+        // Client-owned configuration and GUI templates are not part of that snapshot.
+        pProtocol->pVariables[i]->bDirty
+            = !VariableNameTable[i].bConfigurable && !VariableNameTable[i].bGUI;
         pProtocol->pVariables[i]->ValueInt = 0;
         pProtocol->pVariables[i]->pValueString = NULL;
 
@@ -1223,8 +1238,9 @@ void MSDPUpdate(descriptor_t* apDescriptor)
     for (i = eMSDP_NONE + 1; i < eMSDP_MAX; ++i) {
         if (pProtocol && pProtocol->pVariables[i]->bReport) {
             if (pProtocol->pVariables[i]->bDirty) {
-                MSDPSend(apDescriptor, (variable_t)i);
-                pProtocol->pVariables[i]->bDirty = false;
+                if (MSDPSend(apDescriptor, (variable_t)i)) {
+                    pProtocol->pVariables[i]->bDirty = false;
+                }
             }
         }
     }
@@ -1237,20 +1253,34 @@ void MSDPFlush(descriptor_t* apDescriptor, variable_t aMSDP)
 
         if (pProtocol != NULL && pProtocol->pVariables[aMSDP]->bReport) {
             if (pProtocol->pVariables[aMSDP]->bDirty) {
-                MSDPSend(apDescriptor, aMSDP);
-                pProtocol->pVariables[aMSDP]->bDirty = false;
+                if (MSDPSend(apDescriptor, aMSDP)) {
+                    pProtocol->pVariables[aMSDP]->bDirty = false;
+                }
             }
         }
     }
 }
 
-void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP)
+void MSDPMarkAllReportedDirty(descriptor_t* descriptor)
+{
+    if (descriptor == nullptr || descriptor->pProtocol == nullptr) {
+        return;
+    }
+    for (int variable = eMSDP_NONE + 1; variable < eMSDP_MAX; ++variable) {
+        MSDP_t* value = descriptor->pProtocol->pVariables[variable];
+        if (value->bReport) {
+            value->bDirty = true;
+        }
+    }
+}
+
+bool MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP)
 {
     char MSDPBuffer[MAX_VARIABLE_LENGTH + 1] = { '\0' };
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
     if (pProtocol == NULL || apDescriptor->character == NULL || !PRF_FLAGGED(apDescriptor->character, PRF_MSDP)) {
-        return;
+        return false;
     }
 
     if (aMSDP > eMSDP_NONE && aMSDP < eMSDP_MAX) {
@@ -1302,9 +1332,12 @@ void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP)
         }
 
         /* Just in case someone calls this function without checking MSDP/ATCP */
-        if (MSDPBuffer[0] != '\0')
+        if (MSDPBuffer[0] != '\0') {
             Write(apDescriptor, MSDPBuffer);
+            return true;
+        }
     }
+    return false;
 }
 
 void MSDPSendPair(
@@ -1316,6 +1349,9 @@ void MSDPSendPair(
     if (protocol == nullptr) {
         return;
     }
+
+    const std::string sanitized_value = MSDPSanitizeValue(apValue);
+    apValue = sanitized_value;
 
     const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
     if (required_buffer >= MAX_VARIABLE_LENGTH) {
@@ -1363,6 +1399,9 @@ void MSDPSendList(
     if (protocol == nullptr) {
         return;
     }
+
+    const std::string sanitized_value = MSDPSanitizeValue(apValue);
+    apValue = sanitized_value;
 
     const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
     if (required_buffer >= MAX_VARIABLE_LENGTH) {
@@ -1536,10 +1575,10 @@ void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_vie
             if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, pTable)) {
                 free(pProtocol->pVariables[aMSDP]->pValueString);
                 pProtocol->pVariables[aMSDP]->pValueString = pTable;
-                pProtocol->pVariables[aMSDP]->bDirty = false;
+                pProtocol->pVariables[aMSDP]->bDirty = true;
 
-                if (pProtocol->pVariables[aMSDP]->bReport) {
-                    MSDPSend(apDescriptor, (variable_t)aMSDP);
+                if (pProtocol->pVariables[aMSDP]->bReport && MSDPSend(apDescriptor, aMSDP)) {
+                    pProtocol->pVariables[aMSDP]->bDirty = false;
                 }
             } else /* Just discard the table, we've already got one */
             {
@@ -1835,11 +1874,11 @@ static void PerformHandshake(descriptor_t* apDescriptor, char aCmd, char aProtoc
         if (aCmd == (char)WILL) {
             ConfirmNegotiation(apDescriptor, eNEGOTIATED_CHARSET, true, true);
             if (!pProtocol->bCHARSET) {
-                char charset_utf8[] = {
-                    (char)IAC, (char)SB, TELOPT_CHARSET, 1, ' ', 'U', 'T', 'F',
-                    '-', '8', (char)IAC, (char)SE, '\0'
+                const char charset_latin1[] = {
+                    (char)IAC, (char)SB, TELOPT_CHARSET, 1, ' ', 'I', 'S', 'O',
+                    '-', '8', '8', '5', '9', '-', '1', (char)IAC, (char)SE, '\0'
                 };
-                Write(apDescriptor, charset_utf8);
+                Write(apDescriptor, charset_latin1);
                 pProtocol->bCHARSET = true;
             }
         } else if (aCmd == (char)WONT) {
@@ -1854,6 +1893,9 @@ static void PerformHandshake(descriptor_t* apDescriptor, char aCmd, char aProtoc
     case (char)TELOPT_MSDP:
         if (aCmd == (char)DO) {
             ConfirmNegotiation(apDescriptor, eNEGOTIATED_MSDP, true, true);
+            // bMSDP starts enabled, so the backing value must be populated outside
+            // the first-negotiation announcement guard for explicit SEND requests.
+            MSDPSetString(apDescriptor, eMSDP_SERVER_ID, MUD_NAME);
 
             if (!pProtocol->bMSDP) {
                 pProtocol->bMSDP = true;
@@ -1977,6 +2019,7 @@ static void PerformHandshake(descriptor_t* apDescriptor, char aCmd, char aProtoc
 #endif /* MUDLET_PACKAGE */
 
                 /* Identify the mud to the client. */
+                MSDPSetString(apDescriptor, eMSDP_SERVER_ID, MUD_NAME);
                 MSDPSendPair(apDescriptor, "SERVER_ID", MUD_NAME);
             }
         } else if (aCmd == (char)WONT) {
@@ -2149,16 +2192,8 @@ static void PerformSubnegotiation(descriptor_t* apDescriptor, char aCmd, char* a
         break;
 
     case (char)TELOPT_CHARSET:
-        if (pProtocol->bCHARSET) {
-            /* Because we're only asking about UTF-8, we can just check the
-             * first character.  If you ask for more than one CHARSET you'll
-             * need to read through the results to see which are accepted.
-             *
-             * Note that the user must also use a unicode font!
-             */
-            if (apData[0] == ACCEPTED)
-                pProtocol->pVariables[eMSDP_UTF_8]->ValueInt = 1;
-        }
+        // CHARSET negotiates the server's Latin-1 byte stream. UTF-8 capability
+        // remains independently controlled by MTTS/client configuration.
         break;
 
     case (char)TELOPT_MSDP:
@@ -2929,9 +2964,10 @@ void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
                 std::format("It is about {}:00 {} on ",
                     time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
                     time_info.hours >= 12 ? "PM" : "AM"));
-            MSDPSend(desc, eMSDP_WORLD_TIME);
+            MSDPFlush(desc, eMSDP_WORLD_TIME);
             break;
         case rots::world::weather_msdp_kind::weather: {
+            // Compatibility hook only; weather_change uses the regular app MSDP sweep.
             // R20 (LS-3a T2 tranche 2e-beta; T0b-1's reader table). This
             // walker had NO location guard at all, unlike its sibling
             // msdp_update() (comm.cpp:1017), and this arm is the only one

@@ -35,28 +35,29 @@
 #include "char_utils.h"
 #include "color.h"
 #include "comm.h"
+#include "comm_testing.h"
 #include "crashsave_schedule.h"
 #include "db.h"
 #include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "player_limits.h"
 #include "mudlle.h"
 #include "output_seam.h"
 #include "pkill.h"
+#include "player_limits.h"
 #include "protocol.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/tables.h"
+#include "rots/core/types.h"
+#include "rots/platform/log.h"
 #include "rots_net.h"
 #include "rots_rng.h"
 #include "script.h"
 #include "skill_timer.h"
 #include "spells.h"
-#include "rots/core/character.h"
-#include "rots/core/object.h"
-#include "rots/core/room.h"
-#include "rots/core/descriptor.h"
-#include "rots/core/tables.h"
-#include "rots/core/types.h"
-#include "rots/platform/log.h"
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -138,6 +139,31 @@ int process_output(struct descriptor_data* t);
 int isbanned(char* hostname);
 
 namespace {
+
+#if defined(TESTING)
+comm_testing::socket_read_fn socket_read_override = nullptr;
+comm_testing::socket_write_fn socket_write_override = nullptr;
+#endif
+
+rots_net::ssize_type read_descriptor_socket(SocketType socket_handle, void* out_buffer, size_t length)
+{
+#if defined(TESTING)
+    if (socket_read_override != nullptr) {
+        return socket_read_override(socket_handle, out_buffer, length);
+    }
+#endif
+    return rots_net::read_socket(socket_handle, out_buffer, length);
+}
+
+rots_net::ssize_type write_descriptor_socket(SocketType socket_handle, const void* buffer, size_t length)
+{
+#if defined(TESTING)
+    if (socket_write_override != nullptr) {
+        return socket_write_override(socket_handle, buffer, length);
+    }
+#endif
+    return rots_net::write_socket(socket_handle, buffer, length);
+}
 
 bool parse_port_value(std::string_view text, sh_int* port, std::string* error_message)
 {
@@ -229,7 +255,7 @@ int finish_proxy_header_if_ready(descriptor_data* descriptor)
 
     char* buffer = reinterpret_cast<char*>(&descriptor->proxy_peer_address);
     while (descriptor->proxy_peer_bytes_read < sizeof(descriptor->proxy_peer_address)) {
-        const rots_net::ssize_type bytes_read = rots_net::read_socket(descriptor->descriptor,
+        const rots_net::ssize_type bytes_read = read_descriptor_socket(descriptor->descriptor,
             buffer + descriptor->proxy_peer_bytes_read,
             sizeof(descriptor->proxy_peer_address) - descriptor->proxy_peer_bytes_read);
         if (bytes_read > 0) {
@@ -269,6 +295,26 @@ bool parse_port_value_for_testing(
 /* functions in this file */
 int get_from_q(struct txt_q* queue, char* dest);
 void run_the_game(sh_int port);
+void check_state_deadlines(time_t now)
+{
+    for (descriptor_data* descriptor = descriptor_list; descriptor != nullptr; descriptor = descriptor->next) {
+        if (descriptor->state_deadline == 0 || now < descriptor->state_deadline) {
+            continue;
+        }
+        descriptor->state_deadline = 0;
+        const bool recovery_state = descriptor->connected == CON_ACCTFORGOTCODE
+            || descriptor->connected == CON_ACCTFORGOTNEW || descriptor->connected == CON_ACCTFORGOTCNF;
+        if (recovery_state) {
+            std::memset(descriptor->account_character_name, 0, sizeof(descriptor->account_character_name));
+            std::memset(descriptor->account_password, 0, sizeof(descriptor->account_password));
+            SEND_TO_Q("\n\rThat reset code has expired.\n\r", descriptor);
+        } else {
+            SEND_TO_Q("\n\rTimed out.\n\r", descriptor);
+        }
+        STATE(descriptor) = CON_CLOSE;
+    }
+}
+
 void game_loop(SocketType s);
 SocketType init_socket(sh_int port);
 SocketType pnew_connection(SocketType s);
@@ -426,6 +472,10 @@ bool is_secret_input_state(int connection_state)
     case CON_ACCTVERIFY:
     case CON_DELCNF1:
     case CON_ACCTDELCNF1:
+    case CON_ACCTPWDFAIL:
+    case CON_ACCTFORGOTCODE:
+    case CON_ACCTFORGOTNEW:
+    case CON_ACCTFORGOTCNF:
         return true;
     default:
         return false;
@@ -1003,24 +1053,65 @@ extern int pulse; // definition moved to entity_lifecycle.cpp (entity-seed Task 
                   // storage-placement only); game_loop() below still increments/
                   // resets it via this extern.
 
+static int get_stat_percent(int current, int maximum)
+{
+    if (maximum <= 0 || current <= 0) {
+        return 0;
+    }
+    const float percent = (static_cast<float>(current) / static_cast<float>(maximum)) * 100.0f;
+    return static_cast<int>(percent);
+}
+
 int get_health_percent(char_data* character)
 {
-    const float current_health = GET_HIT(character);
-    const float max_health = GET_MAX_HIT(character);
-    if (max_health <= 0.0f)
-        return 0;
-    if (current_health <= 0.0f)
-        return 0;
+    return get_stat_percent(GET_HIT(character), GET_MAX_HIT(character));
+}
 
-    const float health_percent = (current_health / max_health) * 100.0f;
+static void append_msdp_table_value(std::string& out_payload, std::string_view name, std::string_view value)
+{
+    out_payload += static_cast<char>(MSDP_VAR);
+    out_payload += name;
+    out_payload += static_cast<char>(MSDP_VAL);
+    out_payload += value;
+}
 
-    return (int)health_percent;
+static void append_msdp_table_value(std::string& out_payload, std::string_view name, int value)
+{
+    const std::string number = std::to_string(value);
+    append_msdp_table_value(out_payload, name, number);
+}
+
+static std::string get_group_msdp_table(const group_data* group)
+{
+    std::string payload;
+    append_msdp_table_value(payload, "MEMBERS", "");
+    payload += static_cast<char>(MSDP_ARRAY_OPEN);
+    if (group != nullptr) {
+        for (const char_data* member : *group) {
+            if (member == nullptr) {
+                continue;
+            }
+            payload += static_cast<char>(MSDP_VAL);
+            payload += static_cast<char>(MSDP_TABLE_OPEN);
+            const std::string member_name = MSDPSanitizeValue(GET_NAME(member));
+            append_msdp_table_value(payload, "NAME", member_name);
+            const int health = get_stat_percent(GET_HIT(member), GET_MAX_HIT(member));
+            const int mana = get_stat_percent(GET_MANA(member), GET_MAX_MANA(member));
+            const int movement = get_stat_percent(GET_MOVE(member), GET_MAX_MOVE(member));
+            append_msdp_table_value(payload, "HEALTH", health);
+            append_msdp_table_value(payload, "MANA", mana);
+            append_msdp_table_value(payload, "MOVEMENT", movement);
+            payload += static_cast<char>(MSDP_TABLE_CLOSE);
+        }
+    }
+    payload += static_cast<char>(MSDP_ARRAY_CLOSE);
+    return payload;
 }
 
 void msdp_update()
 {
     for (auto desc = descriptor_list; desc; desc = desc->next) {
-        if (!desc->character || IS_NPC(desc->character)) {
+        if (STATE(desc) != CON_PLYNG || !desc->character || IS_NPC(desc->character)) {
             continue;
         }
 
@@ -1082,11 +1173,37 @@ void msdp_update()
         extern const std::string_view tactics[];
         MSDPSetString(desc, eMDSP_TACTIC, tactics[GET_TACTICS(desc->character) - 1]);
 
+        extern const std::string_view specialize_name[game_types::PS_Count];
+        const game_types::player_specs specialization = utils::get_specialization(*desc->character);
+        std::string_view specialization_name = "nothing";
+        if (specialization >= game_types::PS_None && specialization < game_types::PS_Count) {
+            specialization_name = specialize_name[specialization];
+        }
+        MSDPSetString(desc, eMDSP_SPECIALIZATION, specialization_name);
+
         MSDPSetNumber(desc, eMDSP_PERCEPTION, GET_PERCEPTION(desc->character));
         MSDPSetNumber(desc, eMDSP_WILLPOWER, GET_WILLPOWER(desc->character));
         MSDPSetNumber(desc, eMDSP_SKILL_ENCUMBRANCE, utils::get_encumbrance(*desc->character));
         MSDPSetNumber(desc, eMDSP_MOVEMENT_ENCUMBRANCE,
             utils::get_leg_encumbrance(*desc->character));
+        MSDPSetNumber(desc, eMDSP_CARRIED_WEIGHT, IS_CARRYING_W(desc->character));
+        const auto maximum_profession_level = [](int profession, const char_data* character) -> int {
+            // Uruk mage coefficients may be negative; legitimate creation coefficients
+            // also permit maxima above LEVEL_MAX. Only the lower bound is clamped.
+            return std::max(0, GET_PROF_COOF(profession, character) * LEVEL_MAX / 1000);
+        };
+        MSDPSetNumber(desc, eMDSP_WARRIOR_LEVEL, GET_PROF_LEVEL(PROF_WARRIOR, desc->character));
+        const int warrior_maximum = maximum_profession_level(PROF_WARRIOR, desc->character);
+        MSDPSetNumber(desc, eMDSP_WARRIOR_LEVEL_MAX, warrior_maximum);
+        MSDPSetNumber(desc, eMDSP_RANGER_LEVEL, GET_PROF_LEVEL(PROF_RANGER, desc->character));
+        const int ranger_maximum = maximum_profession_level(PROF_RANGER, desc->character);
+        MSDPSetNumber(desc, eMDSP_RANGER_LEVEL_MAX, ranger_maximum);
+        MSDPSetNumber(desc, eMDSP_MYSTIC_LEVEL, GET_PROF_LEVEL(PROF_CLERIC, desc->character));
+        const int mystic_maximum = maximum_profession_level(PROF_CLERIC, desc->character);
+        MSDPSetNumber(desc, eMDSP_MYSTIC_LEVEL_MAX, mystic_maximum);
+        MSDPSetNumber(desc, eMDSP_MAGE_LEVEL, GET_PROF_LEVEL(PROF_MAGE, desc->character));
+        const int mage_maximum = maximum_profession_level(PROF_MAGE, desc->character);
+        MSDPSetNumber(desc, eMDSP_MAGE_LEVEL_MAX, mage_maximum);
         MSDPSetNumber(desc, eMDSP_HEALTH_REGENERATION, (int)hit_gain(desc->character));
         MSDPSetNumber(desc, eMDSP_STAMINA_REGENERATION, (int)mana_gain(desc->character));
         MSDPSetNumber(desc, eMDSP_MOVEMENT_REGENERATION, (int)move_gain(desc->character));
@@ -1124,7 +1241,109 @@ void msdp_update()
 
         MSDPSetNumber(desc, eMSDP_SPIRIT, GET_SPIRIT(desc->character));
 
+        const std::string group_table = get_group_msdp_table(desc->character->group);
+        MSDPSetTable(desc, eMSDP_GROUP, group_table);
+
         MSDPUpdate(desc);
+    }
+}
+
+namespace {
+
+int flush_pending_output_impl(descriptor_data* descriptor, bool writable)
+{
+    if (!descriptor->descriptor || !*descriptor->output) {
+        return 0;
+    }
+    if (!writable) {
+        descriptor->prompt_mode = 0;
+        return 0;
+    }
+    const int result = process_output(descriptor);
+    // A command may already have requested a prompt this pulse. Keep it behind
+    // the queued game text until that text has actually been flushed.
+    descriptor->prompt_mode = result > 0;
+    return result;
+}
+
+void write_bare_prompt_impl(descriptor_data* descriptor, std::string_view prompt)
+{
+    prompt = rots::text::truncate_at_null(prompt);
+    if (prompt.empty() || descriptor->descriptor == 0
+        || !rots_net::is_valid_socket(descriptor->descriptor)) {
+        return;
+    }
+    if (write_to_descriptor(descriptor->descriptor, prompt) == 0) {
+        descriptor->bare_prompt_pending = true;
+    }
+}
+
+void write_prompt_impl(descriptor_data* descriptor)
+{
+    if (!descriptor->prompt_mode || !descriptor->descriptor) {
+        return;
+    }
+    bool editor_prompt = !descriptor->connected;
+    if (descriptor->character) {
+        editor_prompt = IS_SET(PLR_FLAGS(descriptor->character), PLR_WRITING);
+    }
+    if (editor_prompt) {
+        write_bare_prompt_impl(descriptor, "] ");
+    } else if (!descriptor->connected) {
+        if (descriptor->showstr_point) {
+            write_bare_prompt_impl(descriptor, "*** Press return to continue, q to quit ***");
+        } else {
+            static std::string prompt_buffer;
+            build_prompt(descriptor, prompt_buffer);
+            if (!descriptor->character || !IS_AFFECTED(descriptor->character, AFF_WAITWHEEL)) {
+                write_bare_prompt_impl(descriptor, prompt_buffer);
+            }
+        }
+    }
+    descriptor->prompt_mode = 0;
+}
+
+} // namespace
+
+#if defined(TESTING)
+namespace comm_testing {
+socket_read_fn set_socket_read_override(socket_read_fn callback)
+{
+    socket_read_fn previous = socket_read_override;
+    socket_read_override = callback;
+    return previous;
+}
+socket_write_fn set_socket_write_override(socket_write_fn callback)
+{
+    socket_write_fn previous = socket_write_override;
+    socket_write_override = callback;
+    return previous;
+}
+int flush_pending_output(descriptor_data* descriptor, bool writable)
+{
+    return flush_pending_output_impl(descriptor, writable);
+}
+void write_prompt(descriptor_data* descriptor)
+{
+    write_prompt_impl(descriptor);
+}
+void write_bare_prompt(descriptor_data* descriptor, std::string_view prompt)
+{
+    write_bare_prompt_impl(descriptor, prompt);
+}
+} // namespace comm_testing
+#endif
+
+// The explicit clock parameter keeps idle-policy tests independent of real time.
+void check_pre_login_idle(time_t now)
+{
+    constexpr time_t idle_timeout = 15 * 60;
+    for (descriptor_data* descriptor = descriptor_list; descriptor != nullptr;) {
+        descriptor_data* const next = descriptor->next;
+        if (descriptor->character == nullptr && now - descriptor->last_input_time > idle_timeout) {
+            close_socket_impl(descriptor, FALSE);
+        }
+        descriptor = next;
     }
 }
 
@@ -1336,12 +1555,8 @@ void game_loop(SocketType s)
         for (point = descriptor_list; point; point = next_point) {
             next_point = point->next;
             if (point->descriptor) {
-                if (FD_ISSET(point->descriptor, &output_set) && *(point->output)) {
-                    if (process_output(point) < 0) {
-                        close_socket_impl(point, FALSE);
-                    } else {
-                        point->prompt_mode = 1;
-                    }
+                if (flush_pending_output_impl(point, FD_ISSET(point->descriptor, &output_set)) < 0) {
+                    close_socket_impl(point, FALSE);
                 }
             }
         }
@@ -1357,33 +1572,9 @@ void game_loop(SocketType s)
         }
 
         /* give the people some prompts */
-        for (point = descriptor_list; point; point = point->next)
-            if (point->prompt_mode && point->descriptor) {
-                if (point->character) {
-                    tmp = (IS_SET(PLR_FLAGS(point->character), PLR_WRITING));
-                } else {
-                    tmp = !(point->connected);
-                }
-                if (tmp) {
-                    write_to_descriptor(point->descriptor, "] ");
-                } else if (!point->connected) {
-                    if (point->showstr_point)
-                        write_to_descriptor(point->descriptor,
-                            "*** Press return to continue, q to quit ***");
-                    else { /*if point->showstr_point */
-                        static std::string prompt_buffer;
-                        build_prompt(point, prompt_buffer);
-
-                        if (point->character)
-                            tmpflag = !IS_AFFECTED(point->character, AFF_WAITWHEEL);
-                        else
-                            tmpflag = 1;
-                        if (tmpflag)
-                            write_to_descriptor(point->descriptor, prompt_buffer.c_str());
-                    }
-                }
-                point->prompt_mode = 0;
-            }
+        for (point = descriptor_list; point; point = point->next) {
+            write_prompt_impl(point);
+        }
 
         /* handle heartbeat stuff */
         /* Note: pulse now changes every 1/4 sec  */
@@ -1414,6 +1605,9 @@ void game_loop(SocketType s)
         }
 
         msdp_update();
+        if (!(pulse % (60 * 4))) {
+            check_pre_login_idle(time(nullptr));
+        }
 
         // Periodic point-in-time crash-save snapshot cadence, driven by the configurable seconds
         // interval (autosave_time) through the unit-tested scheduler. Default 30s == 120 pulses (the
@@ -1424,6 +1618,7 @@ void game_loop(SocketType s)
         }
 
         if (!(pulse % 4)) {
+            check_state_deadlines(time(0));
             game_timer::skill_timer& st_instance = game_timer::skill_timer::instance();
             st_instance.update_skill_timer();
         }
@@ -1779,6 +1974,12 @@ SocketType pnew_connection(SocketType s)
         perror("Accept");
         return (0); // probably incorrect..
     }
+    if (!rots_net::set_tcp_nodelay(t)) {
+        perror("setsockopt TCP_NODELAY");
+    }
+    if (!rots_net::set_keepalive(t)) {
+        perror("setsockopt SO_KEEPALIVE");
+    }
     // SocketType is `int` on POSIX but `SOCKET` (an unsigned 64-bit handle) on Windows;
     // %d silently truncated/misprinted the handle there. Cast explicitly to a wide
     // signed type and use a matching, platform-identical format spec instead of relying
@@ -1860,6 +2061,10 @@ SocketType pnew_descriptor(SocketType s)
     pnewd->descriptor = desc;
     pnewd->connected = CON_NME;
     pnewd->bad_pws = 0;
+    pnewd->state_deadline = 0;
+    pnewd->roster_sort = 0;
+    pnewd->roster_filter = 0;
+    pnewd->roster_sort_dirty = false;
     pnewd->proxy_peer_address = 0;
     pnewd->proxy_peer_bytes_read = 0;
     pnewd->waiting_for_proxy_header = has_proxy ? true : false;
@@ -1870,6 +2075,7 @@ SocketType pnew_descriptor(SocketType s)
     pnewd->pos = -1;
     //   pnewd->wait = 1;
     pnewd->prompt_mode = 0;
+    pnewd->bare_prompt_pending = false;
     *pnewd->buf = '\0';
     pnewd->str = 0;
     pnewd->showstr_head = 0;
@@ -1942,7 +2148,9 @@ int process_output(struct descriptor_data* t)
     int wid_count, i_shift;
     /* start writing at the 2nd space so we can prepend "% " for snoop */
     wid_count = 0;
-    if (!t->prompt_mode && !t->connected) {
+    // Prompt eligibility for this pulse does not describe the previous bytes
+    // on the socket. Only a successfully written bare prompt needs this break.
+    if (t->bare_prompt_pending) {
         strcpy(i + 2, "\n\r");
         i_shift = 2;
     } else
@@ -1964,8 +2172,17 @@ int process_output(struct descriptor_data* t)
     if (!t->connected && !(t->character && !IS_NPC(t->character) && PRF_FLAGGED(t->character, PRF_COMPACT)))
         strcat(i + 2, "\n\r");
 
-    if (write_to_descriptor(t->descriptor, i + 2) < 0)
+    const int write_result = write_to_descriptor(t->descriptor, i + 2);
+    if (write_result == -2) {
+        return 0;
+    }
+    if (write_result < 0) {
         return -1;
+    }
+
+    // Leave the pending marker intact on a deferred write; the leading break
+    // existed only in this scratch buffer and must be rebuilt on the retry.
+    t->bare_prompt_pending = false;
 
     if (t->snoop.snoop_by) {
         i[0] = '%';
@@ -2013,9 +2230,13 @@ int write_to_descriptor(SocketType descriptor, std::string_view text)
 
     try {
         while (bytes_sent < text.size()) {
-            const rots_net::ssize_type bytes_written = rots_net::write_socket(
+            const rots_net::ssize_type bytes_written = write_descriptor_socket(
                 descriptor, text.data() + bytes_sent, text.size() - bytes_sent);
             if (bytes_written < 0) {
+                if (bytes_sent == 0 && rots_net::error_is_would_block(rots_net::last_error())) {
+                    return -2;
+                }
+                // A partial frame cannot be retried from its start without duplicating text.
                 perror("Write to socket");
                 return (-1);
             }
@@ -2077,10 +2298,12 @@ int process_input(struct descriptor_data* t)
     sofar = flag = 0;
     begin = strlen(t->buf);
 
-    /* Read in some stuff */
+    // Bound one descriptor's share of the single-threaded input pulse.
+    constexpr int maximum_reads_per_call = 8;
+    int reads_this_call = 0;
     do {
         char inbuf[2048];
-        thisround = static_cast<int>(rots_net::read_socket(t->descriptor, inbuf, sizeof(inbuf)));
+        thisround = static_cast<int>(read_descriptor_socket(t->descriptor, inbuf, sizeof(inbuf)));
         if (thisround > 0) {
             /* Filter out telnet/MSDP negotiation if protocol is active */
             if (t->pProtocol) {
@@ -2121,7 +2344,9 @@ int process_input(struct descriptor_data* t)
                 return (-1);
             }
         }
-    } while (!ISNEWL(*(t->buf + begin + sofar - 1)));
+        ++reads_this_call;
+    } while ((begin + sofar == 0 || !ISNEWL(*(t->buf + begin + sofar - 1)))
+        && reads_this_call < maximum_reads_per_call);
 
     if (t->character)
         t->character->specials.timer = 0;
@@ -2196,8 +2421,9 @@ int process_input(struct descriptor_data* t)
 
             if (flag) {
                 strcpy(buffer, std::format("Line too long.  Truncated to:\n\r{}\n\r", tmp).c_str());
-                if (write_to_descriptor(t->descriptor, buffer) < 0)
-                    return (-1);
+                if (write_to_descriptor(t->descriptor, buffer) == -1) {
+                    return -1;
+                }
 
                 /* skip the rest of the line */
                 for (; !ISNEWL(*(t->buf + i)); i++)

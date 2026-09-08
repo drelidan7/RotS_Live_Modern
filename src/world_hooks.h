@@ -50,19 +50,10 @@ void set_boot_shops_hook(boot_shops_fn hook);
 using mudlle_converter_fn = char* (*)(char* source);
 void set_mudlle_converter_hook(mudlle_converter_fn hook);
 
-// weather.cpp's two MSDP broadcast sites (another_hour()'s eMSDP_WORLD_TIME
-// push; weather_change()'s eMDSP_WEATHER push) used to call weather.cpp's
-// own send_msdp_function() dispatcher directly, each with a different
-// lambda; `kind` now selects which of the two behaviors to run.
-// protocol.cpp registers broadcast_weather_msdp_update() -- the former
-// send_msdp_function() dispatcher body merged with both lambda bodies,
-// relocated verbatim -- at boot, before boot_db(); see world_hooks.h.
-// Null default is a SILENT no-op, unlike this header's other two tripwire
-// defaults: this is a pure best-effort notification push (not state), and
-// a test process that never registers protocol.cpp's sink must not spam
-// stderr on every weather/time tick -- mirroring entity_hooks.h's
-// char-teardown hook precedent (a provable silent no-op) rather than this
-// header's other two hooks' tripwires.
+// another_hour() dispatches the world-time notification through this app-owned
+// protocol hook. The weather selector remains available for compatibility; normal
+// weather publication is performed by the app's periodic MSDP sweep after weather_change().
+// A null hook silently skips this best-effort notification in processes without clients.
 enum class weather_msdp_kind { world_time,
     weather };
 using weather_msdp_update_fn = void (*)(weather_msdp_kind kind);

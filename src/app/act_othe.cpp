@@ -31,15 +31,16 @@
 #include "interpre.h"
 #include "player_limits.h"
 #include "profs.h"
-#include "spells.h"
-#include "rots/entity/render_cursor.h"
-#include "rots/persist/file_formats.h"
+#include "protocol.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
-#include "rots/core/descriptor.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
+#include "rots/persist/file_formats.h"
+#include "spells.h"
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -1196,9 +1197,14 @@ ACMD(do_gen_tog)
         result = flag_modify(ch, PRF_WRAP, tog_messages[13], 0);
         break;
 
-    case SCMD_MSDP:
+    case SCMD_MSDP: {
+        const bool previously_enabled = PRF_FLAGGED(ch, PRF_MSDP);
         result = flag_modify(ch, PRF_MSDP, tog_messages[14], 0);
+        if (!previously_enabled && PRF_FLAGGED(ch, PRF_MSDP) && ch->desc && ch->desc->pProtocol) {
+            MSDPMarkAllReportedDirty(ch->desc);
+        }
         break;
+    }
 
     case SCMD_MENTAL:
         result = flag_modify(ch, PRF_MENTAL, tog_messages[15], 0);

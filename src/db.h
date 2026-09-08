@@ -197,6 +197,10 @@ void register_equip_char_hook();
 void register_pkill_fame_hooks();
 int delete_exploits_file(char *);
 void delete_character_file(struct char_data *);
+/// Deletes one indexed character, archiving and committing account unlink before index retirement.
+/// False preserves ownership/index; true includes logged post-commit staged cleanup failures.
+/// The caller owns a valid player table. Existing archives survive refused transactions.
+bool delete_player_character_by_index(int index);
 void move_char_deleted(int);
 int get_char_directory(char *, char *);
 int load_player(char *, struct char_file_u *);

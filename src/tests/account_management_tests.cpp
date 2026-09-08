@@ -1,6 +1,7 @@
 #include "../account_management.h"
 #include "../exploits_json.h"
 #include "../objects_json.h"
+#include "../roster_cache.h"
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
@@ -17,9 +18,10 @@
 #include <ctime>
 #include <filesystem>
 #include <limits.h>
+#include <regex>
+#include <string_view>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <string_view>
 
 // geteuid() (chmod-based fault-injection tests below) is POSIX-only; those
 // tests skip entirely on Windows before reaching it (no owner/group/other
@@ -765,7 +767,7 @@ TEST(AccountManagement, UsesConfiguredSendmailCommandForVerificationEmailDeliver
     ASSERT_TRUE(account::start_email_verification(root, created_account.account_name, 1700002000, &pending_account, &error_message))
         << error_message;
 
-    const std::string captured_mail = read_file_contents(capture_path);
+    const std::string captured_mail = read_file_contents(std::string(capture_path));
     EXPECT_NE(captured_mail.find("To: player@example.com"), std::string::npos)
         << "Expected the configured sendmail command to receive the verification message.";
     EXPECT_NE(captured_mail.find("Subject: RotS account verification code"), std::string::npos)
@@ -816,32 +818,44 @@ TEST(AccountManagement, SelectsOnlyCharactersLinkedToTheAccount)
     std::string selected_character;
     std::string error_message;
 
-    ASSERT_TRUE(account::select_linked_character(account_data, "2", &selected_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::select_linked_character(".", account_data, "2", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message)) << error_message;
     EXPECT_EQ(selected_character, "legolas");
 
-    EXPECT_FALSE(account::select_linked_character(account_data, "gandalf", &selected_character, &error_message));
+    EXPECT_FALSE(account::select_linked_character(".", account_data, "gandalf", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
     EXPECT_NE(error_message.find("Select a linked character by number"), std::string::npos);
-    EXPECT_FALSE(account::select_linked_character(account_data, "0", &selected_character, &error_message));
+    EXPECT_FALSE(account::select_linked_character(".", account_data, "0", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
     EXPECT_NE(error_message.find("Select a linked character by number"), std::string::npos);
-    EXPECT_FALSE(account::select_linked_character(account_data, "aragorn", &selected_character, &error_message));
-    EXPECT_NE(error_message.find("Select a linked character by number"), std::string::npos);
+    EXPECT_TRUE(account::select_linked_character(".", account_data, "aragorn", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
+    EXPECT_EQ(selected_character, "aragorn");
+
+    EXPECT_TRUE(account::select_linked_character(".", account_data, "ArAgOrN", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
+    EXPECT_EQ(selected_character, "aragorn");
+    EXPECT_TRUE(account::select_linked_character(".", account_data, "  Legolas  ", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
+    EXPECT_EQ(selected_character, "legolas");
+    EXPECT_FALSE(account::select_linked_character(".", account_data, "arago", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
+    EXPECT_FALSE(account::select_linked_character(".", account_data, "aragorn the second", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
 }
 
 TEST(AccountManagement, RejectsSelectionsBeyondTheDisplayedRosterRange)
 {
     account::AccountData account_data = make_account();
     account_data.characters.clear();
-    for (int index = 1; index <= 101; ++index)
+    for (int index = 1; index <= 201; ++index) {
         account_data.characters.push_back("character" + std::to_string(index));
+    }
 
     std::string selected_character;
     std::string error_message;
 
-    EXPECT_TRUE(account::select_linked_character(account_data, "100", &selected_character, &error_message)) << error_message;
-    EXPECT_EQ(selected_character, "character100");
+    EXPECT_TRUE(account::select_linked_character(".", account_data, "200", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message)) << error_message;
+    EXPECT_EQ(selected_character, "character200");
 
-    EXPECT_FALSE(account::select_linked_character(account_data, "101", &selected_character, &error_message));
+    EXPECT_FALSE(account::select_linked_character(".", account_data, "201", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
     EXPECT_NE(error_message.find("Select a linked character by number"), std::string::npos);
+
+    EXPECT_TRUE(account::select_linked_character(".", account_data, "character200", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
+    EXPECT_EQ(selected_character, "character200");
+    EXPECT_FALSE(account::select_linked_character(".", account_data, "character201", account::RosterSort::Account, account::RosterFilter::None, &selected_character, &error_message));
 }
 
 TEST(AccountManagement, BlocksAndUnblocksAccountsWithAuditMetadata)
@@ -1202,14 +1216,15 @@ TEST(AccountManagement, FormatsCharacterPromptWithLinkedCharacterList)
     legolas.race = RACE_HUMAN;
     ASSERT_TRUE(account::write_account_character_file(".", account_data.account_name, legolas, &error_message)) << error_message;
 
-    const std::string prompt = account::format_account_character_prompt(".", account_data);
+    const std::string prompt = account::format_account_character_prompt(".", account_data, account::RosterSort::Account, account::RosterFilter::None);
 
     EXPECT_EQ(prompt,
         "\n\rLinked characters for your account:\n\r"
         "1) [ 50 WdE] Aragorn     2) [ 45 Hum] Legolas     \n\r"
         "\n\r2 characters displayed.\n\r"
-        "\n\r0) Back to Account Menu.\n\r"
-        "\n\rCharacter number: ");
+        "\n\rSort: (A)-Z  (L)evel  ra(C)e  (S)ide      Show only: (W)arrior (R)anger (T)mystic (M)age\n\r"
+        "0) Back to Account Menu.\n\r"
+        "\n\rCharacter number or name: ");
 }
 
 TEST(AccountManagement, FormatsDefaultInitializedRaceAbbreviationAsUnknown)
@@ -1234,8 +1249,7 @@ TEST(AccountManagement, FormatsDefaultInitializedRaceAbbreviationAsUnknown)
         ".", account_data.account_name, blank_race, &error_message))
         << error_message;
 
-    const std::string prompt =
-        account::format_account_character_prompt(".", account_data);
+    const std::string prompt = account::format_account_character_prompt(".", account_data, account::RosterSort::Account, account::RosterFilter::None);
 
     EXPECT_NE(prompt.find("1) [ 40 ??] Blankrace"), std::string::npos);
 }
@@ -1275,15 +1289,13 @@ TEST(AccountManagement, CharacterPromptAndListMatchForBoundedAndEmbeddedNullRoot
     const std::string_view embedded_null_root(
         embedded_null_root_storage.data(), embedded_null_root_storage.size());
 
-    const std::string terminated_prompt = account::format_account_character_prompt(
-        temp_directory.path(), account_data);
-    EXPECT_EQ(account::format_account_character_prompt(bounded_root, account_data), terminated_prompt);
-    EXPECT_EQ(account::format_account_character_prompt(embedded_null_root, account_data), terminated_prompt);
+    const std::string terminated_prompt = account::format_account_character_prompt(temp_directory.path(), account_data, account::RosterSort::Account, account::RosterFilter::None);
+    EXPECT_EQ(account::format_account_character_prompt(bounded_root, account_data, account::RosterSort::Account, account::RosterFilter::None), terminated_prompt);
+    EXPECT_EQ(account::format_account_character_prompt(embedded_null_root, account_data, account::RosterSort::Account, account::RosterFilter::None), terminated_prompt);
 
-    const std::string terminated_list = account::format_account_character_list(
-        temp_directory.path(), account_data);
-    EXPECT_EQ(account::format_account_character_list(bounded_root, account_data), terminated_list);
-    EXPECT_EQ(account::format_account_character_list(embedded_null_root, account_data), terminated_list);
+    const std::string terminated_list = account::format_account_character_list(temp_directory.path(), account_data, account::RosterSort::Account);
+    EXPECT_EQ(account::format_account_character_list(bounded_root, account_data, account::RosterSort::Account), terminated_list);
+    EXPECT_EQ(account::format_account_character_list(embedded_null_root, account_data, account::RosterSort::Account), terminated_list);
 }
 
 TEST(AccountManagement, RejectsMalformedJsonInput)
@@ -3409,4 +3421,1887 @@ TEST(AccountManagement, RefusesToOverwriteCorruptExistingAccountFiles)
     std::string error_message;
     EXPECT_FALSE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700011111, nullptr, &error_message));
     EXPECT_NE(error_message.find("could not be read safely"), std::string::npos);
+}
+
+TEST(AccountManagement, RoundTripsFailedLoginMetadataThroughAccountJson)
+{
+    account::AccountData original_account = make_account();
+    original_account.failed_login_count = 3;
+    original_account.failed_login_last_at = 1700020000;
+    original_account.failed_login_last_host = "host.example.com";
+
+    account::AccountData parsed_account;
+    std::string error_message;
+    ASSERT_TRUE(account::deserialize_account_from_json(
+        account::serialize_account_to_json(original_account), &parsed_account, &error_message))
+        << error_message;
+
+    EXPECT_EQ(parsed_account.failed_login_count, 3);
+    EXPECT_EQ(parsed_account.failed_login_last_at, 1700020000);
+    EXPECT_EQ(parsed_account.failed_login_last_host, "host.example.com");
+}
+
+TEST(AccountManagement, DefaultsFailedLoginMetadataWhenAccountJsonOmitsIt)
+{
+    const std::string legacy_json = "{\n"
+                                    "  \"version\": 1,\n"
+                                    "  \"account_name\": \"alpha-admin\",\n"
+                                    "  \"normalized_email\": \"player@example.com\"\n"
+                                    "}\n";
+
+    account::AccountData parsed_account;
+    std::string error_message;
+    ASSERT_TRUE(account::deserialize_account_from_json(legacy_json, &parsed_account, &error_message)) << error_message;
+
+    EXPECT_EQ(parsed_account.failed_login_count, 0);
+    EXPECT_EQ(parsed_account.failed_login_last_at, 0);
+    EXPECT_TRUE(parsed_account.failed_login_last_host.empty());
+}
+
+TEST(AccountManagement, RecordsFailedLoginAttemptsAgainstTheStoredAccount)
+{
+    TemporaryDirectory temp_directory;
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account_for_email(temp_directory.path(), "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    EXPECT_TRUE(account::record_account_login_failure(temp_directory.path(), "player@example.com", "first.example.com", 1700002000, &error_message)) << error_message;
+    EXPECT_TRUE(account::record_account_login_failure(temp_directory.path(), "Player@Example.com", "second.example.com", 1700002500, &error_message)) << error_message;
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(temp_directory.path(), created_account.account_name, &stored_account, &error_message)) << error_message;
+    EXPECT_EQ(stored_account.failed_login_count, 2);
+    EXPECT_EQ(stored_account.failed_login_last_at, 1700002500);
+    EXPECT_EQ(stored_account.failed_login_last_host, "second.example.com");
+}
+
+TEST(AccountManagement, StripsUnprintableAndOverlongHostsWhenRecordingFailedLogins)
+{
+    TemporaryDirectory temp_directory;
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account_for_email(temp_directory.path(), "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    const std::string hostile_host = std::string("evil\x1b[2Jhost\r\n") + std::string(80, 'a');
+    EXPECT_TRUE(account::record_account_login_failure(temp_directory.path(), "player@example.com", hostile_host, 1700002000, &error_message)) << error_message;
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(temp_directory.path(), created_account.account_name, &stored_account, &error_message)) << error_message;
+    EXPECT_EQ(stored_account.failed_login_last_host.find('\x1b'), std::string::npos);
+    EXPECT_EQ(stored_account.failed_login_last_host.find('\r'), std::string::npos);
+    EXPECT_EQ(stored_account.failed_login_last_host.find('\n'), std::string::npos);
+    EXPECT_LE(stored_account.failed_login_last_host.size(), static_cast<size_t>(account::MAX_FAILED_LOGIN_HOST_LENGTH));
+    // Only the control bytes go; the remaining "[2J" is inert text once the escape is gone.
+    EXPECT_EQ(stored_account.failed_login_last_host.substr(0, 11), "evil[2Jhost");
+}
+
+TEST(AccountManagement, IgnoresFailedLoginAttemptsForAddressesWithoutAnAccount)
+{
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+
+    EXPECT_TRUE(account::record_account_login_failure(temp_directory.path(), "nobody@example.com", "host.example.com", 1700002000, &error_message)) << error_message;
+
+    struct stat file_info { };
+    EXPECT_NE(stat(account::account_file_path(temp_directory.path(), "nobody@example.com").c_str(), &file_info), 0);
+}
+
+TEST(AccountManagement, ClearsFailedLoginMetadataAfterASuccessfulLogin)
+{
+    TemporaryDirectory temp_directory;
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account_for_email(temp_directory.path(), "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::record_account_login_failure(temp_directory.path(), "player@example.com", "host.example.com", 1700002000, &error_message)) << error_message;
+
+    EXPECT_TRUE(account::clear_account_login_failures(temp_directory.path(), created_account.account_name, &error_message)) << error_message;
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(temp_directory.path(), created_account.account_name, &stored_account, &error_message)) << error_message;
+    EXPECT_EQ(stored_account.failed_login_count, 0);
+    EXPECT_EQ(stored_account.failed_login_last_at, 0);
+    EXPECT_TRUE(stored_account.failed_login_last_host.empty());
+}
+
+TEST(AccountManagement, FormatsFailedLoginNoticeWithCountAndMostRecentAttempt)
+{
+    account::AccountData account_data;
+    account_data.failed_login_count = 3;
+    account_data.failed_login_last_at = 1700002500;
+    account_data.failed_login_last_host = "host.example.com";
+
+    const std::string notice = account::format_account_login_failure_notice(account_data);
+    EXPECT_NE(notice.find("3 FAILED LOGIN ATTEMPTS SINCE YOUR LAST SUCCESSFUL LOGIN."), std::string::npos);
+    EXPECT_NE(notice.find("Most recent: 2023-11-14 22:55:00 UTC from host.example.com"), std::string::npos);
+}
+
+TEST(AccountManagement, FormatsSingularFailedLoginNotice)
+{
+    account::AccountData account_data;
+    account_data.failed_login_count = 1;
+    account_data.failed_login_last_at = 1700002500;
+    account_data.failed_login_last_host = "host.example.com";
+
+    const std::string notice = account::format_account_login_failure_notice(account_data);
+    EXPECT_NE(notice.find("1 FAILED LOGIN ATTEMPT SINCE YOUR LAST SUCCESSFUL LOGIN."), std::string::npos);
+    EXPECT_EQ(notice.find("ATTEMPTS"), std::string::npos);
+}
+
+TEST(AccountManagement, OmitsTheFailedLoginNoticeWhenThereAreNoFailures)
+{
+    account::AccountData account_data;
+    account_data.failed_login_count = 0;
+    account_data.failed_login_last_at = 1700002500;
+    account_data.failed_login_last_host = "host.example.com";
+
+    EXPECT_TRUE(account::format_account_login_failure_notice(account_data).empty());
+}
+
+TEST(AccountManagement, OmitsTheHostFromTheFailedLoginNoticeWhenItIsUnknown)
+{
+    account::AccountData account_data;
+    account_data.failed_login_count = 2;
+    account_data.failed_login_last_at = 1700002500;
+
+    const std::string notice = account::format_account_login_failure_notice(account_data);
+    EXPECT_NE(notice.find("Most recent: 2023-11-14 22:55:00 UTC\n\r"), std::string::npos);
+    EXPECT_EQ(notice.find(" from "), std::string::npos);
+}
+
+TEST(AccountManagement, RoundTripsPasswordResetCodeMetadataThroughAccountJson)
+{
+    account::AccountData original_account = make_account();
+    original_account.password_reset_code_hash = "reset-code-hash";
+    original_account.password_reset_code_sent_at = 1700030000;
+    original_account.password_reset_code_expires_at = 1700030900;
+    original_account.password_reset_attempt_count = 2;
+
+    account::AccountData parsed_account;
+    std::string error_message;
+    ASSERT_TRUE(account::deserialize_account_from_json(
+        account::serialize_account_to_json(original_account), &parsed_account, &error_message))
+        << error_message;
+
+    EXPECT_EQ(parsed_account.password_reset_code_hash, "reset-code-hash");
+    EXPECT_EQ(parsed_account.password_reset_code_sent_at, 1700030000);
+    EXPECT_EQ(parsed_account.password_reset_code_expires_at, 1700030900);
+    EXPECT_EQ(parsed_account.password_reset_attempt_count, 2);
+}
+
+TEST(AccountManagement, DefaultsPasswordResetCodeMetadataWhenAccountJsonOmitsIt)
+{
+    const std::string legacy_json = "{\n"
+                                    "  \"version\": 1,\n"
+                                    "  \"account_name\": \"alpha-admin\",\n"
+                                    "  \"normalized_email\": \"player@example.com\"\n"
+                                    "}\n";
+
+    account::AccountData parsed_account;
+    std::string error_message;
+    ASSERT_TRUE(account::deserialize_account_from_json(legacy_json, &parsed_account, &error_message)) << error_message;
+
+    EXPECT_TRUE(parsed_account.password_reset_code_hash.empty());
+    EXPECT_EQ(parsed_account.password_reset_code_sent_at, 0);
+    EXPECT_EQ(parsed_account.password_reset_code_expires_at, 0);
+    EXPECT_EQ(parsed_account.password_reset_attempt_count, 0);
+}
+
+TEST(AccountManagement, KeepsResetAndVerificationAttemptCapsUniform)
+{
+    EXPECT_EQ(account::MAX_PASSWORD_RESET_ATTEMPTS, account::MAX_EMAIL_VERIFICATION_ATTEMPTS);
+    EXPECT_EQ(account::PASSWORD_RESET_WINDOW_SECONDS, account::EMAIL_VERIFICATION_WINDOW_SECONDS);
+    EXPECT_EQ(account::PASSWORD_RESET_RESEND_COOLDOWN_SECONDS, account::EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS);
+}
+
+TEST(AccountManagement, StartPasswordResetIgnoresAddressesWithoutAnAccount)
+{
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    long code_expires_at = 0;
+
+    EXPECT_TRUE(account::start_password_reset(temp_directory.path(), "nobody@example.com", 1700002000, &code_expires_at, &error_message)) << error_message;
+
+    EXPECT_EQ(code_expires_at, 1700002000 + account::PASSWORD_RESET_WINDOW_SECONDS);
+    struct stat file_info { };
+    EXPECT_NE(stat(account::account_file_path(temp_directory.path(), "nobody@example.com").c_str(), &file_info), 0);
+}
+
+TEST(AccountManagement, StartPasswordResetStoresAHashedCodeAndMailsIt)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path,
+        "#!/bin/sh\n"
+        "cat > \""
+            + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    long code_expires_at = 0;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", 1700002000, &code_expires_at, &error_message)) << error_message;
+
+    EXPECT_EQ(code_expires_at, 1700002000 + account::PASSWORD_RESET_WINDOW_SECONDS);
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_FALSE(stored_account.password_reset_code_hash.empty());
+    EXPECT_EQ(stored_account.password_reset_code_sent_at, 1700002000);
+    EXPECT_EQ(stored_account.password_reset_code_expires_at, 1700002000 + account::PASSWORD_RESET_WINDOW_SECONDS);
+    EXPECT_EQ(stored_account.password_reset_attempt_count, 0);
+
+    const std::string captured_mail = read_file_contents(std::string(capture_path));
+    EXPECT_NE(captured_mail.find("To: player@example.com"), std::string::npos);
+    EXPECT_NE(captured_mail.find("Subject: RotS account password reset code"), std::string::npos);
+    EXPECT_NE(captured_mail.find("Password reset code: "), std::string::npos);
+    // The plaintext code must never be what we stored.
+    EXPECT_EQ(captured_mail.find(stored_account.password_reset_code_hash), std::string::npos);
+}
+
+TEST(AccountManagement, StartPasswordResetSuppressesASecondCodeInsideTheCooldown)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string command_script_path = root + "/discard-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > /dev/null\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    long first_expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", 1700002000, &first_expiry, &error_message)) << error_message;
+
+    account::AccountData after_first;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_first, &error_message)) << error_message;
+
+    long second_expiry = 0;
+    const long inside_cooldown = 1700002000 + account::PASSWORD_RESET_RESEND_COOLDOWN_SECONDS - 1;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", inside_cooldown, &second_expiry, &error_message)) << error_message;
+
+    account::AccountData after_second;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_second, &error_message)) << error_message;
+
+    // The first code is untouched and still the one that works.
+    EXPECT_EQ(after_second.password_reset_code_hash, after_first.password_reset_code_hash);
+    EXPECT_EQ(after_second.password_reset_code_sent_at, 1700002000);
+    // The reported expiry is synthetic, not the stored one -- see the test below.
+    EXPECT_EQ(second_expiry, inside_cooldown + account::PASSWORD_RESET_WINDOW_SECONDS);
+}
+
+// The caller turns *code_expires_at into a connection deadline the player can time. Reporting the
+// real pending expiry inside the cooldown made that deadline depend on when an earlier code was
+// issued, so an attacker could tell an address with an account from one without by watching the
+// clock. Every branch must report the same clock-derived value.
+TEST(AccountManagement, StartPasswordResetReportsASyntheticExpiryInsideTheCooldown)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string command_script_path = root + "/discard-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > /dev/null\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    long first_expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", 1700002000, &first_expiry, &error_message)) << error_message;
+
+    account::AccountData after_first;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_first, &error_message)) << error_message;
+
+    long cooldown_expiry = 0;
+    const long inside_cooldown = 1700002000 + account::PASSWORD_RESET_RESEND_COOLDOWN_SECONDS - 1;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", inside_cooldown, &cooldown_expiry, &error_message)) << error_message;
+
+    EXPECT_EQ(cooldown_expiry, inside_cooldown + account::PASSWORD_RESET_WINDOW_SECONDS);
+    EXPECT_NE(cooldown_expiry, after_first.password_reset_code_expires_at);
+
+    // An address with no account at all reports the same thing, which is the whole point.
+    long unknown_expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(root, "nobody@example.com", inside_cooldown, &unknown_expiry, &error_message)) << error_message;
+    EXPECT_EQ(unknown_expiry, cooldown_expiry);
+}
+
+TEST(AccountManagement, StartPasswordResetIssuesAFreshCodeOnceTheCooldownLapses)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string command_script_path = root + "/discard-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > /dev/null\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    long expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", 1700002000, &expiry, &error_message)) << error_message;
+    account::AccountData after_first;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_first, &error_message)) << error_message;
+
+    const long past_cooldown = 1700002000 + account::PASSWORD_RESET_RESEND_COOLDOWN_SECONDS;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", past_cooldown, &expiry, &error_message)) << error_message;
+    account::AccountData after_second;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_second, &error_message)) << error_message;
+
+    EXPECT_NE(after_second.password_reset_code_hash, after_first.password_reset_code_hash);
+    EXPECT_EQ(after_second.password_reset_code_sent_at, past_cooldown);
+}
+
+TEST(AccountManagement, StartPasswordResetLeavesAPendingEmailVerificationCodeAlone)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string command_script_path = root + "/discard-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > /dev/null\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    std::string verification_code;
+    ASSERT_TRUE(account::prepare_email_verification_code(&created_account, 1700001500, &verification_code, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_file(root, created_account, &error_message)) << error_message;
+
+    long expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", 1700002000, &expiry, &error_message)) << error_message;
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_EQ(stored_account.verification_code_hash, created_account.verification_code_hash);
+    EXPECT_EQ(stored_account.verification_code_expires_at, created_account.verification_code_expires_at);
+    EXPECT_NE(stored_account.password_reset_code_hash, stored_account.verification_code_hash);
+}
+
+namespace {
+
+// Issues a reset code and returns the plaintext by capturing the outgoing mail.
+std::string issue_reset_code(std::string_view root, std::string_view capture_path, long sent_at)
+{
+    long expiry = 0;
+    std::string error_message;
+    EXPECT_TRUE(account::start_password_reset(root, "player@example.com", sent_at, &expiry, &error_message)) << error_message;
+
+    const std::string captured_mail = read_file_contents(std::string(capture_path));
+    const std::string marker = "Password reset code: ";
+    const size_t code_offset = captured_mail.find(marker);
+    EXPECT_NE(code_offset, std::string::npos) << "Expected a reset code in the captured mail.";
+    if (code_offset == std::string::npos) {
+        return "";
+    }
+    return captured_mail.substr(code_offset + marker.size(), 6);
+}
+
+} // namespace
+
+TEST(AccountManagement, CompletePasswordResetChangesThePasswordAndClearsResetState)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    // Give it failed logins and an unverified address, both of which a completed reset should settle.
+    ASSERT_TRUE(account::record_account_login_failure(root, "player@example.com", "attacker.example.com", 1700001500, &error_message)) << error_message;
+
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    account::AccountData reset_account;
+    ASSERT_TRUE(account::complete_password_reset(root, "player@example.com", reset_code, "BrandNew1", 1700002100, &reset_account, &error_message)) << error_message;
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+
+    EXPECT_TRUE(account::verify_password("BrandNew1", stored_account.password_hash));
+    EXPECT_FALSE(account::verify_password("ValidPass1", stored_account.password_hash));
+    EXPECT_EQ(stored_account.password_reset_by, "forgot-password");
+    EXPECT_EQ(stored_account.password_reset_at, 1700002100);
+    EXPECT_TRUE(stored_account.password_reset_code_hash.empty());
+    EXPECT_EQ(stored_account.password_reset_code_sent_at, 0);
+    EXPECT_EQ(stored_account.password_reset_code_expires_at, 0);
+    EXPECT_EQ(stored_account.password_reset_attempt_count, 0);
+    EXPECT_TRUE(stored_account.email_verified);
+    EXPECT_EQ(stored_account.failed_login_count, 0);
+    EXPECT_TRUE(stored_account.failed_login_last_host.empty());
+}
+
+TEST(AccountManagement, CompletePasswordResetCountsWrongCodesAndInvalidatesAtTheCap)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    for (int attempt = 1; attempt < account::MAX_PASSWORD_RESET_ATTEMPTS; ++attempt) {
+        EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", "000000", "BrandNew1", 1700002000 + attempt, nullptr, &error_message));
+        account::AccountData in_progress;
+        ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &in_progress, &error_message)) << error_message;
+        EXPECT_EQ(in_progress.password_reset_attempt_count, attempt);
+        EXPECT_FALSE(in_progress.password_reset_code_hash.empty());
+    }
+
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", "000000", "BrandNew1", 1700002090, nullptr, &error_message));
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_TRUE(stored_account.password_reset_code_hash.empty());
+    EXPECT_EQ(stored_account.password_reset_code_expires_at, 0);
+    // The real code is dead too, so a reconnect cannot resume with it.
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", reset_code, "BrandNew1", 1700002095, nullptr, &error_message));
+    EXPECT_TRUE(account::verify_password("ValidPass1", stored_account.password_hash));
+}
+
+// Clearing password_reset_code_sent_at at the cap switched the resend cooldown off, so five wrong
+// guesses bought an immediate fresh code -- unlimited mail to a known address, and a victim who
+// could never finish a reset because each code they received was killed by the next five guesses.
+TEST(AccountManagement, StartPasswordResetStillHonoursTheCooldownAfterTheAttemptCap)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    for (int attempt = 1; attempt <= account::MAX_PASSWORD_RESET_ATTEMPTS; ++attempt) {
+        EXPECT_FALSE(account::verify_password_reset_code(root, "player@example.com", "000000", 1700002000 + attempt, &error_message));
+    }
+
+    account::AccountData exhausted_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &exhausted_account, &error_message)) << error_message;
+    EXPECT_TRUE(exhausted_account.password_reset_code_hash.empty());
+    EXPECT_EQ(exhausted_account.password_reset_code_expires_at, 0);
+    // The send timestamp survives the cap: it is the only thing the cooldown gate reads.
+    EXPECT_EQ(exhausted_account.password_reset_code_sent_at, 1700002000);
+
+    long expiry = 0;
+    const long inside_cooldown = 1700002000 + account::PASSWORD_RESET_RESEND_COOLDOWN_SECONDS - 1;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", inside_cooldown, &expiry, &error_message)) << error_message;
+
+    account::AccountData after_request;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_request, &error_message)) << error_message;
+    // Still suppressed: no new code stamped, so nothing new was mailed either.
+    EXPECT_TRUE(after_request.password_reset_code_hash.empty());
+    EXPECT_EQ(after_request.password_reset_code_sent_at, 1700002000);
+
+    // Once the cooldown genuinely lapses a fresh code is issued as normal.
+    const long past_cooldown = 1700002000 + account::PASSWORD_RESET_RESEND_COOLDOWN_SECONDS;
+    ASSERT_TRUE(account::start_password_reset(root, "player@example.com", past_cooldown, &expiry, &error_message)) << error_message;
+
+    account::AccountData after_cooldown;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_cooldown, &error_message)) << error_message;
+    EXPECT_FALSE(after_cooldown.password_reset_code_hash.empty());
+    EXPECT_EQ(after_cooldown.password_reset_code_sent_at, past_cooldown);
+    EXPECT_EQ(after_cooldown.password_reset_attempt_count, 0);
+}
+
+TEST(AccountManagement, CompletePasswordResetRejectsAnExpiredCode)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    const long after_expiry = 1700002000 + account::PASSWORD_RESET_WINDOW_SECONDS + 1;
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", reset_code, "BrandNew1", after_expiry, nullptr, &error_message));
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_TRUE(account::verify_password("ValidPass1", stored_account.password_hash));
+}
+
+TEST(AccountManagement, CompletePasswordResetRejectsAddressesWithoutAnAccount)
+{
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    EXPECT_FALSE(account::complete_password_reset(temp_directory.path(), "nobody@example.com", "000000", "BrandNew1", 1700002000, nullptr, &error_message));
+}
+
+TEST(AccountManagement, CompletePasswordResetRejectsAnEmailVerificationCode)
+{
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+
+    std::string verification_code;
+    ASSERT_TRUE(account::prepare_email_verification_code(&created_account, 1700001500, &verification_code, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_file(root, created_account, &error_message)) << error_message;
+
+    // No reset has been started, so a verification code must not stand in for one.
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", verification_code, "BrandNew1", 1700002000, nullptr, &error_message));
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_TRUE(account::verify_password("ValidPass1", stored_account.password_hash));
+}
+
+TEST(AccountManagement, CompletePasswordResetRejectsAPasswordFailingPolicy)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", reset_code, "short", 1700002100, nullptr, &error_message));
+
+    // The code survives so the player can retry with a better password.
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_FALSE(stored_account.password_reset_code_hash.empty());
+    EXPECT_TRUE(account::verify_password("ValidPass1", stored_account.password_hash));
+}
+
+TEST(AccountManagement, CompletePasswordResetChecksTheCodeBeforeThePasswordPolicy)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    // Wrong code AND a policy-failing password. If the policy check ran first, this would surface
+    // the password error and tell an attacker nothing about the guessed code; it must instead fail
+    // on the code, before the password is ever looked at.
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", "000000", "short", 1700002050, nullptr, &error_message));
+    EXPECT_EQ(error_message, "That reset code is invalid.");
+
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message)) << error_message;
+    EXPECT_EQ(stored_account.password_reset_attempt_count, 1);
+    EXPECT_TRUE(account::verify_password("ValidPass1", stored_account.password_hash));
+}
+
+TEST(AccountManagement, VerifyPasswordResetCodeAcceptsWithoutConsumingTheCode)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    EXPECT_TRUE(account::verify_password_reset_code(root, "player@example.com", reset_code, 1700002050, &error_message)) << error_message;
+
+    account::AccountData after_verify;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_verify, &error_message)) << error_message;
+    EXPECT_EQ(after_verify.password_reset_attempt_count, 0);
+    EXPECT_FALSE(after_verify.password_reset_code_hash.empty());
+
+    // The code still completes the reset afterwards -- checking it did not spend it.
+    EXPECT_TRUE(account::complete_password_reset(root, "player@example.com", reset_code, "BrandNew1", 1700002100, nullptr, &error_message)) << error_message;
+}
+
+TEST(AccountManagement, VerifyPasswordResetCodeCountsWrongCodesLikeTheCompletingCall)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    const std::string root = temp_directory.path();
+    const std::string capture_path = root + "/captured-mail.txt";
+    const std::string command_script_path = root + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData created_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700001000, &created_account, &error_message)) << error_message;
+    const std::string reset_code = issue_reset_code(root, capture_path, 1700002000);
+    ASSERT_FALSE(reset_code.empty());
+
+    EXPECT_FALSE(account::verify_password_reset_code(root, "player@example.com", "000000", 1700002050, &error_message));
+
+    account::AccountData after_verify;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &after_verify, &error_message)) << error_message;
+    EXPECT_EQ(after_verify.password_reset_attempt_count, 1);
+}
+
+namespace {
+
+// SetUp/TearDown (rather than toggling roster_cache inline in the test body) so cleanup still runs
+// if an ASSERT_* fails partway through: an inline toggle leaves g_enabled == true leaked into every
+// later test in the binary on a failed assertion, in a suite that already aborts partway through on
+// a known baseline crash. Mirrors RosterCacheTest in roster_cache_tests.cpp.
+// Counts real backing reads while a failed-write test exercises cache retention.
+int roster_write_reader_calls = 0;
+
+bool count_roster_write_reads(std::string_view root_directory, std::string_view account_name,
+    std::string_view character_name, char_file_u* out_character, std::string* out_error)
+{
+    ++roster_write_reader_calls;
+    return account::read_account_character_file(root_directory, account_name, character_name, out_character, out_error);
+}
+
+class RosterCacheDropOnWriteTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        roster_cache::clear();
+        roster_cache::set_enabled(true);
+    }
+    void TearDown() override
+    {
+        roster_cache::set_backing_reader_for_testing(nullptr);
+        roster_cache::set_enabled(false);
+        roster_cache::clear();
+    }
+};
+
+} // namespace
+
+// write_account_character_file is the single chokepoint for character-file writes (5 call sites,
+// including save_char's autosave path). If it does not drop the cached summary, a level-up would
+// leave the roster showing the old level indefinitely.
+TEST_F(RosterCacheDropOnWriteTest, WritingACharacterFileDropsItsCachedRosterSummary)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData account_data = make_account();
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", account_data.account_name, account_data.normalized_email,
+        "ValidPass1", 1700010200, nullptr, &error_message))
+        << error_message;
+
+    char_file_u aragorn = make_stored_character("aragorn");
+    aragorn.level = 10;
+    aragorn.race = RACE_WOOD;
+    ASSERT_TRUE(account::write_account_character_file(".", account_data.account_name, aragorn, &error_message))
+        << error_message;
+
+    roster_cache::RosterSummary summary { };
+    ASSERT_TRUE(roster_cache::get(".", account_data.account_name, "aragorn", &summary));
+    ASSERT_EQ(summary.level, 10);
+
+    aragorn.level = 11;
+    ASSERT_TRUE(account::write_account_character_file(".", account_data.account_name, aragorn, &error_message))
+        << error_message;
+
+    ASSERT_TRUE(roster_cache::get(".", account_data.account_name, "aragorn", &summary));
+    EXPECT_EQ(summary.level, 11) << "cached summary survived a character write";
+}
+
+namespace {
+
+// Builds an account whose characters are deliberately NOT in name, level, or race order, so a
+// passing sort test cannot be an accident of insertion order. gimli/aragorn/legolas are all light-
+// side races (side rank 1), so "ugluk" (dark-side, an Orc) is included too -- without it, every
+// Side-sort render in this fixture would collapse to exactly one section, and a test could pass
+// while never exercising row numbering across a section boundary.
+account::AccountData make_sortable_account()
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "gimli", "aragorn", "legolas", "ugluk" };
+    return account_data;
+}
+
+// Backing reader for ordering tests: level/race/coefficients per character name. Asserts the root
+// directory it was called with, so a caller that hardcodes (or drifts to) a different root than the
+// renderer used -- rather than threading root_directory through -- fails loudly here instead of
+// silently reading a disjoint (and therefore all-unreadable) cache entry. Every caller in this file
+// uses "." by convention.
+bool sortable_reader(std::string_view root_directory, std::string_view, std::string_view character_name,
+    char_file_u* stored_character, std::string* error_message)
+{
+    EXPECT_EQ(root_directory, ".") << "reader invoked with an unexpected root directory -- selection and "
+                                      "rendering must resolve roster_cache entries against the same root";
+    *stored_character = char_file_u { };
+    if (character_name == "gimli") {
+        stored_character->level = 30;
+        stored_character->race = RACE_DWARF;
+        stored_character->profs.prof_coof[PROF_WARRIOR] = 160;
+    } else if (character_name == "aragorn") {
+        stored_character->level = 50;
+        stored_character->race = RACE_HUMAN;
+        stored_character->profs.prof_coof[PROF_RANGER] = 160;
+    } else if (character_name == "legolas") {
+        stored_character->level = 40;
+        stored_character->race = RACE_WOOD;
+        stored_character->profs.prof_coof[PROF_MAGE] = 160;
+    } else if (character_name == "ugluk") {
+        // Lowest level and highest race index of the four, so it sorts last under both Level and
+        // Race without disturbing the other three's relative order. Its only nonzero coefficient is
+        // Mystic (Cleric), so it is cleanly excluded from the Warrior/Ranger/Mage filters below and
+        // is the sole match for Mystic -- rather than tying with every profession at the raw-0
+        // baseline and muddying every filter's expected result.
+        stored_character->level = 20;
+        stored_character->race = RACE_ORC;
+        stored_character->profs.prof_coof[PROF_CLERIC] = 160;
+    } else {
+        if (error_message) {
+            *error_message = "unknown character";
+        }
+        return false;
+    }
+    if (error_message) {
+        *error_message = "";
+    }
+    return true;
+}
+
+std::vector<std::string> names_in_order(const account::AccountData& account_data,
+    account::RosterSort sort, account::RosterFilter filter)
+{
+    const std::vector<size_t> indices = account::ordered_roster_indices(".", account_data, sort, filter);
+    std::vector<std::string> names;
+    for (size_t index : indices) {
+        names.push_back(account_data.characters[index]);
+    }
+    return names;
+}
+
+// Parses "N) [ lvl race] Name" row entries out of rendered roster/prompt text, in the order they
+// appear (two entries can share one line, so this scans the whole text rather than per-line). Row
+// numbers are returned exactly as printed and left unvalidated here -- callers assert the
+// numbering themselves, so a renderer that skips, repeats, or 0-indexes rows fails the assertion
+// rather than being silently reindexed away by the parser.
+std::vector<std::pair<int, std::string>> parse_rendered_roster_rows(std::string_view prompt)
+{
+    static const std::regex kRowPattern(R"((\d+)\)\s*\[[^\]]*\]\s*(\S+))");
+    std::vector<std::pair<int, std::string>> rows;
+    for (std::regex_iterator<std::string_view::const_iterator> row_match(prompt.begin(), prompt.end(), kRowPattern), end; row_match != end; ++row_match) {
+        rows.emplace_back(std::stoi((*row_match)[1].str()), (*row_match)[2].str());
+    }
+    return rows;
+}
+
+// Splits rendered text into lines on the renderer's own "\n\r" line terminator, so a test can
+// assert actual line structure (which row starts a fresh line, which line a header sits alone on)
+// rather than only which substrings appear somewhere in the blob. A trailing empty element would
+// only ever appear if the text does not end on a terminator; every caller here asserts on that too.
+std::vector<std::string> split_on_terminator(std::string_view text)
+{
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t terminator = text.find("\n\r", start);
+        if (terminator == std::string::npos) {
+            lines.emplace_back(text.substr(start));
+            break;
+        }
+        lines.emplace_back(text.substr(start, terminator - start));
+        start = terminator + 2;
+    }
+    return lines;
+}
+
+class RosterOrderTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        roster_cache::clear();
+        roster_cache::set_backing_reader_for_testing(&sortable_reader);
+        roster_cache::set_enabled(true);
+    }
+    void TearDown() override
+    {
+        roster_cache::set_backing_reader_for_testing(nullptr);
+        roster_cache::set_enabled(false);
+        roster_cache::clear();
+    }
+};
+
+} // namespace
+
+TEST_F(RosterOrderTest, AccountSortPreservesInsertionOrder)
+{
+    const account::AccountData account_data = make_sortable_account();
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::None),
+        (std::vector<std::string> { "gimli", "aragorn", "legolas", "ugluk" }));
+}
+
+TEST_F(RosterOrderTest, NameSortIsAlphabetical)
+{
+    const account::AccountData account_data = make_sortable_account();
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Name, account::RosterFilter::None),
+        (std::vector<std::string> { "aragorn", "gimli", "legolas", "ugluk" }));
+}
+
+TEST_F(RosterOrderTest, LevelSortIsHighestFirst)
+{
+    const account::AccountData account_data = make_sortable_account();
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Level, account::RosterFilter::None),
+        (std::vector<std::string> { "aragorn", "legolas", "gimli", "ugluk" }));
+}
+
+TEST_F(RosterOrderTest, RaceSortIsAscendingByRaceIndex)
+{
+    // RACE_HUMAN 1 < RACE_DWARF 2 < RACE_WOOD 3 < RACE_ORC 13
+    const account::AccountData account_data = make_sortable_account();
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Race, account::RosterFilter::None),
+        (std::vector<std::string> { "aragorn", "gimli", "legolas", "ugluk" }));
+}
+
+TEST_F(RosterOrderTest, FilterKeepsOnlyCharactersWhoseHighestCoefficientMatches)
+{
+    const account::AccountData account_data = make_sortable_account();
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Warrior),
+        (std::vector<std::string> { "gimli" }));
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Ranger),
+        (std::vector<std::string> { "aragorn" }));
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Mage),
+        (std::vector<std::string> { "legolas" }));
+    // ugluk's only nonzero coefficient is Mystic (Cleric), so it is the sole Mystic match.
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Mystic),
+        (std::vector<std::string> { "ugluk" }));
+}
+
+TEST_F(RosterOrderTest, FilterAndSortCompose)
+{
+    account::AccountData account_data = make_sortable_account();
+    account_data.characters.push_back("gimli"); // duplicate name is fine: same summary, same filter
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Level, account::RosterFilter::Warrior),
+        (std::vector<std::string> { "gimli", "gimli" }));
+}
+
+// square_root[] is monotonic non-decreasing, so a filter that compared RAW prof_coof values would
+// pass every other test in this file identically. This case only distinguishes raw from derived:
+// raw says Mage (40 > 30), but the Uruk-mage penalty flips it (square_root[40]-100=532 <
+// square_root[30]=547), so derived says Warrior.
+TEST_F(RosterOrderTest, FilterUsesDerivedCoefficientsNotRawValues)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "uruk1" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            stored_character->race = RACE_URUK;
+            stored_character->profs.prof_coof[PROF_MAGE] = 40;
+            stored_character->profs.prof_coof[PROF_WARRIOR] = 30;
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Warrior),
+        (std::vector<std::string> { "uruk1" }));
+    EXPECT_TRUE(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Mage).empty());
+}
+
+// stable_sort is load-bearing: a redraw must never reshuffle rows with equal sort keys. Two
+// DISTINCT names ("zed" before "amy" in insertion order, the opposite of alphabetical) share a
+// level, so only a genuinely stable sort reproduces this exact expected order.
+TEST_F(RosterOrderTest, EqualSortKeysPreserveInsertionOrder)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "zed", "mid", "amy" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            stored_character->race = RACE_HUMAN;
+            stored_character->level = 20; // zed and amy tie
+            if (character_name == "mid") {
+                stored_character->level = 30;
+            }
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Level, account::RosterFilter::None),
+        (std::vector<std::string> { "mid", "zed", "amy" }));
+}
+
+// Side sort groups by side and orders A-Z WITHIN each side, rather than leaving equal-side rows in
+// link order. Without this, an account whose link order already happens to be side-grouped sees no
+// visible change at all when pressing the side key.
+TEST_F(RosterOrderTest, SideSortOrdersAlphabeticallyWithinEachSide)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "zulu", "alpha", "orczz", "orcaa", "mike" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view root_directory, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            EXPECT_EQ(root_directory, ".");
+            *stored_character = char_file_u { };
+            if (character_name == "orczz" || character_name == "orcaa") {
+                stored_character->race = RACE_ORC; // dark
+            } else {
+                stored_character->race = RACE_HUMAN; // light
+            }
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    // Lights A-Z, then darks A-Z -- not link order within either side.
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Side, account::RosterFilter::None),
+        (std::vector<std::string> { "alpha", "mike", "zulu", "orcaa", "orczz" }));
+}
+
+// The side view is rendered in labelled sections. Numbering stays continuous ACROSS sections, so
+// row N still selects the character printed at row N -- the invariant the whole feature rests on.
+TEST_F(RosterOrderTest, SideSortRendersLabelledSectionsWithContinuousNumbering)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "orcaa", "human1", "godone" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            if (character_name == "orcaa") {
+                stored_character->race = RACE_ORC;
+            } else if (character_name == "godone") {
+                stored_character->race = RACE_GOD;
+            } else {
+                stored_character->race = RACE_HUMAN;
+            }
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    const std::string prompt = account::format_account_character_prompt(
+        ".", account_data, account::RosterSort::Side, account::RosterFilter::None);
+
+    EXPECT_NE(prompt.find("-- Gods --"), std::string::npos) << prompt;
+    EXPECT_NE(prompt.find("-- Lights --"), std::string::npos) << prompt;
+    EXPECT_NE(prompt.find("-- Darks --"), std::string::npos) << prompt;
+    // No third-side character linked, so that header must not appear at all.
+    EXPECT_EQ(prompt.find("-- Third Side --"), std::string::npos) << prompt;
+
+    // Sections appear in side order, and numbering runs 1,2,3 straight through them.
+    const size_t gods = prompt.find("-- Gods --");
+    const size_t lights = prompt.find("-- Lights --");
+    const size_t darks = prompt.find("-- Darks --");
+    EXPECT_LT(gods, lights);
+    EXPECT_LT(lights, darks);
+    EXPECT_NE(prompt.find("1) [  0 Imm] Godone"), std::string::npos) << prompt;
+    EXPECT_NE(prompt.find("2) [  0 Hum] Human1"), std::string::npos) << prompt;
+    EXPECT_NE(prompt.find("3) [  0 Orc] Orcaa"), std::string::npos) << prompt;
+
+    // Other sorts must NOT gain section headers.
+    const std::string by_level = account::format_account_character_prompt(
+        ".", account_data, account::RosterSort::Level, account::RosterFilter::None);
+    EXPECT_EQ(by_level.find("-- Gods --"), std::string::npos) << by_level;
+}
+
+// The renderer resets its column counter at each section boundary, so a section with an ODD row
+// count does not drag the following section out of pair alignment. Three lights (odd) followed by
+// two darks exercises exactly that: without the "column = 0" reset, the lone trailing light would
+// pair up with the first dark on one line instead of each section starting fresh; and a final-flush
+// check that tested indices.size() % 2 instead of column % 2 would (5 total, odd) wrongly emit an
+// extra blank line after the already-complete final pair. Asserts actual rendered LINE structure,
+// not just substring presence.
+TEST_F(RosterOrderTest, ColumnPairingResetsAtEachSectionBoundary)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "amy", "bob", "cara", "dan", "eve" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            if (character_name == "dan" || character_name == "eve") {
+                stored_character->race = RACE_ORC; // dark
+            } else {
+                stored_character->race = RACE_HUMAN; // light
+            }
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    const std::string prompt = account::format_account_character_prompt(
+        ".", account_data, account::RosterSort::Side, account::RosterFilter::None);
+    const std::vector<std::string> lines = split_on_terminator(prompt);
+
+    const auto lights_it = std::find(lines.begin(), lines.end(), "-- Lights --");
+    ASSERT_NE(lights_it, lines.end()) << prompt;
+    const size_t lights = static_cast<size_t>(lights_it - lines.begin());
+    ASSERT_LE(lights + 7, lines.size() - 1) << "prompt is shorter than expected:\n"
+                                            << prompt;
+
+    // Lights section (3 rows, odd): row 1 starts a fresh line right after the header, paired with
+    // row 2; row 3 (the odd one out) is alone on its own line, itself properly terminated (not left
+    // dangling into the next header).
+    EXPECT_NE(lines[lights + 1].find("1) ["), std::string::npos) << prompt;
+    EXPECT_NE(lines[lights + 1].find("2) ["), std::string::npos) << prompt;
+    EXPECT_EQ(lines[lights + 1].find("3) ["), std::string::npos)
+        << "row 3 leaked onto the same line as rows 1-2:\n"
+        << prompt;
+
+    EXPECT_NE(lines[lights + 2].find("3) ["), std::string::npos) << prompt;
+    EXPECT_EQ(lines[lights + 2].find("4) ["), std::string::npos)
+        << "row 4 (Darks) leaked onto the odd Lights trailer's line -- the column counter was not "
+           "reset at the section boundary:\n"
+        << prompt;
+
+    // Exactly one blank line separates the odd trailer from the next header.
+    EXPECT_EQ(lines[lights + 3], "") << prompt;
+    EXPECT_EQ(lines[lights + 4], "-- Darks --") << prompt;
+
+    // Darks section (2 rows, even): row 4 starts a fresh line right after its own header, paired
+    // with row 5 -- proving the reset actually put column back to 0 rather than merely happening to
+    // look right after an odd trailer.
+    EXPECT_NE(lines[lights + 5].find("4) ["), std::string::npos) << prompt;
+    EXPECT_NE(lines[lights + 5].find("5) ["), std::string::npos) << prompt;
+
+    // The final section ends on a complete (even) pair, so exactly ONE blank line separates it from
+    // the "N characters displayed." footer -- not two. A final-flush check keyed off the total row
+    // count (5, odd) rather than the actual trailing column parity (2, even) would insert a spurious
+    // extra blank line here.
+    EXPECT_EQ(lines[lights + 6], "") << prompt;
+    EXPECT_NE(lines[lights + 7], "") << "an extra blank line was emitted after the final pair:\n"
+                                     << prompt;
+    EXPECT_NE(lines[lights + 7].find("characters displayed."), std::string::npos) << prompt;
+}
+
+TEST_F(RosterOrderTest, SideSortOrdersGodsLightsDarksThenThirdSide)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "magus1", "orc1", "human1" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            if (character_name == "magus1") {
+                stored_character->race = RACE_MAGUS;
+            } else if (character_name == "orc1") {
+                stored_character->race = RACE_ORC;
+            } else {
+                stored_character->race = RACE_HUMAN;
+            }
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Side, account::RosterFilter::None),
+        (std::vector<std::string> { "human1", "orc1", "magus1" }));
+}
+
+TEST_F(RosterOrderTest, TiedHighestCoefficientAppearsUnderEveryTiedFilter)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "twinned" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            stored_character->race = RACE_HUMAN;
+            stored_character->profs.prof_coof[PROF_WARRIOR] = 150;
+            stored_character->profs.prof_coof[PROF_MAGE] = 150;
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Warrior).size(), 1u);
+    EXPECT_EQ(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Mage).size(), 1u);
+    EXPECT_TRUE(names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Ranger).empty());
+}
+
+TEST_F(RosterOrderTest, UnreadableCharactersSortLastAndAreExcludedByFilters)
+{
+    account::AccountData account_data = make_sortable_account();
+    account_data.characters.insert(account_data.characters.begin(), "brokenchar");
+
+    // sortable_reader returns false for "brokenchar".
+    const std::vector<std::string> by_level = names_in_order(account_data, account::RosterSort::Level, account::RosterFilter::None);
+    ASSERT_EQ(by_level.size(), 5u);
+    EXPECT_EQ(by_level.back(), "brokenchar");
+
+    const std::vector<std::string> warriors = names_in_order(account_data, account::RosterSort::Account, account::RosterFilter::Warrior);
+    EXPECT_EQ(warriors, (std::vector<std::string> { "gimli" }));
+}
+
+// An unreadable summary defaults race to 0, which is also RACE_GOD. If side_rank_for_summary ever
+// dropped its "readable" check, an unreadable character would render under a SECOND "-- Gods --"
+// header instead of "-- Unavailable --", and nothing above would fail: readable_god still renders
+// under the first (and only expected) "-- Gods --" header regardless. This asserts the header
+// count directly, plus which section each character actually renders under.
+TEST_F(RosterOrderTest, UnreadableCharacterRendersUnderUnavailableNotASecondGodsSection)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters = { "godone", "brokenchar" };
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            if (character_name == "brokenchar") {
+                if (error_message) {
+                    *error_message = "unreadable";
+                }
+                return false;
+            }
+            *stored_character = char_file_u { };
+            stored_character->race = RACE_GOD;
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    const std::string prompt = account::format_account_character_prompt(
+        ".", account_data, account::RosterSort::Side, account::RosterFilter::None);
+
+    ASSERT_NE(prompt.find("-- Unavailable --"), std::string::npos) << prompt;
+
+    const size_t first_gods = prompt.find("-- Gods --");
+    ASSERT_NE(first_gods, std::string::npos) << prompt;
+    EXPECT_EQ(prompt.find("-- Gods --", first_gods + 1), std::string::npos)
+        << "\"-- Gods --\" rendered more than once -- the unreadable character likely fell into "
+           "its own Gods section instead of Unavailable:\n"
+        << prompt;
+
+    const std::vector<std::pair<int, std::string>> rows = parse_rendered_roster_rows(prompt);
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0].second, "Godone") << "readable god-race character must render first, under Gods:\n"
+                                        << prompt;
+    EXPECT_EQ(rows[1].second, "Brokenchar")
+        << "unreadable character must render last, under Unavailable:\n"
+        << prompt;
+
+    const size_t unavailable = prompt.find("-- Unavailable --");
+    const size_t godone_row = prompt.find("Godone");
+    const size_t brokenchar_row = prompt.find("Brokenchar");
+    ASSERT_NE(godone_row, std::string::npos);
+    ASSERT_NE(brokenchar_row, std::string::npos);
+    EXPECT_LT(godone_row, unavailable) << "Godone must render before the Unavailable section:\n"
+                                       << prompt;
+    EXPECT_GT(brokenchar_row, unavailable) << "Brokenchar must render after the Unavailable header:\n"
+                                           << prompt;
+}
+
+// Names are character1..character250. Lexicographically "character250" < "character3" (the digit
+// '2' loses to '3' at the first differing position), so a cap-AFTER-sort implementation keeps
+// character250 in its 200-entry result while a cap-BEFORE-sort implementation (insertion prefix
+// character1..character200) never even considers it. Comparing against the fully-sorted-then-
+// truncated expectation catches that difference; asserting size()==200 alone would not.
+TEST_F(RosterOrderTest, OrderingIsCappedAtTheDisplayedRosterLimitAfterSorting)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters.clear();
+    for (int index = 1; index <= 250; ++index) {
+        account_data.characters.push_back("character" + std::to_string(index));
+    }
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            stored_character->level = 1;
+            stored_character->race = RACE_HUMAN;
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    const std::vector<size_t> indices = account::ordered_roster_indices(
+        ".", account_data, account::RosterSort::Name, account::RosterFilter::None);
+    ASSERT_EQ(indices.size(), 200u);
+
+    std::vector<std::string> actual;
+    for (size_t index : indices) {
+        actual.push_back(account_data.characters[index]);
+    }
+
+    std::vector<std::string> expected_full_order = account_data.characters;
+    std::sort(expected_full_order.begin(), expected_full_order.end());
+    const std::vector<std::string> expected(expected_full_order.begin(), expected_full_order.begin() + 200);
+
+    EXPECT_EQ(actual, expected);
+    EXPECT_NE(std::find(actual.begin(), actual.end(), "character250"), actual.end())
+        << "a cap-before-sort implementation would never surface character250";
+}
+
+// 250 characters, of which exactly 210 match the Warrior filter (the rest are mages). The cap must
+// apply to the 210 post-filter matches, not to the pre-filter 250 -- so the result is 200, not 210
+// truncated from a smaller filtered set that happened to already fit, and not a filter applied
+// after an incorrect pre-filter cap.
+TEST_F(RosterOrderTest, OrderingIsCappedAfterFiltering)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters.clear();
+    for (int index = 1; index <= 250; ++index) {
+        account_data.characters.push_back("character" + std::to_string(index));
+    }
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view character_name,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            stored_character->race = RACE_HUMAN;
+            const int suffix = std::stoi(std::string(character_name.substr(std::string("character").size())));
+            if (suffix <= 210) {
+                stored_character->profs.prof_coof[PROF_WARRIOR] = 100;
+            } else {
+                stored_character->profs.prof_coof[PROF_MAGE] = 100;
+            }
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    EXPECT_EQ(account::ordered_roster_indices(".", account_data,
+                  account::RosterSort::Account, account::RosterFilter::Warrior)
+                  .size(),
+        200u);
+}
+
+// The PR #289 invariant, generalised: whatever row N shows must be what typing N selects, under
+// every sort and every filter. This is the single most important test in the feature. Renders the
+// ACTUAL prompt (format_account_character_prompt) and parses the rows out of the rendered text,
+// rather than comparing select_linked_character against ordered_roster_indices directly -- the
+// latter would only prove the selector agrees with its own ordering helper, not with what the
+// player is actually shown, and could not catch a renderer that diverged (a second cap, a skipped
+// unreadable row, 0-based numbering, ...).
+TEST_F(RosterOrderTest, SelectionByNumberMatchesTheRenderedRowUnderEverySortAndFilter)
+{
+    const account::AccountData account_data = make_sortable_account();
+
+    const account::RosterSort sorts[] = { account::RosterSort::Account, account::RosterSort::Name,
+        account::RosterSort::Level, account::RosterSort::Race, account::RosterSort::Side };
+    const account::RosterFilter filters[] = { account::RosterFilter::None,
+        account::RosterFilter::Warrior, account::RosterFilter::Ranger, account::RosterFilter::Mystic, account::RosterFilter::Mage };
+
+    for (account::RosterSort sort : sorts) {
+        for (account::RosterFilter filter : filters) {
+            const std::string prompt = account::format_account_character_prompt(".", account_data, sort, filter);
+            const std::vector<std::pair<int, std::string>> rows = parse_rendered_roster_rows(prompt);
+
+            for (size_t index = 0; index < rows.size(); ++index) {
+                ASSERT_EQ(rows[index].first, static_cast<int>(index + 1))
+                    << "rendered roster rows are not numbered sequentially from 1";
+            }
+
+            for (size_t index = 0; index < rows.size(); ++index) {
+                const size_t row = index + 1;
+                std::string selected;
+                std::string error_message;
+                ASSERT_TRUE(account::select_linked_character(".", account_data,
+                    std::to_string(row), sort, filter, &selected, &error_message))
+                    << "row " << row << ": " << error_message;
+                // Both sides normalised: the renderer prints the display form ("Aragorn"),
+                // select_linked_character returns normalize_account_name's form ("aragorn").
+                EXPECT_EQ(selected, account::normalize_account_name(rows[index].second))
+                    << "row " << row << " renders " << rows[index].second
+                    << " but selects " << selected;
+            }
+
+            std::string selected;
+            std::string error_message;
+            EXPECT_FALSE(account::select_linked_character(".", account_data,
+                std::to_string(rows.size() + 1), sort, filter, &selected, &error_message))
+                << "a row past the end of the rendered roster was selectable";
+        }
+    }
+}
+
+// The concrete scenario from the review that caught this: 250 linked characters (well over the
+// 200-entry display cap) under a non-Account sort, with one character inserted past the cap
+// boundary (insertion index 210) whose name sorts to the very front. ordered_roster_indices sorts
+// the FULL list and only then truncates to 200, so this character renders at row 1 -- but a name
+// scan bounded by insertion order ([0, 200) of account.characters as stored) would never reach
+// insertion index 210 and would reject the player's own character as "no such character". Both the
+// row-number path and the name path must find it.
+TEST_F(RosterOrderTest, SelectionByNameFindsACharacterPastTheInsertionOrderCapUnderANonAccountSort)
+{
+    account::AccountData account_data = make_account();
+    account_data.characters.clear();
+    for (int index = 0; index < 210; ++index) {
+        account_data.characters.push_back("zzfiller" + std::to_string(index));
+    }
+    account_data.characters.push_back("aaearly"); // insertion index 210: past a [0, 200) insertion-order scan
+    for (int index = 210; index < 249; ++index) {
+        account_data.characters.push_back("zzfiller" + std::to_string(index));
+    }
+    ASSERT_EQ(account_data.characters.size(), 250u);
+
+    roster_cache::set_backing_reader_for_testing(
+        [](std::string_view, std::string_view, std::string_view,
+            char_file_u* stored_character, std::string* error_message) -> bool {
+            *stored_character = char_file_u { };
+            stored_character->level = 1;
+            stored_character->race = RACE_HUMAN;
+            if (error_message) {
+                *error_message = "";
+            }
+            return true;
+        });
+    roster_cache::clear();
+
+    const std::vector<std::string> displayed = names_in_order(account_data, account::RosterSort::Name, account::RosterFilter::None);
+    ASSERT_EQ(displayed.size(), 200u);
+    ASSERT_EQ(displayed.front(), "aaearly") << "test setup: expected the out-of-order character to sort first";
+
+    std::string selected_by_number;
+    std::string error_message;
+    ASSERT_TRUE(account::select_linked_character(".", account_data, "1",
+        account::RosterSort::Name, account::RosterFilter::None, &selected_by_number, &error_message))
+        << error_message;
+    EXPECT_EQ(selected_by_number, "aaearly");
+
+    std::string selected_by_name;
+    ASSERT_TRUE(account::select_linked_character(".", account_data, "aaearly",
+        account::RosterSort::Name, account::RosterFilter::None, &selected_by_name, &error_message))
+        << error_message;
+    EXPECT_EQ(selected_by_name, "aaearly");
+}
+
+TEST_F(RosterOrderTest, SelectionByNameWorksForACharacterHiddenByTheActiveFilter)
+{
+    const account::AccountData account_data = make_sortable_account();
+
+    std::string selected;
+    std::string error_message;
+    // "aragorn" is a Ranger, so the Warrior filter hides them; selecting by name must still work,
+    // because a filter must never make one of a player's characters unreachable.
+    ASSERT_TRUE(account::select_linked_character(".", account_data, "aragorn",
+        account::RosterSort::Account, account::RosterFilter::Warrior, &selected, &error_message))
+        << error_message;
+    EXPECT_EQ(selected, "aragorn");
+}
+
+// roster_sort_to_string / roster_sort_from_string are named deliverables that Tasks 4 and 5 both
+// build on (a persisted preference and, presumably, a "sort" subcommand). No roster_cache
+// interaction here, so these do not need the RosterOrderTest fixture.
+
+TEST(RosterSortStringConversion, RoundTripsAllEnumValues)
+{
+    const account::RosterSort sorts[] = {
+        account::RosterSort::Account,
+        account::RosterSort::Name,
+        account::RosterSort::Level,
+        account::RosterSort::Race,
+        account::RosterSort::Side,
+    };
+    for (account::RosterSort sort : sorts) {
+        account::RosterSort parsed = account::RosterSort::Level; // sentinel, must be overwritten
+        ASSERT_TRUE(account::roster_sort_from_string(account::roster_sort_to_string(sort), &parsed));
+        EXPECT_EQ(parsed, sort);
+    }
+}
+
+// Pinned explicitly, not just described: "never chose" (empty string) and "chose Account" persist
+// as the same string, so a stored preference round-trips through account::RosterSort::Account.
+TEST(RosterSortStringConversion, AccountSortRoundTripsThroughEmptyString)
+{
+    EXPECT_STREQ(account::roster_sort_to_string(account::RosterSort::Account), "");
+
+    account::RosterSort parsed = account::RosterSort::Level;
+    ASSERT_TRUE(account::roster_sort_from_string("", &parsed));
+    EXPECT_EQ(parsed, account::RosterSort::Account);
+}
+
+TEST(RosterSortStringConversion, GarbageStringIsRejected)
+{
+    account::RosterSort parsed = account::RosterSort::Level;
+    EXPECT_FALSE(account::roster_sort_from_string("not-a-real-sort", &parsed));
+}
+
+TEST(RosterSortStringConversion, NullOutputPointerIsRejected)
+{
+    EXPECT_FALSE(account::roster_sort_from_string("name", nullptr));
+}
+
+TEST(AccountManagement, RosterSortRoundTripsThroughAccountJson)
+{
+    account::AccountData account_data = make_account();
+    account_data.roster_sort = "level";
+
+    const std::string json = account::serialize_account_to_json(account_data);
+    EXPECT_NE(json.find("\"roster_sort\": \"level\""), std::string::npos) << json;
+
+    account::AccountData parsed_account;
+    std::string error_message;
+    ASSERT_TRUE(account::deserialize_account_from_json(json, &parsed_account, &error_message)) << error_message;
+    EXPECT_EQ(parsed_account.roster_sort, "level");
+}
+
+// Existing account files predate this field. They must load and fall back to insertion order,
+// which is why no schema-version bump or migration is needed.
+TEST(AccountManagement, AccountJsonWithoutRosterSortLoadsWithInsertionOrder)
+{
+    account::AccountData account_data = make_account();
+    std::string json = account::serialize_account_to_json(account_data);
+
+    const size_t field_start = json.find("  \"roster_sort\"");
+    ASSERT_NE(field_start, std::string::npos);
+    const size_t field_end = json.find('\n', field_start);
+    json.erase(field_start, field_end - field_start + 1);
+
+    account::AccountData parsed_account;
+    std::string error_message;
+    ASSERT_TRUE(account::deserialize_account_from_json(json, &parsed_account, &error_message)) << error_message;
+    EXPECT_TRUE(parsed_account.roster_sort.empty());
+
+    account::RosterSort sort = account::RosterSort::Name;
+    ASSERT_TRUE(account::roster_sort_from_string(parsed_account.roster_sort, &sort));
+    EXPECT_EQ(sort, account::RosterSort::Account);
+}
+
+TEST_F(RosterCacheDropOnWriteTest, CommittedDeletionDropsTheCachedSummary)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string root = temporary_directory.path();
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message));
+    ASSERT_TRUE(account::admin_link_character(root, "alpha-admin", "aragorn", 1700010201, nullptr, &error_message));
+    const char_file_u stored_character = make_stored_character("aragorn");
+    ASSERT_TRUE(account::write_account_character_file(root, "alpha-admin", stored_character, &error_message));
+    roster_cache::RosterSummary summary;
+    ASSERT_TRUE(roster_cache::get(root, "alpha-admin", "aragorn", &summary));
+    ASSERT_TRUE(summary.readable);
+    ASSERT_TRUE(account::admin_delete_linked_character(root, "alpha-admin", "aragorn", 1700010202, nullptr, &error_message));
+    ASSERT_TRUE(roster_cache::get(root, "alpha-admin", "aragorn", &summary));
+    EXPECT_FALSE(summary.readable);
+}
+
+TEST(AccountManagement, FailedLoginHostStopsAtTheFirstNull)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string root = temporary_directory.path();
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message));
+    const std::string host("good.example\0hidden.example", 27);
+    ASSERT_TRUE(account::record_account_login_failure(root, "player@example.com", host, 1700010201, &error_message));
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message));
+    EXPECT_EQ(stored_account.failed_login_last_host, "good.example");
+}
+
+class AccountSystemDeletionTest : public ::testing::Test {
+protected:
+    AccountSystemDeletionTest()
+        : working_directory(temporary_directory.path())
+        , indexed_character("aragorn")
+    {
+    }
+
+    void SetUp() override
+    {
+        std::filesystem::create_directories("players/ZZZ");
+        ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message));
+        ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010201, nullptr, &error_message));
+        const char_file_u character = make_stored_character("aragorn");
+        ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", character, &error_message));
+        character_path = account::account_character_player_path(".", "alpha-admin", "aragorn");
+        std::snprintf(player_table[0].ch_file, sizeof(player_table[0].ch_file), "%s", character_path.c_str());
+        player_table[0].idnum = 123;
+        roster_cache::clear();
+        roster_cache::set_enabled(true);
+        roster_cache::RosterSummary summary;
+        ASSERT_TRUE(roster_cache::get(".", "alpha-admin", "aragorn", &summary));
+        ASSERT_TRUE(summary.readable);
+    }
+
+    void TearDown() override
+    {
+        roster_cache::set_enabled(false);
+        roster_cache::clear();
+    }
+
+    // Owns all disposable account and archive files for this transaction probe.
+    TemporaryDirectory temporary_directory;
+    // Restores the process directory before temporary files are removed.
+    ScopedWorkingDirectory working_directory;
+    // Restores the caller's player table after exercising indexed deletion.
+    ScopedPlayerTableEntry indexed_character;
+    // Captures persist-layer failures without relying on logging text.
+    std::string error_message;
+    // Owns the account-native source filename used by the index.
+    std::string character_path;
+};
+
+TEST_F(AccountSystemDeletionTest, ArchivesAndUnlinksBeforeRetiringTheIndex)
+{
+    const std::string source_bytes = read_file_contents(character_path);
+    ASSERT_TRUE(delete_player_character_by_index(0));
+    EXPECT_EQ(read_file_contents("players/ZZZ/aragorn"), source_bytes);
+    EXPECT_FALSE(std::filesystem::exists(character_path));
+    EXPECT_EQ(player_table[0].name[0], '\0');
+    EXPECT_EQ(player_table[0].ch_file[0], '\0');
+    EXPECT_EQ(player_table[0].idnum, 0);
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(".", "alpha-admin", &stored_account, &error_message));
+    EXPECT_TRUE(stored_account.characters.empty());
+    EXPECT_TRUE(stored_account.character_links.empty());
+    roster_cache::RosterSummary summary;
+    ASSERT_TRUE(roster_cache::get(".", "alpha-admin", "aragorn", &summary));
+    EXPECT_FALSE(summary.readable);
+}
+
+TEST_F(AccountSystemDeletionTest, AccountWriteFailurePreservesSourceIndexAndPreviousArchive)
+{
+    write_text_file("players/ZZZ/aragorn", "previous archive");
+    const std::string account_path = account::account_file_path(".", "player@example.com");
+    ASSERT_TRUE(std::filesystem::create_directory(account_path + ".tmp"));
+    write_text_file(account_path + ".tmp/blocker", "keep this directory nonempty");
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_EQ(read_file_contents("players/ZZZ/aragorn"), "previous archive");
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+    EXPECT_EQ(player_table[0].idnum, 123);
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(".", "alpha-admin", &stored_account, &error_message));
+    EXPECT_TRUE(account::account_has_character(stored_account, "aragorn"));
+}
+
+TEST_F(AccountSystemDeletionTest, PostCommitAssetCleanupFailureStillRetiresIndexAndKeepsArchive)
+{
+    const std::string object_path = account::account_character_object_path(".", "alpha-admin", "aragorn");
+    ASSERT_TRUE(std::filesystem::create_directory(object_path));
+    write_text_file(object_path + "/blocker", "nonempty staged asset cannot be removed as a file");
+    ASSERT_TRUE(delete_player_character_by_index(0));
+    EXPECT_TRUE(std::filesystem::exists("players/ZZZ/aragorn"));
+    EXPECT_TRUE(std::filesystem::exists(object_path + ".delete-pending/blocker"));
+    EXPECT_EQ(player_table[0].name[0], '\0');
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(".", "alpha-admin", &stored_account, &error_message));
+    EXPECT_FALSE(account::account_has_character(stored_account, "aragorn"));
+}
+
+TEST_F(AccountSystemDeletionTest, MissingSourcePreservesAnExistingArchive)
+{
+    write_text_file("players/ZZZ/aragorn", "previous archive");
+    ASSERT_TRUE(std::filesystem::remove(character_path));
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_EQ(read_file_contents("players/ZZZ/aragorn"), "previous archive");
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+}
+
+TEST_F(AccountSystemDeletionTest, MissingArchiveDirectoryRefusesWithoutUnlinking)
+{
+    ASSERT_TRUE(std::filesystem::remove("players/ZZZ"));
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+}
+
+TEST_F(AccountSystemDeletionTest, InvalidIndicesRefuseWithoutChangingOwnership)
+{
+    EXPECT_FALSE(delete_player_character_by_index(-1));
+    EXPECT_FALSE(delete_player_character_by_index(1));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+}
+
+TEST(AccountManagement, RecoveryUsesBoundedInputsRechecksExpiryAndPreventsReplay)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string root = temporary_directory.path();
+    std::string error_message;
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message));
+    std::string reset_code;
+    ASSERT_TRUE(account::prepare_email_verification_code(&stored_account, 1700010200, &reset_code, &error_message));
+    stored_account.password_reset_code_hash = stored_account.verification_code_hash;
+    stored_account.verification_code_hash.clear();
+    stored_account.password_reset_code_sent_at = 1700010200;
+    stored_account.password_reset_code_expires_at = 1700011100;
+    stored_account.blocked = true;
+    ASSERT_TRUE(account::write_account_file(root, stored_account, &error_message));
+    const std::string root_storage = root + "suffix";
+    const std::string_view bounded_root(root_storage.data(), root.size());
+    const std::string email_storage("player@example.com\0hidden", 25);
+    const std::string code_storage = reset_code + std::string("\0hidden", 7);
+    const std::string password_storage("BrandNew1\0hidden", 16);
+    EXPECT_TRUE(account::verify_password_reset_code(bounded_root, email_storage, code_storage, 1700011100, &error_message));
+    EXPECT_FALSE(account::complete_password_reset(bounded_root, email_storage, code_storage, password_storage, 1700011101, nullptr, &error_message));
+    ASSERT_TRUE(account::complete_password_reset(bounded_root, email_storage, code_storage, password_storage, 1700011100, &stored_account, &error_message));
+    EXPECT_TRUE(account::verify_password("BrandNew1", stored_account.password_hash));
+    EXPECT_TRUE(stored_account.blocked);
+    EXPECT_TRUE(stored_account.email_verified);
+    EXPECT_FALSE(account::complete_password_reset(root, "player@example.com", reset_code, "AnotherPass1", 1700011100, nullptr, &error_message));
+}
+
+TEST(AccountManagement, ResetMailFailureKeepsThePersistedCodeAndSyntheticCooldownDeadline)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string root = temporary_directory.path();
+    const std::string sender_path = root + "/reject-sendmail.sh";
+#if !defined(_WIN32)
+    // Read the complete message before rejecting delivery so this tests the sender's failure
+    // result without racing an early pipe-reader exit against the parent's write.
+    write_text_file(sender_path, "#!/bin/sh\ncat > /dev/null\nexit 1\n");
+    make_file_executable(sender_path);
+#endif
+    ScopedEnvironmentVariable sender("ROTS_SENDMAIL_COMMAND", sender_path);
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message));
+    long expiry = 0;
+    EXPECT_FALSE(account::start_password_reset(root, "player@example.com", 1700010200, &expiry, &error_message));
+    EXPECT_EQ(expiry, 1700011100);
+#if !defined(_WIN32)
+    EXPECT_EQ(error_message, "sendmail reported a delivery failure with exit code 1.");
+#endif
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message));
+    const std::string pending_hash = stored_account.password_reset_code_hash;
+    EXPECT_FALSE(pending_hash.empty());
+    EXPECT_TRUE(account::start_password_reset(root, "player@example.com", 1700010210, &expiry, &error_message));
+    EXPECT_EQ(expiry, 1700011110);
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message));
+    EXPECT_EQ(stored_account.password_reset_code_hash, pending_hash);
+}
+
+TEST(AccountManagement, ResetWriteFailureLeavesOriginalCredentialsAndSyntheticDeadline)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string root = temporary_directory.path();
+    ScopedEnvironmentVariable sender("ROTS_SENDMAIL_COMMAND", root + "/missing-local-sender");
+    std::string error_message;
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message));
+    const std::string account_path = account::account_file_path(root, "player@example.com");
+    ASSERT_TRUE(std::filesystem::create_directory(account_path + ".tmp"));
+    long expiry = 0;
+    EXPECT_FALSE(account::start_password_reset(root, "player@example.com", 1700010200, &expiry, &error_message));
+    EXPECT_EQ(expiry, 1700011100);
+    ASSERT_TRUE(account::read_account_file(root, "alpha-admin", &stored_account, &error_message));
+    EXPECT_TRUE(stored_account.password_reset_code_hash.empty());
+    EXPECT_TRUE(account::verify_password("ValidPass1", stored_account.password_hash));
+}
+
+TEST_F(RosterCacheDropOnWriteTest, FailedCharacterWriteKeepsThePreviouslyCachedSummary)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string root = temporary_directory.path();
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(root, "alpha-admin", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message));
+    char_file_u character = make_stored_character("aragorn");
+    character.level = 10;
+    ASSERT_TRUE(account::write_account_character_file(root, "alpha-admin", character, &error_message));
+    roster_write_reader_calls = 0;
+    roster_cache::set_backing_reader_for_testing(&count_roster_write_reads);
+    roster_cache::RosterSummary summary;
+    ASSERT_TRUE(roster_cache::get(root, "alpha-admin", "aragorn", &summary));
+    const std::string character_path = account::account_character_player_path(root, "alpha-admin", "aragorn");
+    ASSERT_TRUE(std::filesystem::create_directory(character_path + ".tmp"));
+    character.level = 40;
+    EXPECT_FALSE(account::write_account_character_file(root, "alpha-admin", character, &error_message));
+    ASSERT_TRUE(roster_cache::get(root, "alpha-admin", "aragorn", &summary));
+    EXPECT_EQ(summary.level, 10);
+    EXPECT_EQ(roster_write_reader_calls, 1);
+}
+
+TEST_F(AccountSystemDeletionTest, OrphanAccountNativeIndexRefusesDeletion)
+{
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::read_account_file(".", "alpha-admin", &stored_account, &error_message));
+    stored_account.characters.clear();
+    stored_account.character_links.clear();
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message));
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+}
+
+TEST_F(AccountSystemDeletionTest, AccountNativeIndexWithInvalidAccountNameRefusesDeletion)
+{
+    std::strcpy(player_table[0].name, "ab");
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_STREQ(player_table[0].name, "ab");
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+}
+
+TEST(RosterSortStringConversion, BoundedAndEmbeddedNullSpellingsIgnoreUnrelatedStorage)
+{
+    const std::string storage = "level-suffix";
+    const std::string_view bounded(storage.data(), 5);
+    const std::string embedded("side\0suffix", 11);
+    account::RosterSort sort = account::RosterSort::Account;
+    ASSERT_TRUE(account::roster_sort_from_string(bounded, &sort));
+    EXPECT_EQ(sort, account::RosterSort::Level);
+    ASSERT_TRUE(account::roster_sort_from_string(embedded, &sort));
+    EXPECT_EQ(sort, account::RosterSort::Side);
+    EXPECT_FALSE(account::roster_sort_from_string("unknown", &sort));
+    EXPECT_EQ(sort, account::RosterSort::Side);
+}
+
+TEST_F(AccountSystemDeletionTest, DanglingPendingArchiveRefusesWithoutRemovingTheLink)
+{
+    const std::filesystem::path pending_path = "players/ZZZ/aragorn.pending-delete";
+    std::error_code error;
+    std::filesystem::create_symlink("missing-pending-target", pending_path, error);
+    if (error) {
+        GTEST_SKIP() << "Symlink creation is unavailable: " << error.message();
+    }
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_TRUE(std::filesystem::is_symlink(std::filesystem::symlink_status(pending_path)));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+}
+
+TEST_F(AccountSystemDeletionTest, DanglingPreviousArchiveRefusesWithoutRemovingTheLink)
+{
+    const std::filesystem::path previous_path = "players/ZZZ/aragorn.previous-delete";
+    std::error_code error;
+    std::filesystem::create_symlink("missing-previous-target", previous_path, error);
+    if (error) {
+        GTEST_SKIP() << "Symlink creation is unavailable: " << error.message();
+    }
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_TRUE(std::filesystem::is_symlink(std::filesystem::symlink_status(previous_path)));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+}
+
+TEST_F(AccountSystemDeletionTest, FailedUnlinkRestoresAPreviousDanglingArchive)
+{
+    const std::filesystem::path archive_path = "players/ZZZ/aragorn";
+    std::error_code error;
+    std::filesystem::create_symlink("missing-original-target", archive_path, error);
+    if (error) {
+        GTEST_SKIP() << "Symlink creation is unavailable: " << error.message();
+    }
+    const std::string account_path = account::account_file_path(".", "player@example.com");
+    ASSERT_TRUE(std::filesystem::create_directory(account_path + ".tmp"));
+    EXPECT_FALSE(delete_player_character_by_index(0));
+    EXPECT_TRUE(std::filesystem::is_symlink(std::filesystem::symlink_status(archive_path)));
+    EXPECT_TRUE(std::filesystem::exists(character_path));
+    EXPECT_STREQ(player_table[0].name, "aragorn");
+}
+
+TEST_F(AccountSystemDeletionTest, ExistingRecoveryFilesRefuseWithoutChangingTheirContents)
+{
+    for (const std::string_view suffix : { ".pending-delete", ".previous-delete" }) {
+        const std::string recovery_path = std::string("players/ZZZ/aragorn") + std::string(suffix);
+        write_text_file(recovery_path, "recoverable archive bytes");
+        EXPECT_FALSE(delete_player_character_by_index(0));
+        EXPECT_EQ(read_file_contents(recovery_path), "recoverable archive bytes");
+        EXPECT_TRUE(std::filesystem::exists(character_path));
+        EXPECT_STREQ(player_table[0].name, "aragorn");
+        ASSERT_TRUE(std::filesystem::remove(recovery_path));
+    }
 }

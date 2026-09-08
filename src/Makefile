@@ -112,7 +112,7 @@ vpath %.cpp platform core entity persist world combat pathfind script olc app
 # NOTE: char_utils_combat.cpp IS built — it defines live functions used by
 # fight.cpp / clerics.cpp / ranger.cpp (its dead OB/PB/DB helpers were deleted in
 # the same wave). Keep this list in sync with the source list in CMakeLists.txt.
-OBJNAMES = account_cache.o account_management.o act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
+OBJNAMES = account_cache.o roster_cache.o account_management.o act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o boards_json.o caster_snapshot.o char_utils.o char_utils_combat.o character_json.o clerics.o clock.o color.o color_convert.o \
 	combat_hooks.o comm.o config.o consts.o output_seam.o containment.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o editor_hooks.o entity_lifecycle.o equipment.o exploits_json.o fight.o graph.o handler.o interpre.o environment_utils.o \
 	json_utils.o limits.o location_benchmark.o mail.o mail_json.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objects_json.o obj_files.o objsave.o olog_hai.o \

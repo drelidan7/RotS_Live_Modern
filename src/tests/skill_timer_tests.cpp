@@ -41,15 +41,9 @@
 
 namespace {
 
-// Every real update_skill_timer() call decrements each still-positive
-// counter by one and erases any entry whose counter has reached zero -- but
-// its erase-during-iterate loop (skill_timer.cpp) skips whichever entry
-// shifts into an erased slot for that one call, so a single entry can take
-// up to roughly 2x its counter value to fully drain. This file's own tests
-// never push a counter above 7 (report_skill_status) or the fixed
-// GLOBAL_COOLDOWN_COUNTER (2), so a fixed bound of 30 calls -- run before
-// every test -- reliably empties whatever the PREVIOUS test in this file
-// left behind, without needing a production reset() this class doesn't have.
+// Each tick decrements positive counters and erases counters already at zero.
+// Thirty ticks comfortably drain this file's counters (at most seven) before
+// each test, without adding a production-only reset API.
 constexpr int kSkillTimerDrainIterations = 30;
 
 void drain_skill_timer(game_timer::skill_timer &timer) {
@@ -190,65 +184,62 @@ TEST_F(SkillTimerTest, ReportSkillStatusFormatsActiveTimersAndSkipsGlobalCooldow
            "out).";
 }
 
-TEST_F(SkillTimerTest, UpdateSkillTimerDecrementsThenErasesEntriesOneCallAtATime) {
-    // Documents skill_timer.cpp's real update_skill_timer() semantics. Two
-    // things worth pinning down: (1) its erase-during-iterate quirk --
-    // erasing element i shifts element i+1 into its place, but the for-loop's
-    // index still advances to i+1, so whichever entry shifts into the erased
-    // slot is skipped for that one call and is only processed on the NEXT
-    // call; and (2) is_skill_allowed()'s global-cooldown entry blocks EVERY
-    // skill for a player, not just the one add_skill_timer() was called for
-    // -- so is_skill_allowed() alone can't distinguish "the specific skill
-    // entry was erased" from "the global-cooldown entry is still present".
-    // Only report_skill_status() (which filters GLOBAL_SKILL entries out)
-    // can observe the skill-specific entry's erasure independently of the
-    // global cooldown. With the SkillTimerTest fixture draining every
-    // earlier entry in SetUp(), this test's two entries (the SKILL_DEFEND
-    // timer and its global-cooldown sibling, pushed adjacently by the single
-    // add_skill_timer() call below) are the only two in the vector, so their
-    // exact call-by-call fate is fully deterministic.
-    SkillTimerCharacter pc(next_player_id());
-    char buffer[256] = {};
-    game_timer::skill_timer &timer = game_timer::skill_timer::instance();
-    const int player_id = static_cast<int>(pc.character.specials2.idnum);
+TEST_F(SkillTimerTest, DecrementsBeforeErasingOnTheFollowingTick)
+{
+    SkillTimerCharacter player(next_player_id());
+    char report[256] = { };
+    auto& timer = game_timer::skill_timer::instance();
+    const int player_id = static_cast<int>(player.character.specials2.idnum);
+    timer.add_skill_timer(player.character, SKILL_DEFEND, 1);
+    ASSERT_FALSE(timer.is_skill_allowed(player.character, SKILL_DEFEND));
+    ASSERT_FALSE(timer.is_skill_allowed(player.character, SKILL_CLEAVE));
 
-    timer.add_skill_timer(pc.character, SKILL_DEFEND, 1);
-    ASSERT_FALSE(timer.is_skill_allowed(pc.character, SKILL_DEFEND));
-    ASSERT_FALSE(timer.is_skill_allowed(pc.character, SKILL_CLEAVE))
-        << "Sanity check: the implicit global-cooldown entry (counter=2) starts out blocking too.";
-
-    // Call 1: both entries have counter > 0, so both are decremented in
-    // place (skill: 1 -> 0, global: 2 -> 1); neither is erased yet.
+    // A counter decremented to zero stays present until the next tick.
     timer.update_skill_timer();
-    buffer[0] = '\0';
-    timer.report_skill_status(player_id, buffer);
-    EXPECT_STRNE(buffer, "")
-        << "A counter that reached 0 still has a live entry until a LATER call erases it.";
+    timer.report_skill_status(player_id, report);
+    EXPECT_STRNE(report, "");
 
-    // Call 2: the skill entry (counter=0) is erased -- report_skill_status
-    // no longer has a line for it -- but the global-cooldown entry that
-    // shifted into its slot is skipped this call (the erase-during-iterate
-    // quirk above), so it still blocks every skill.
+    // Erasing the skill still lets the global cooldown decrement from one to zero.
     timer.update_skill_timer();
-    buffer[0] = '\0';
-    timer.report_skill_status(player_id, buffer);
-    EXPECT_STREQ(buffer, "")
-        << "Expected the skill-specific entry to be erased on the second call.";
-    EXPECT_FALSE(timer.is_skill_allowed(pc.character, SKILL_DEFEND))
-        << "Expected the still-present global-cooldown entry to keep blocking every skill, even "
-           "though the specific SKILL_DEFEND entry is already gone.";
-    EXPECT_FALSE(timer.is_skill_allowed(pc.character, SKILL_CLEAVE));
+    report[0] = '\0';
+    timer.report_skill_status(player_id, report);
+    EXPECT_STREQ(report, "");
+    EXPECT_FALSE(timer.is_skill_allowed(player.character, SKILL_DEFEND));
+    EXPECT_FALSE(timer.is_skill_allowed(player.character, SKILL_CLEAVE));
 
-    // Call 3: the global entry, now at index 0, is finally visited again and
-    // decremented (1 -> 0); still present, so it still blocks.
     timer.update_skill_timer();
-    EXPECT_FALSE(timer.is_skill_allowed(pc.character, SKILL_CLEAVE));
+    EXPECT_TRUE(timer.is_skill_allowed(player.character, SKILL_DEFEND));
+    EXPECT_TRUE(timer.is_skill_allowed(player.character, SKILL_CLEAVE));
+}
 
-    // Call 4: counter is now 0, so this call erases it -- every skill
-    // (including SKILL_DEFEND, whose own entry was already gone since call
-    // 2) is allowed again from here.
+TEST_F(SkillTimerTest, ErasesAdjacentExpiredEntriesInTheSameTick)
+{
+    SkillTimerCharacter first_player(next_player_id());
+    SkillTimerCharacter second_player(next_player_id());
+    auto& timer = game_timer::skill_timer::instance();
+    timer.add_skill_timer(first_player.character, SKILL_DEFEND, 2);
+    timer.add_skill_timer(second_player.character, SKILL_DEFEND, 2);
     timer.update_skill_timer();
-    EXPECT_TRUE(timer.is_skill_allowed(pc.character, SKILL_DEFEND));
-    EXPECT_TRUE(timer.is_skill_allowed(pc.character, SKILL_CLEAVE))
-        << "Expected the global-cooldown entry to finally expire on the fourth call.";
+    timer.update_skill_timer();
+    EXPECT_FALSE(timer.is_skill_allowed(first_player.character, SKILL_DEFEND));
+    timer.update_skill_timer();
+    EXPECT_TRUE(timer.is_skill_allowed(first_player.character, SKILL_DEFEND));
+    EXPECT_TRUE(timer.is_skill_allowed(second_player.character, SKILL_DEFEND));
+}
+
+TEST_F(SkillTimerTest, DecrementsTheTimerShiftedPastAnExpiredGlobalCooldown)
+{
+    SkillTimerCharacter first_player(next_player_id());
+    SkillTimerCharacter second_player(next_player_id());
+    auto& timer = game_timer::skill_timer::instance();
+    timer.add_skill_timer(first_player.character, SKILL_DEFEND, 5);
+    timer.add_skill_timer(second_player.character, SKILL_DEFEND, 5);
+    timer.update_skill_timer();
+    timer.update_skill_timer();
+    timer.update_skill_timer();
+    char report[256] = { };
+    const int player_id = static_cast<int>(second_player.character.specials2.idnum);
+    timer.report_skill_status(player_id, report);
+    const std::string expected = std::format("{:<30} {:<3} (seconds)\n\r", utils::get_skill_name(SKILL_DEFEND), 2);
+    EXPECT_STREQ(report, expected.c_str());
 }

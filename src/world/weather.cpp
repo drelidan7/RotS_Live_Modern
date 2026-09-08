@@ -201,7 +201,8 @@ std::string strip_trailing_line_break(std::string_view text)
  *  - weather-MSDP push (Task 3): another_hour()'s eMSDP_WORLD_TIME push
  *    and weather_change()'s eMDSP_WEATHER push both used to call this
  *    file's own send_msdp_function() dispatcher directly with a lambda;
- *    both now call dispatch_weather_msdp_update(kind) below instead.
+ *    another_hour() still uses dispatch_weather_msdp_update(kind); weather
+ *    publication now belongs to the app's periodic MSDP sweep.
  *    protocol.cpp registers the real broadcast_weather_msdp_update() --
  *    the former send_msdp_function() body merged with both removed
  *    lambda bodies, relocated verbatim -- at boot, before boot_db(); see
@@ -661,7 +662,7 @@ void weather_change(void)
     for (SectorType = 1; SectorType < 13; SectorType++)
         rots::world::dispatch_send_to_sector(weather_messages[weather_info.sky[SectorType] + 2][SectorType], SectorType);
 
-    rots::world::dispatch_weather_msdp_update(rots::world::weather_msdp_kind::weather);
+    // The per-pulse app MSDP update publishes weather after this tick.
 }
 
 //=============================================================================

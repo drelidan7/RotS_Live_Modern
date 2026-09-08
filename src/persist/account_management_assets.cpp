@@ -26,7 +26,11 @@ bool write_account_character_file(std::string_view root_directory, std::string_v
 
     const std::string final_path = resolved_character_path(account, root_directory, stored_character.name);
     const std::string json = character_json::serialize_character_to_json_v2b(character_data);
-    return write_text_file_atomically(final_path, json, error_message);
+    if (!write_text_file_atomically(final_path, json, error_message)) {
+        return false;
+    }
+    roster_cache::invalidate_character(root_directory, stored_character.name);
+    return true;
 }
 
 bool write_linked_character_file(std::string_view root_directory, std::string_view character_name, const char_file_u& stored_character, std::string* error_message)

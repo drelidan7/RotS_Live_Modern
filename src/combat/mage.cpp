@@ -870,7 +870,9 @@ ASPELL(spell_summon)
     ch_y = zone_table[room_of(caster)->zone].y;
     v_x = zone_table[room_of(victim)->zone].x;
     v_y = zone_table[room_of(victim)->zone].y;
-    dist = ((ch_x - v_x) ^ 2) + ((ch_y - v_y) ^ 2);
+    const int horizontal_distance = ch_x - v_x;
+    const int vertical_distance = ch_y - v_y;
+    dist = horizontal_distance * horizontal_distance + vertical_distance * vertical_distance;
 
     int save_bonus = dist;
     /* Make high level mobs harder to summon */

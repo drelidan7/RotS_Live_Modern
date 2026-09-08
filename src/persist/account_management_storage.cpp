@@ -108,7 +108,15 @@ std::string serialize_account_to_json(const AccountData& account)
     std::format_to(std::back_inserter(output), "  \"created_at\": {},\n", account.created_at);
     std::format_to(std::back_inserter(output), "  \"updated_at\": {},\n", account.updated_at);
     std::format_to(std::back_inserter(output), "  \"password_reset_at\": {},\n", account.password_reset_at);
-    std::format_to(std::back_inserter(output), "  \"password_reset_by\": \"{}\"\n", json_utils::escape_json_string(account.password_reset_by));
+    std::format_to(std::back_inserter(output), "  \"password_reset_by\": \"{}\",\n", json_utils::escape_json_string(account.password_reset_by));
+    std::format_to(std::back_inserter(output), "  \"failed_login_count\": {},\n", account.failed_login_count);
+    std::format_to(std::back_inserter(output), "  \"failed_login_last_at\": {},\n", account.failed_login_last_at);
+    std::format_to(std::back_inserter(output), "  \"failed_login_last_host\": \"{}\",\n", json_utils::escape_json_string(account.failed_login_last_host));
+    std::format_to(std::back_inserter(output), "  \"password_reset_code_hash\": \"{}\",\n", json_utils::escape_json_string(account.password_reset_code_hash));
+    std::format_to(std::back_inserter(output), "  \"password_reset_code_sent_at\": {},\n", account.password_reset_code_sent_at);
+    std::format_to(std::back_inserter(output), "  \"password_reset_code_expires_at\": {},\n", account.password_reset_code_expires_at);
+    std::format_to(std::back_inserter(output), "  \"roster_sort\": \"{}\",\n", json_utils::escape_json_string(account.roster_sort));
+    std::format_to(std::back_inserter(output), "  \"password_reset_attempt_count\": {}\n", account.password_reset_attempt_count);
     output.append("}\n");
     return output;
 }

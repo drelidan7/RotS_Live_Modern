@@ -41,12 +41,14 @@ int skill_timer::report_skill_status(int player_id, char* buffer)
 
 void skill_timer::update_skill_timer()
 {
-    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
-        auto& data = m_skill_timer[i];
-        if (data.counter > 0) {
-            data.counter -= 1;
+    for (size_t timer_index = 0; timer_index < m_skill_timer.size();) {
+        auto& timer_data = m_skill_timer[timer_index];
+        if (timer_data.counter > 0) {
+            timer_data.counter -= 1;
+            ++timer_index;
         } else {
-            m_skill_timer.erase(m_skill_timer.begin() + i);
+            // Erasure shifts the next timer into this slot; process it on this tick too.
+            m_skill_timer.erase(m_skill_timer.begin() + timer_index);
         }
     }
 }

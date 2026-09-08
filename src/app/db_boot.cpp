@@ -67,9 +67,10 @@
 #include "character_json.h"
 #include "exploits_json.h"
 #include "json_utils.h"
-#include "text_view.h"
 #include "player_file_finalize.h"
+#include "roster_cache.h"
 #include "skill_timer.h"
+#include "text_view.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -82,7 +83,6 @@
 #include <string>
 #include <system_error>
 #include <vector>
-
 
 /**************************************************************************
  *  declarations of most of the 'global' variables                         *
@@ -323,6 +323,7 @@ void boot_db(void)
     // (write_account_file). See account_cache.h. This is the adopted Phase-1 optimization; JSON
     // serialize/deserialize stay on v1.
     account_cache::set_enabled(true);
+    roster_cache::set_enabled(true);
     log("Account-resolution cache: enabled.");
 
     log("Resetting the game time:");

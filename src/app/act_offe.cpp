@@ -14,15 +14,16 @@
 #include <string.h>
 
 #include "color.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
 #include "player_limits.h"
-#include "spells.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "spells.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 
@@ -353,18 +354,30 @@ ACMD(do_flee)
         attempt = number(0, NUM_OF_DIRS - 1);
         res = CAN_GO(ch, attempt) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOFLEE) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOWALK);
 
+        int destination_room = NOWHERE;
         if (res) {
-            res = !IS_SET(room_by_id_total(EXIT(ch, attempt)->to_room)->room_flags, DEATH);
+            destination_room = EXIT(ch, attempt)->to_room;
+            res = !IS_SET(room_by_id_total(destination_room)->room_flags, DEATH);
             if (IS_NPC(ch)) {
-                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->sector_type == room_of(ch)->sector_type)));
+                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(destination_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(destination_room)->sector_type == room_of(ch)->sector_type)));
             }
         }
 
         if (res) {
             act("$n panics, and attempts to flee!", TRUE, ch, 0, 0, TO_ROOM);
 
+            const rots::combat::checked_movement transition {
+                GET_ABS_NUM(ch), attempt, location_of(ch), destination_room
+            };
             die = check_simple_move(ch, attempt, &move_cost, SCMD_FLEE);
-            if (!special(ch, cmd + 1, mutable_arg(""), SPECIAL_COMMAND, 0) && number(0, 1) && die) {
+            if (!rots::combat::matches_checked_movement(ch, transition)) {
+                return;
+            }
+            const bool intercepted = special(ch, cmd + 1, mutable_arg(""), SPECIAL_COMMAND, 0);
+            if (!rots::combat::matches_checked_movement(ch, transition)) {
+                return;
+            }
+            if (!intercepted && number(0, 1) && die) {
                 /* The escape has not succeded */
                 switch (die) {
                 case 1:
@@ -403,17 +416,7 @@ ACMD(do_flee)
 
                 send_to_char("You flee head over heels.\n\r", ch);
                 act("$n flees head over heels!", FALSE, ch, 0, 0, TO_ROOM);
-                // do_move()'s argument is a mutable char*; dirs[] is now a
-                // const string table, so copy the direction name into a
-                // small mutable buffer before passing it (do_move never
-                // writes through argument for the flee path, this is purely
-                // to satisfy the parameter type).
-                {
-                    char flee_dir[16];
-                    strncpy(flee_dir, dirs[attempt].data(), sizeof(flee_dir) - 1);
-                    flee_dir[sizeof(flee_dir) - 1] = '\0';
-                    do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
-                }
+                rots::combat::move_after_validation(ch, transition, SCMD_FLEE);
                 return;
             }
             break;
@@ -575,8 +578,14 @@ ACMD(do_bash)
         if (prob < 0)
             damage(ch, victim, 0, SKILL_BASH, 0);
         else {
-            WAIT_STATE_FULL(victim, PULSE_VIOLENCE * 3 / 2 + number(0, PULSE_VIOLENCE / 2),
-                CMD_BASH, 2, 80, 0, 0, 0, AFF_WAITING | AFF_BASH, TARGET_IGNORE);
+            player_spec::battle_mage_handler battle_mage(victim);
+            const bool resists_bash = IS_AFFECTED(victim, AFF_WAITWHEEL)
+                && GET_WAIT_PRIORITY(victim) <= 40
+                && !battle_mage.does_spell_get_interrupted();
+            if (!resists_bash) {
+                WAIT_STATE_FULL(victim, PULSE_VIOLENCE * 3 / 2 + number(0, PULSE_VIOLENCE / 2),
+                    CMD_BASH, 2, 80, 0, 0, 0, AFF_WAITING | AFF_BASH, TARGET_IGNORE);
+            }
             damage(ch, victim, 1, SKILL_BASH, 0);
         }
         return;

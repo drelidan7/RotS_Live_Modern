@@ -23,6 +23,7 @@
 #define COLOR_GTELL 12
 #define COLOR_MAGIC 13
 #define COLOR_WEATHER 14
+#define COLOR_MOB 15
 
 #define CNRM 0
 #define CRED 1
@@ -93,5 +94,8 @@ int nearest_ansi_color(int red, int green, int blue);
 // color_convert.cpp's convert_old_colormask() calls it too.
 void sync_color_slot_foreground_from_ansi(struct char_prof_data* profs, int col);
 void set_colors_default(struct char_data*);
+
+// Return the display slot for an NPC or player; a null target uses the player slot.
+int char_color_slot(const struct char_data* target);
 
 #endif /* COLOR_H */

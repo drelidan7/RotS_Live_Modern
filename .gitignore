@@ -84,6 +84,7 @@ tools/__pycache__/
 # structs.h header split) and silently hide it from git.
 /core/
 *~
+autorun
 autorun4000
 switchserver.sh
 crashes

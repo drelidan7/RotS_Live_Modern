@@ -607,6 +607,212 @@ void build_directory(std::string_view directory_path)
     RELEASE(tmpch);
 }
 
+namespace {
+
+// Shared exclusive-create primitive defined with the persistence writers below.
+FILE* open_secure_temp_output_file(std::string_view path, std::string* error_message);
+
+bool inspect_archive_entry(std::string_view path, bool* out_exists)
+{
+    const std::string path_owner(path);
+    std::error_code error;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(path_owner, error);
+    if (error && error != std::errc::no_such_file_or_directory) {
+        log(std::format("{}: could not inspect archive entry {}: {}", __func__, path_owner, error.message()));
+        return false;
+    }
+    *out_exists = status.type() != std::filesystem::file_type::not_found;
+    return true;
+}
+
+/// Owns the reversible archive replacement until account deletion commits.
+class CharacterDeletionArchive {
+public:
+    explicit CharacterDeletionArchive(std::string_view character_name)
+        : archive_path(std::string("players/ZZZ/") + std::string(character_name))
+        , temporary_path(archive_path + ".pending-delete")
+        , previous_path(archive_path + ".previous-delete")
+    {
+    }
+
+    ~CharacterDeletionArchive()
+    {
+        if (!prepared) {
+            return;
+        }
+        std::error_code error;
+        if (!committed) {
+            std::filesystem::remove(archive_path, error);
+            if (error) {
+                log(std::format("{}: could not remove refused deletion archive: {}", __func__, error.message()));
+                return;
+            }
+            if (had_previous) {
+                std::filesystem::rename(previous_path, archive_path, error);
+                if (error) {
+                    log(std::format("{}: previous archive retained at {}: {}", __func__, previous_path, error.message()));
+                }
+            }
+        } else if (had_previous) {
+            std::filesystem::remove(previous_path, error);
+            if (error) {
+                log(std::format("{}: obsolete archive retained at {}: {}", __func__, previous_path, error.message()));
+            }
+        }
+    }
+
+    /// Copies all source bytes before replacing the archive; refusal preserves an older archive.
+    bool prepare(std::string_view source_path)
+    {
+        std::error_code error;
+        bool pending_exists = false;
+        if (!inspect_archive_entry(temporary_path, &pending_exists) || pending_exists) {
+            log(std::format("{}: pending deletion archive already exists or cannot be inspected: {}", __func__, temporary_path));
+            return false;
+        }
+        bool previous_exists = false;
+        if (!inspect_archive_entry(previous_path, &previous_exists) || previous_exists) {
+            log(std::format("{}: previous deletion archive already exists or cannot be inspected: {}", __func__, previous_path));
+            return false;
+        }
+        if (!copy_source(source_path)) {
+            return false;
+        }
+        if (!inspect_archive_entry(archive_path, &had_previous)) {
+            std::filesystem::remove(temporary_path, error);
+            return false;
+        }
+        if (had_previous) {
+            std::filesystem::rename(archive_path, previous_path, error);
+            if (error) {
+                log(std::format("{}: could not preserve previous archive: {}", __func__, error.message()));
+                std::filesystem::remove(temporary_path, error);
+                return false;
+            }
+        }
+        std::filesystem::rename(temporary_path, archive_path, error);
+        if (error) {
+            log(std::format("{}: could not install character archive: {}", __func__, error.message()));
+            std::filesystem::remove(temporary_path, error);
+            if (had_previous) {
+                std::filesystem::rename(previous_path, archive_path, error);
+                if (error) {
+                    log(std::format("{}: previous archive retained at {}: {}", __func__, previous_path, error.message()));
+                }
+            }
+            return false;
+        }
+        prepared = true;
+        return true;
+    }
+
+    /// Keeps the installed archive when account unlink has succeeded.
+    void commit()
+    {
+        committed = true;
+    }
+
+private:
+    bool copy_source(std::string_view source_path)
+    {
+        const std::string source_owner(rots::text::truncate_at_null(source_path));
+        FILE* source_file = std::fopen(source_owner.c_str(), "rb");
+        if (source_file == nullptr) {
+            log(std::format("{}: could not open source archive {}: {}", __func__, source_owner, std::strerror(errno)));
+            return false;
+        }
+        std::string create_error;
+        FILE* archive_file = open_secure_temp_output_file(temporary_path, &create_error);
+        if (archive_file == nullptr) {
+            std::fclose(source_file);
+            log(std::format("{}: could not create archive copy: {}", __func__, create_error));
+            return false;
+        }
+        // Exclusive creation above proves this invocation owns the temporary entry before cleanup.
+        char copy_buffer[4096];
+        bool copied = true;
+        while (true) {
+            const size_t bytes_read = std::fread(copy_buffer, 1, sizeof(copy_buffer), source_file);
+            if (bytes_read > 0 && std::fwrite(copy_buffer, 1, bytes_read, archive_file) != bytes_read) {
+                copied = false;
+                break;
+            }
+            if (bytes_read < sizeof(copy_buffer)) {
+                copied = std::ferror(source_file) == 0;
+                break;
+            }
+        }
+        const int source_close_result = std::fclose(source_file);
+        const int archive_close_result = std::fclose(archive_file);
+        if (!copied || source_close_result != 0 || archive_close_result != 0) {
+            log(std::format("{}: could not finish the archive copy", __func__));
+            std::remove(temporary_path.c_str());
+            return false;
+        }
+        return true;
+    }
+
+    // Final historical player archive, replaced only after a complete source copy.
+    std::string archive_path;
+    // New archive bytes while copying; never overwrites a stale recovery artifact.
+    std::string temporary_path;
+    // Older archive retained until account unlink commits.
+    std::string previous_path;
+    // Whether an older archive must be restored on refused deletion.
+    bool had_previous = false;
+    // Whether this object installed an archive requiring rollback or commit.
+    bool prepared = false;
+    // Whether account unlink has crossed the commit point.
+    bool committed = false;
+};
+
+} // namespace
+
+bool delete_player_character_by_index(int index)
+{
+    if (player_table == nullptr || index < 0 || index > top_of_p_table
+        || player_table[index].name == nullptr || player_table[index].name[0] == '\0') {
+        log(std::format("{}: invalid player index {}", __func__, index));
+        return false;
+    }
+    std::string character_name = player_table[index].name;
+    const bool account_native_entry = has_suffix(player_table[index].ch_file, ".character.json");
+    std::string owner_account_name;
+    std::string account_error;
+    const bool valid_account_name = account::is_valid_account_name(character_name);
+    if (valid_account_name) {
+        if (!account::find_linked_character_owner_account(".", character_name, &owner_account_name, &account_error)) {
+            log(std::format("{}: refusing unresolved ownership for {}: {}", __func__, character_name, account_error));
+            return false;
+        }
+    }
+    if (owner_account_name.empty()) {
+        if (account_native_entry) {
+            log(std::format("{}: refusing orphan account-native character {}", __func__, character_name));
+            return false;
+        }
+        Crash_delete_file(character_name.data());
+        delete_exploits_file(character_name.data());
+        move_char_deleted(index);
+        return true;
+    }
+
+    CharacterDeletionArchive archive(character_name);
+    if (!archive.prepare(player_table[index].ch_file)) {
+        return false;
+    }
+    if (!account::admin_delete_linked_character(".", owner_account_name, character_name, time(0), nullptr, &account_error)) {
+        log(std::format("{}: could not unlink {} from account {}: {}", __func__, character_name, owner_account_name, account_error));
+        return false;
+    }
+    archive.commit();
+    player_table[index].flags |= PLR_DELETED;
+    player_table[index].ch_file[0] = '\0';
+    player_table[index].name[0] = '\0';
+    player_table[index].idnum = 0;
+    return true;
+}
+
 void build_player_index(void)
 {
     int nr, tt;
@@ -633,10 +839,10 @@ void build_player_index(void)
 
     for (nr = 0; nr <= top_of_p_table; nr++) {
         if (enable_auto_delete && player_table[nr].level < 20 && (!IS_SET(player_table[nr].flags, PLR_DELETED)) && (!IS_SET(player_table[nr].flags, PLR_RETIRED)) && ((tt - player_table[nr].log_time) > SECS_PER_REAL_DAY * player_table[nr].level * 7) && (number(0, 100) < 51)) {
-            log(std::format("Mud auto-deleted char {}.", player_table[nr].name));
-            Crash_delete_file(player_table[nr].name);
-            delete_exploits_file(player_table[nr].name);
-            move_char_deleted(nr);
+            const std::string character_name = player_table[nr].name;
+            if (delete_player_character_by_index(nr)) {
+                log(std::format("Mud auto-deleted char {}.", character_name));
+            }
         }
         if (strlen(player_table[nr].name) > 12)
             vmudlog(BRF, "%s, len=%d", player_table[nr].name, strlen(player_table[nr].name));
@@ -666,20 +872,26 @@ void build_player_index(void)
         break;                                                \
     }
 
-#define KEY_LONG_STR(the_field, element, length)                                                   \
-    if (!strcmp(line, the_field)) {                                                                \
-        for (tmp1 = 0; position < input_end && *position != '~' && tmp1 < (length - 1);            \
-            position++, tmp1++)                                                                    \
-            element[tmp1] = *position;                                                             \
-        if (position >= input_end || *position != '~') {                                           \
+#define KEY_LONG_STR(the_field, element, length)                                           \
+    if (!strcmp(line, the_field)) {                                                        \
+        for (tmp1 = 0; position < input_end && *position != '~' && tmp1 < (length - 1);    \
+            position++, tmp1++) {                                                          \
+            element[tmp1] = *position;                                                     \
+        }                                                                                  \
+        element[tmp1] = '\0';                                                              \
+        /* Discard overflow through the terminator so the next field stays aligned. */     \
+        while (position < input_end && *position != '~') {                                 \
+            position++;                                                                    \
+        }                                                                                  \
+        if (position >= input_end) {                                                       \
             log(std::format("load_player_from_text: malformed long string for {}", name)); \
-            return -1;                                                                             \
-        }                                                                                          \
-        element[tmp1] = '\0';                                                                      \
-        position++;                                                                                \
-        while (position < input_end && (*position == '\r' || *position == '\n'))                   \
-            position++;                                                                            \
-        break;                                                                                     \
+            return -1;                                                                     \
+        }                                                                                  \
+        position++;                                                                        \
+        while (position < input_end && (*position == '\r' || *position == '\n')) {         \
+            position++;                                                                    \
+        }                                                                                  \
+        break;                                                                             \
     }
 
 #define KEY_AFF(the_field)                                                            \

@@ -3485,3 +3485,61 @@ TEST(ActInfoObjectId, DoDetailsFormatsAcceptedArgumentsWhenNoWaitListTarget)
     EXPECT_STREQ(context.descriptor.output,
         "Accepted arguments: spec, group, damage (optional: reset) \r\n");
 }
+
+TEST(ActInfoDisplayCluster, MobColourDistinguishesShortAndLongNpcDescriptionsFromPlayers)
+{
+    DisplayClusterContext context;
+    SET_BIT(PRF_FLAGS(&context.viewer), PRF_COLOR);
+    set_colornum(&context.viewer, COLOR_CHAR, CGRN);
+    set_colornum(&context.viewer, COLOR_MOB, CBLU);
+    context.target.specials.position = POSITION_STANDING;
+    SET_BIT(MOB_FLAGS(&context.target), MOB_ISNPC);
+    context.target.player.short_descr = const_cast<char*>("a wandering hermit");
+    show_char_to_char(&context.target, &context.viewer, 0);
+    EXPECT_EQ(std::string(context.viewer_descriptor.output).find(color_sequence[CBLU]), 0u);
+
+    reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
+    context.target.player.long_descr = const_cast<char*>("A wandering hermit rests here.\r\n");
+    context.target.specials.default_pos = POSITION_STANDING;
+    show_char_to_char(&context.target, &context.viewer, 0);
+    EXPECT_EQ(std::string(context.viewer_descriptor.output).find(color_sequence[CBLU]), 0u);
+
+    reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
+    REMOVE_BIT(MOB_FLAGS(&context.target), MOB_ISNPC);
+    context.target.player.long_descr = nullptr;
+    context.target.player.name = const_cast<char*>("Bob");
+    context.target.player.title = const_cast<char*>("the Wanderer");
+    show_char_to_char(&context.target, &context.viewer, 0);
+    EXPECT_EQ(std::string(context.viewer_descriptor.output).find(color_sequence[CGRN]), 0u);
+}
+
+TEST(ActInfoDisplayCluster, MountLineUsesMobColourUnlessAVisiblePlayerRides)
+{
+    DisplayClusterContext context;
+    SET_BIT(PRF_FLAGS(&context.viewer), PRF_COLOR);
+    set_colornum(&context.viewer, COLOR_CHAR, CGRN);
+    set_colornum(&context.viewer, COLOR_MOB, CBLU);
+    char_data mount { };
+    clear_char(&mount, MOB_VOID);
+    ScopedClearCharFields mount_cleanup { mount };
+    set_location(&mount, 0);
+    SET_BIT(MOB_FLAGS(&mount), MOB_ISNPC);
+    mount.player.short_descr = const_cast<char*>("a horse");
+    mount.mount_data.rider = &context.target;
+    mount.mount_data.rider_number = 9002;
+    context.target.mount_data.next_rider = nullptr;
+    context.target.mount_data.next_rider_number = 0;
+    context.target.specials.position = POSITION_STANDING;
+    context.target.player.short_descr = const_cast<char*>("a rider");
+    context.target.player.name = const_cast<char*>("Bob");
+    SET_BIT(MOB_FLAGS(&context.target), MOB_ISNPC);
+    set_char_exists(9002);
+    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", TRUE);
+    EXPECT_EQ(std::string(context.viewer_descriptor.output).find(color_sequence[CBLU]), 0u);
+
+    reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
+    REMOVE_BIT(MOB_FLAGS(&context.target), MOB_ISNPC);
+    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", TRUE);
+    EXPECT_EQ(std::string(context.viewer_descriptor.output).find(color_sequence[CGRN]), 0u);
+    remove_char_exists(9002);
+}

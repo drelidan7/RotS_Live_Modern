@@ -21,6 +21,9 @@ services:
     platform: linux/386
     image: rots-dev:trixie-i386
     container_name: rots
+    # The launcher supplies the host identity and a separate writable build volume.
+    # Direct compose calls retain their existing root-owned build-volume workflow.
+    user: "${ROTS_UID:-0}:${ROTS_GID:-0}"
     working_dir: /rots
     volumes:
       - .:/rots
@@ -45,6 +48,9 @@ services:
     platform: linux/amd64
     image: rots-dev:trixie-x64
     container_name: rots64
+    # The launcher supplies the host identity and a separate writable build volume.
+    # Direct compose calls retain their existing root-owned build-volume workflow.
+    user: "${ROTS_UID:-0}:${ROTS_GID:-0}"
     working_dir: /rots
     volumes:
       - .:/rots

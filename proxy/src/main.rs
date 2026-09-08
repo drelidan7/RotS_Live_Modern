@@ -24,7 +24,11 @@ struct GameAddr {
 
 impl GameAddr {
     async fn connect(&self) -> Result<TcpStream, Report> {
-        Ok(TcpStream::connect((self.hostname.as_str(), self.port)).await?)
+        let stream = TcpStream::connect((self.hostname.as_str(), self.port)).await?;
+        if let Err(error) = stream.set_nodelay(true) {
+            log::warn!("Failed to set TCP_NODELAY on game connection: {error}");
+        }
+        Ok(stream)
     }
 }
 
@@ -63,6 +67,9 @@ struct Args {
 }
 
 async fn handle_tcp(game: GameAddr, mut stream: TcpStream, addr: SocketAddr) -> Result<(), Report> {
+    if let Err(error) = stream.set_nodelay(true) {
+        log::warn!("Failed to set TCP_NODELAY on client connection: {error}");
+    }
     let addr = match addr {
         SocketAddr::V4(addr) => addr,
         SocketAddr::V6(addr) => bail!("Unexpected IPv6: {addr}"),
@@ -101,6 +108,10 @@ async fn handle_ws(
     addr: SocketAddr,
     cloudflare: bool,
 ) -> Result<(), Report> {
+    if let Err(error) = stream.set_nodelay(true) {
+        log::warn!("Failed to set TCP_NODELAY on websocket connection: {error}");
+    }
+
     let mut addr = match addr {
         SocketAddr::V4(addr) => *addr.ip(),
         SocketAddr::V6(addr) => bail!("Unexpected IPv6: {addr}"),
@@ -197,4 +208,94 @@ async fn main() -> Result<(), Report> {
     };
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn game_connection_disables_nagle() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = listener.local_addr().unwrap();
+        let game = GameAddr {
+            hostname: Arc::new("127.0.0.1".to_owned()),
+            port: endpoint.port(),
+        };
+        let connection = game.connect().await.unwrap();
+        assert!(connection.nodelay().unwrap());
+        let (_accepted, _) = listener.accept().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn tcp_proxy_preserves_header_and_bidirectional_bytes() {
+        let game_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let game_endpoint = game_listener.local_addr().unwrap();
+        let game = GameAddr {
+            hostname: Arc::new("127.0.0.1".to_owned()),
+            port: game_endpoint.port(),
+        };
+        let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = TcpStream::connect(proxy_listener.local_addr().unwrap()).await.unwrap();
+        let (proxy_connection, client_address) = proxy_listener.accept().await.unwrap();
+        let proxy_task = tokio::spawn(handle_tcp(game, proxy_connection, client_address));
+        let (mut server, _) = game_listener.accept().await.unwrap();
+        assert_eq!(server.read_u32().await.unwrap(), u32::from(std::net::Ipv4Addr::LOCALHOST));
+        client.write_all(b"look\r\n").await.unwrap();
+        let mut command = [0u8; 6];
+        server.read_exact(&mut command).await.unwrap();
+        assert_eq!(&command, b"look\r\n");
+        server.write_all(b"room\r\n").await.unwrap();
+        let mut response = [0u8; 6];
+        client.read_exact(&mut response).await.unwrap();
+        assert_eq!(&response, b"room\r\n");
+        drop(client);
+        drop(server);
+        proxy_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn websocket_proxy_preserves_header_and_bidirectional_bytes() {
+        // A blocking timer avoids adding Tokio's optional time feature just for this test.
+        // Runtime teardown joins it, so even the successful path remains bounded to five seconds.
+        let deadline = tokio::task::spawn_blocking(|| {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        });
+        let scenario = async {
+            let game_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let game_endpoint = game_listener.local_addr().unwrap();
+            let game = GameAddr {
+                hostname: Arc::new("127.0.0.1".to_owned()),
+                port: game_endpoint.port(),
+            };
+            let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let client = TcpStream::connect(proxy_listener.local_addr().unwrap()).await.unwrap();
+            let (proxy_connection, client_address) = proxy_listener.accept().await.unwrap();
+            let proxy_task = tokio::spawn(handle_ws(game, proxy_connection, client_address, false));
+            let (mut websocket, handshake) =
+                tokio_tungstenite::client_async("ws://127.0.0.1/", client).await.unwrap();
+            assert_eq!(handshake.status().as_u16(), 101);
+            let (mut server, _) = game_listener.accept().await.unwrap();
+            assert_eq!(server.read_u32().await.unwrap(), u32::from(std::net::Ipv4Addr::LOCALHOST));
+            websocket.send(Message::Text("look\r\n".to_owned())).await.unwrap();
+            let mut command = [0u8; 6];
+            server.read_exact(&mut command).await.unwrap();
+            assert_eq!(&command, b"look\r\n");
+            server.write_all(b"room\r\n").await.unwrap();
+            let mut response = Vec::new();
+            while response.len() < 6 {
+                match websocket.next().await.unwrap().unwrap() {
+                    Message::Binary(bytes) => response.extend_from_slice(&bytes),
+                    unexpected => panic!("Unexpected response frame: {unexpected:?}"),
+                }
+            }
+            assert_eq!(&response, b"room\r\n");
+            websocket.close(None).await.unwrap();
+            proxy_task.await.unwrap().unwrap();
+        };
+        tokio::select! {
+            _ = deadline => panic!("WebSocket proxy round trip exceeded five seconds"),
+            _ = scenario => {},
+        }
+    }
 }

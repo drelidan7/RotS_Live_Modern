@@ -894,19 +894,25 @@ int trigger_room_event(int trigger_type, room_data* room, char_data* ch)
     return return_value;
 }
 
-script_data* get_next_command(script_data* curr)
+// Skip a non-null block opener and return the command after its matching end/else.
+// An unterminated block has no following command and returns nullptr.
+script_data* get_next_command(script_data* current_command)
 {
-
-    curr = curr->next;
-    for (; (curr) && ((curr->command_type != SCRIPT_END) && (curr->command_type != SCRIPT_END_ELSE_BEGIN));
-         curr = curr->next)
-        if (curr->command_type == SCRIPT_BEGIN)
-            curr = get_next_command(curr);
-
-    if (curr)
-        return curr->next;
-    else
-        return 0;
+    current_command = current_command->next;
+    while (current_command && current_command->command_type != SCRIPT_END
+        && current_command->command_type != SCRIPT_END_ELSE_BEGIN) {
+        if (current_command->command_type == SCRIPT_BEGIN) {
+            // Recursion already advances past the inner boundary. Inspect that result
+            // before advancing again, since it can be the outer boundary or nullptr.
+            current_command = get_next_command(current_command);
+        } else {
+            current_command = current_command->next;
+        }
+    }
+    if (current_command) {
+        return current_command->next;
+    }
+    return nullptr;
 }
 
 int run_script(struct info_script* info, struct script_data* position)

@@ -328,7 +328,9 @@ bool account_has_character(const AccountData& account, std::string_view characte
         != account.characters.end();
 }
 
-bool select_linked_character(const AccountData& account, std::string_view character_name, std::string* normalized_character_name, std::string* error_message)
+bool select_linked_character(std::string_view root_directory, const AccountData& account,
+    std::string_view character_name, RosterSort sort, RosterFilter filter,
+    std::string* normalized_character_name, std::string* error_message)
 {
     if (normalized_character_name == nullptr) {
         set_error(error_message, "Character output parameter must not be null.");
@@ -341,7 +343,7 @@ bool select_linked_character(const AccountData& account, std::string_view charac
         return false;
     }
 
-    bool selection_is_numeric = !trimmed_selection.empty();
+    bool selection_is_numeric = true;
     for (char character : trimmed_selection) {
         if (!std::isdigit(static_cast<unsigned char>(character))) {
             selection_is_numeric = false;
@@ -350,20 +352,43 @@ bool select_linked_character(const AccountData& account, std::string_view charac
     }
 
     if (selection_is_numeric) {
-        const size_t displayed_count = std::min(account.characters.size(), kMaxDisplayedAccountCharacters);
+        // The SAME ordered list the roster rendered, so row N always selects the character shown
+        // at row N. Deriving an order here independently is what would reintroduce the PR #289
+        // class of bug.
+        const std::vector<size_t> indices = ordered_roster_indices(root_directory, account, sort, filter);
+
         char* end_ptr = nullptr;
-        const unsigned long selected_index = std::strtoul(trimmed_selection.c_str(), &end_ptr, 10);
-        if (end_ptr == nullptr || *end_ptr != '\0' || selected_index == 0 || selected_index > displayed_count) {
-            set_error(error_message, "Select a linked character by number, or enter 0 to return to the account menu.");
+        const unsigned long selected_row = std::strtoul(trimmed_selection.c_str(), &end_ptr, 10);
+        if (end_ptr == nullptr || *end_ptr != '\0' || selected_row == 0 || selected_row > indices.size()) {
+            set_error(error_message, "Select a linked character by number or name, or enter 0 to return to the account menu.");
             return false;
         }
 
-        *normalized_character_name = normalize_account_name(account.characters[selected_index - 1]);
+        *normalized_character_name = normalize_account_name(account.characters[indices[selected_row - 1]]);
         set_error(error_message, "");
         return true;
     }
 
-    set_error(error_message, "Select a linked character by number, or enter 0 to return to the account menu.");
+    // By name, the active filter is deliberately ignored: a filter narrows what is LISTED, it must
+    // never make one of the player's own characters unreachable. Resolved against the SAME ordered
+    // list as the numeric path (filter neutralised to None), so "reachable by name" means exactly
+    // "would be listed if no filter were active" -- not a separately-derived insertion-order scan,
+    // which would disagree with ordered_roster_indices' sort-then-cap under any non-Account sort on
+    // an account over the display cap (PR #289 again, this time on the name path).
+    const std::string normalized_selection = normalize_account_name(trimmed_selection);
+    const std::vector<size_t> unfiltered_indices = ordered_roster_indices(root_directory, account, sort, RosterFilter::None);
+    for (size_t index : unfiltered_indices) {
+        const std::string normalized_linked_name = normalize_account_name(account.characters[index]);
+        if (normalized_linked_name != normalized_selection) {
+            continue;
+        }
+
+        *normalized_character_name = normalized_linked_name;
+        set_error(error_message, "");
+        return true;
+    }
+
+    set_error(error_message, "Select a linked character by number or name, or enter 0 to return to the account menu.");
     return false;
 }
 
@@ -569,6 +594,259 @@ bool authenticate_account_by_email(std::string_view root_directory, std::string_
     }
 
     return authenticate_account(root_directory, stored_account.account_name, password, account, error_message);
+}
+
+std::string sanitize_failed_login_host(std::string_view host)
+{
+    host = rots::text::truncate_at_null(host);
+    std::string sanitized;
+    sanitized.reserve(std::min(host.size(), static_cast<size_t>(MAX_FAILED_LOGIN_HOST_LENGTH)));
+    for (const char raw_character : host) {
+        const unsigned char character = static_cast<unsigned char>(raw_character);
+        // Reverse DNS supplies this string (comm.cpp: populate_descriptor_host), so it is
+        // attacker-controlled and ends up both in the account file and on a player's screen.
+        if (character < 0x20 || character > 0x7e) {
+            continue;
+        }
+        sanitized.push_back(raw_character);
+        if (sanitized.size() >= static_cast<size_t>(MAX_FAILED_LOGIN_HOST_LENGTH)) {
+            break;
+        }
+    }
+    return sanitized;
+}
+
+bool record_account_login_failure(std::string_view root_directory, std::string_view email, std::string_view host, long attempted_at, std::string* out_error_message)
+{
+    if (!is_valid_email(email, nullptr)) {
+        set_error(out_error_message, "");
+        return true;
+    }
+
+    AccountData stored_account;
+    if (!find_account_by_email_internal(root_directory, email, &stored_account, nullptr)) {
+        set_error(out_error_message, "");
+        return true;
+    }
+
+    ++stored_account.failed_login_count;
+    stored_account.failed_login_last_at = attempted_at;
+    stored_account.failed_login_last_host = sanitize_failed_login_host(host);
+
+    if (!write_account_file(root_directory, stored_account, out_error_message)) {
+        return false;
+    }
+
+    set_error(out_error_message, "");
+    return true;
+}
+
+bool clear_account_login_failures(std::string_view root_directory, std::string_view account_name, std::string* out_error_message)
+{
+    if (!validate_identifier_for_path(account_name, "Account name", out_error_message)) {
+        return false;
+    }
+
+    AccountData stored_account;
+    if (!read_account_file(root_directory, account_name, &stored_account, out_error_message)) {
+        return false;
+    }
+
+    if (stored_account.failed_login_count == 0 && stored_account.failed_login_last_at == 0
+        && stored_account.failed_login_last_host.empty()) {
+        set_error(out_error_message, "");
+        return true;
+    }
+
+    stored_account.failed_login_count = 0;
+    stored_account.failed_login_last_at = 0;
+    stored_account.failed_login_last_host.clear();
+
+    if (!write_account_file(root_directory, stored_account, out_error_message)) {
+        return false;
+    }
+
+    set_error(out_error_message, "");
+    return true;
+}
+
+bool start_password_reset(std::string_view root_directory, std::string_view email, long sent_at, long* out_code_expires_at, std::string* out_error_message)
+{
+    // Set unconditionally up front: every early return below must leave the caller with the same
+    // observable deadline, or the timeout becomes an account-existence oracle.
+    if (out_code_expires_at != nullptr) {
+        *out_code_expires_at = sent_at + PASSWORD_RESET_WINDOW_SECONDS;
+    }
+
+    if (!is_valid_email(email, nullptr)) {
+        set_error(out_error_message, "");
+        return true;
+    }
+
+    AccountData stored_account;
+    if (!find_account_by_email_internal(root_directory, email, &stored_account, nullptr)) {
+        set_error(out_error_message, "");
+        return true;
+    }
+
+    if (stored_account.password_reset_code_sent_at != 0
+        && sent_at < stored_account.password_reset_code_sent_at + PASSWORD_RESET_RESEND_COOLDOWN_SECONDS) {
+        // Inside the cooldown the previous code is still pending and still works, so a player who
+        // reconnected mid-flow can finish with the code already in their inbox.
+        //
+        // *out_code_expires_at deliberately keeps the synthetic value set above rather than the real
+        // pending expiry: the caller stamps a visible connection deadline from it, and reporting
+        // the stored expiry here made the moment the connection closed depend on when the earlier
+        // code was issued -- an attacker-chosen, deterministic account-existence oracle. The real
+        // code can therefore lapse a little before the connection does, which the code prompt
+        // already handles.
+        set_error(out_error_message, "");
+        return true;
+    }
+
+    const std::string generated_code = generate_numeric_verification_code();
+    if (generated_code.empty()) {
+        set_error(out_error_message, "Failed to generate a password reset code.");
+        return false;
+    }
+
+    std::string reset_salt;
+    if (!generate_hash_for_secret(generated_code, &stored_account.password_reset_code_hash, &reset_salt, out_error_message)) {
+        return false;
+    }
+
+    stored_account.password_reset_code_sent_at = sent_at;
+    stored_account.password_reset_code_expires_at = sent_at + PASSWORD_RESET_WINDOW_SECONDS;
+    stored_account.password_reset_attempt_count = 0;
+    stored_account.updated_at = sent_at;
+
+    if (!write_account_file(root_directory, stored_account, out_error_message)) {
+        return false;
+    }
+
+    if (!send_password_reset_email(stored_account, generated_code, out_error_message)) {
+        return false;
+    }
+
+    set_error(out_error_message, "");
+    return true;
+}
+
+namespace {
+
+// Shared by verify_password_reset_code and complete_password_reset so the two can never disagree
+// about what counts as a failure. Loads the account, checks the code, and charges an attempt on
+// mismatch (clearing the code at the cap). Writes only on mismatch -- a correct code leaves the
+// stored record untouched.
+bool check_password_reset_code(std::string_view root_directory, std::string_view email, std::string_view reset_code, long attempted_at, AccountData* out_account, std::string* out_error_message)
+{
+    if (!is_valid_email(email, nullptr)) {
+        set_error(out_error_message, "That reset code is invalid.");
+        return false;
+    }
+
+    if (!find_account_by_email_internal(root_directory, email, out_account, nullptr)) {
+        set_error(out_error_message, "That reset code is invalid.");
+        return false;
+    }
+
+    if (out_account->password_reset_code_hash.empty() || out_account->password_reset_code_expires_at == 0) {
+        set_error(out_error_message, "That reset code is invalid.");
+        return false;
+    }
+
+    if (attempted_at > out_account->password_reset_code_expires_at) {
+        set_error(out_error_message, "That reset code has expired.");
+        return false;
+    }
+
+    const std::string trimmed_code = trim_copy(reset_code);
+    if (trimmed_code.empty() || !verify_password(trimmed_code, out_account->password_reset_code_hash)) {
+        ++out_account->password_reset_attempt_count;
+        out_account->updated_at = attempted_at;
+
+        const bool exhausted = out_account->password_reset_attempt_count >= MAX_PASSWORD_RESET_ATTEMPTS;
+        if (exhausted) {
+            // The code dies, but password_reset_code_sent_at survives on purpose: it is the only
+            // thing start_password_reset's resend cooldown reads. Clearing it here turned the cap
+            // into an email-bombing tool -- burn five guesses, reconnect, and a fresh code was
+            // mailed to the victim immediately, forever.
+            out_account->password_reset_code_hash.clear();
+            out_account->password_reset_code_expires_at = 0;
+        }
+
+        // If this write fails, the incremented attempt count (and, at the cap, the cleared code)
+        // never reaches disk -- there is no way to enforce a persistent attempt cap from this layer
+        // when persistence itself is broken. The result is captured (rather than discarded) so that
+        // is visibly a considered decision, not an oversight: the user-facing outcome is unchanged
+        // either way, since the caller already disconnects on this error, which remains the actual
+        // enforcement.
+        const bool write_succeeded = write_account_file(root_directory, *out_account, nullptr);
+        (void)write_succeeded;
+        if (exhausted) {
+            set_error(out_error_message, "Too many invalid reset codes.");
+        } else {
+            set_error(out_error_message, "That reset code is invalid.");
+        }
+        return false;
+    }
+
+    set_error(out_error_message, "");
+    return true;
+}
+
+} // namespace
+
+bool verify_password_reset_code(std::string_view root_directory, std::string_view email, std::string_view reset_code, long attempted_at, std::string* out_error_message)
+{
+    AccountData stored_account;
+    return check_password_reset_code(root_directory, email, reset_code, attempted_at, &stored_account, out_error_message);
+}
+
+bool complete_password_reset(std::string_view root_directory, std::string_view email, std::string_view reset_code, std::string_view new_password, long reset_at, AccountData* out_account, std::string* out_error_message)
+{
+    AccountData stored_account;
+    if (!check_password_reset_code(root_directory, email, reset_code, reset_at, &stored_account, out_error_message)) {
+        return false;
+    }
+
+    // Revalidate the code before applying password policy or changing credentials;
+    // a rejected password leaves the valid reset code available for another attempt.
+    if (!is_valid_password(new_password, out_error_message)) {
+        return false;
+    }
+
+    if (!reset_account_password(&stored_account, new_password, "forgot-password", reset_at, out_error_message)) {
+        return false;
+    }
+
+    stored_account.password_reset_code_hash.clear();
+    stored_account.password_reset_code_sent_at = 0;
+    stored_account.password_reset_code_expires_at = 0;
+    stored_account.password_reset_attempt_count = 0;
+
+    // Receiving the code proves control of the address, which also unsticks an account that never
+    // finished verification.
+    if (!stored_account.email_verified) {
+        verify_email(&stored_account, "forgot-password", reset_at);
+    }
+
+    // Successful recovery clears the accumulated failed-login notice, regardless
+    // of who made those attempts.
+    stored_account.failed_login_count = 0;
+    stored_account.failed_login_last_at = 0;
+    stored_account.failed_login_last_host.clear();
+
+    if (!write_account_file(root_directory, stored_account, out_error_message)) {
+        return false;
+    }
+
+    if (out_account != nullptr) {
+        *out_account = stored_account;
+    }
+
+    set_error(out_error_message, "");
+    return true;
 }
 
 bool start_email_verification(std::string_view root_directory, std::string_view account_name, long sent_at, AccountData* account, std::string* error_message)
@@ -876,9 +1154,13 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
     const std::string exploits_path = resolved_exploits_path(stored_account, root_directory, normalized_character_name);
 
     struct StagedRemoval {
+        // Original asset path restored only before account unlink commits.
         std::string original_path;
+        // Temporary removal path retained on post-commit cleanup failure.
         std::string staged_path;
+        // Non-sensitive asset kind for diagnostics.
         const char* label = "";
+        // True only after this transaction successfully moved the original asset.
         bool existed = false;
     };
 
@@ -900,7 +1182,6 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
             return false;
         }
 
-        staged_removal->existed = true;
         if (std::remove(staged_removal->staged_path.c_str()) != 0 && errno != ENOENT) {
             set_error(error_message, std::string("Failed to prepare staged removal for ") + staged_removal->label + " '" + staged_removal->original_path + "': " + std::strerror(errno));
             return false;
@@ -911,10 +1192,11 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
             return false;
         }
 
+        staged_removal->existed = true;
         return true;
     };
 
-    auto restore_staged_removals = [&]() {
+    auto restore_staged_removals = [&]() -> void {
         for (auto it = staged_removals.rbegin(); it != staged_removals.rend(); ++it) {
             if (!it->existed)
                 continue;
@@ -937,7 +1219,7 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
         updated_account.characters.end());
     updated_account.character_links.erase(
         std::remove_if(updated_account.character_links.begin(), updated_account.character_links.end(),
-            [&](const AccountData::CharacterLinkReference& link) { return link.character_name == normalized_character_name; }),
+            [&](const AccountData::CharacterLinkReference& link) -> bool { return link.character_name == normalized_character_name; }),
         updated_account.character_links.end());
     updated_account.updated_at = updated_at;
 
@@ -946,12 +1228,15 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
         return false;
     }
 
+    // Account unlink is committed. Residual staged assets are maintenance failures, not rollback.
+    roster_cache::invalidate_character(root_directory, normalized_character_name);
     for (const StagedRemoval& staged_removal : staged_removals) {
-        if (!staged_removal.existed)
+        if (!staged_removal.existed) {
             continue;
+        }
         if (std::remove(staged_removal.staged_path.c_str()) != 0 && errno != ENOENT) {
-            set_error(error_message, std::string("Failed to remove staged ") + staged_removal.label + " '" + staged_removal.staged_path + "': " + std::strerror(errno));
-            return false;
+            std::fprintf(stderr, "SYSERR: %s: committed deletion retained staged %s '%s': %s\n",
+                __func__, staged_removal.label, staged_removal.staged_path.c_str(), std::strerror(errno));
         }
     }
 

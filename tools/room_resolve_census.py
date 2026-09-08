@@ -951,7 +951,11 @@ MINIMUM_PROOF_TEXT_LENGTH = 20
 # -- from 3 sites to 1. The two drained sites are given back to the ratchet
 # rather than left as slack. `--check`-derived, like every move above ("TODO
 # total 576 exceeds the ceiling of 0" under the self-test override).
-MAXIMUM_TODO_COUNT = 576
+# TASK-015 movement validation hoists drain three further TODO sites (576 -> 573),
+# measured by --check against the updated ledger. No rows change proof class.
+# TASK-015 MSDP actor hoists and two red-first guarded sites drain 573 -> 565,
+# measured with --check against the final room-update body.
+MAXIMUM_TODO_COUNT = 565
 
 # Same floor tools/location_read_census.py's own MINIMUM_SCANNED_FILE_COUNT
 # uses, at the same value: measured at 315 files under src/ at this commit
@@ -1085,7 +1089,7 @@ LEDGER_DISPATCH_ENTRIES_HEADER = (
 # takes a third edit that reddens the self-test.
 LEDGER_DISPATCH_SPELLINGS_MARKER = "<!-- ROOM-RESOLVE-DISPATCH-SPELLINGS -->"
 LEDGER_DISPATCH_SPELLINGS_HEADER = "| Dispatch spelling | Shape |"
-MINIMUM_DISPATCH_SPELLING_ROWS = 26
+MINIMUM_DISPATCH_SPELLING_ROWS = 27
 
 # The closed status vocabulary. EVERY status in it requires a guard literal;
 # there is no exempt status any more.
@@ -1144,7 +1148,7 @@ DISPATCH_GUARD_CELL_PATTERN = r"`[^`]*`(?: \|\| `[^`]*`)*"
 # must trip on any deletion at all. `--minimum-dispatch-entries-override`
 # (self-test only, RR_SELF_TEST-gated like every other override here) lets
 # the hermetic fixtures run against their own tiny tables.
-MINIMUM_DISPATCH_ENTRY_ROWS = 12
+MINIMUM_DISPATCH_ENTRY_ROWS = 13
 
 # The dispatch spellings themselves (design doc section 2's "Closure"
 # bullet). Every one of these is a fn-ptr invocation through a dispatch
@@ -1180,6 +1184,7 @@ MINIMUM_DISPATCH_ENTRY_ROWS = 12
 # depth >= 1 and are an ERROR -- that was the demonstrated bypass. Everything
 # else (a function body OR a macro body) must be registered or exempt.
 DISPATCH_SPELLING_TOKENS = (
+    ("checked_move_handler", re.compile(r"\bchecked_move_handler\b")),
     ("command_pointer)(", re.compile(r"command_pointer\s*\)\s*\(")),
     ("g_command_table[", re.compile(r"\bg_command_table\s*\[")),
     ("spell_pointer)(", re.compile(r"spell_pointer\s*\)\s*\(")),
@@ -1245,6 +1250,7 @@ DISPATCH_SPELLING_TOKENS = (
 # without a shape (or a shape left behind by a retired token) is a failure
 # rather than a `KeyError` at ledger-generation time.
 DISPATCH_SPELLING_SHAPES = {
+    "checked_move_handler": "checked-movement hook call, address read or registration write",
     "command_pointer)(": "call through a `(*cmd_info[..].command_pointer)(...)` wrapper",
     "g_command_table[": "call or write through the `combat_command` table",
     "spell_pointer)(": "call through a `(*skills[..].spell_pointer)(...)` wrapper",
@@ -1331,6 +1337,8 @@ DISPATCH_EXEMPTION_CATEGORIES = (
 # recorded in the spec's section 11 alongside shop.cpp's direct ACMD host
 # calls.
 DISPATCH_TOKEN_EXEMPT_SITES = {
+    ("src/combat/combat_hooks.cpp", "rots::combat::set_checked_move_hook", "checked_move_handler"):
+        (1, "registration-write", "boot adapter registration; no actor is dispatched"),
     ("src/combat/combat_hooks.cpp", "rots::combat::set_combat_command", "g_command_table["):
         (1, "registration-write",
          "registration WRITE (`g_command_table[i] = handler;`, combat_hooks.cpp:56), not a "
@@ -3146,13 +3154,14 @@ def run_self_test():
 
     # Ceiling pin (F-10 mirror of MINIMUM_SCANNED_FILE_COUNT's pin, T2 brief
     # direction 5), ACTIVATED (Task 3, the tracked review obligation): pinned
-    # at 576 -- the exact MAXIMUM_TODO_COUNT the module now holds (RR Wave R2
+    # at 565 -- the exact MAXIMUM_TODO_COUNT the module now holds (RR Wave R2
     # Task 1 lowered it 788 -> 748; Task 2 lowered it further, 748 -> 716; RR
     # Wave R3 Task 1a raised it 716 -> 717 for the R3-C-3 reopening, the
     # program's only raise -- see MAXIMUM_TODO_COUNT's own comment; R3's
     # T2p+T3p integration lowered it 717 -> 636 and T2d+T3d 636 -> 585, then
     # T1c+T3e 585 -> 579, and TASK-021 Task 6 578 -> 576 for the two sites its
-    # resolver hoists drained, all `--check`-derived), measured
+    # resolver hoists drained; TASK-015 then hoists 576 -> 573, all
+    # `--check`-derived; TASK-015 MSDP then drains 573 -> 565), measured
     # against the real ledger's TODO total. The two literals move together, in
     # one commit, always. An accidental RAISE (an
     # edit that loosens the ratchet without a deliberate, reviewed
@@ -3160,9 +3169,9 @@ def run_self_test():
     # value (a real drain wave) keeps passing `<=`, and that wave updates
     # this literal in the same commit that lowers MAXIMUM_TODO_COUNT itself
     # (the two literals are set together, never independently).
-    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 576:
+    if MAXIMUM_TODO_COUNT is not None and MAXIMUM_TODO_COUNT > 565:
         failures.append(
-            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 576 -- "
+            f"MAXIMUM_TODO_COUNT is {MAXIMUM_TODO_COUNT}, above the pinned ceiling of 565 -- "
             "an accidental raise must not silently loosen the ratchet."
         )
 
@@ -3170,9 +3179,11 @@ def run_self_test():
     # LITERAL for the same reason as the three above. The table's two-way
     # cross-check catches a one-sided edit; the floor is what makes deleting
     # BOTH sides in one commit cost a third, self-test-reddening edit.
-    if MINIMUM_DISPATCH_SPELLING_ROWS < 26:
+    if MINIMUM_DISPATCH_ENTRY_ROWS < 13:
+        failures.append("checked-movement registry floor must retain all thirteen entries")
+    if MINIMUM_DISPATCH_SPELLING_ROWS < 27:
         failures.append(
-            f"MINIMUM_DISPATCH_SPELLING_ROWS is {MINIMUM_DISPATCH_SPELLING_ROWS}, below the 26 "
+            f"MINIMUM_DISPATCH_SPELLING_ROWS is {MINIMUM_DISPATCH_SPELLING_ROWS}, below the 27 "
             "spellings the gate scans for -- a lowered floor lets the token surface shrink "
             "silently."
         )
@@ -4328,6 +4339,17 @@ def run_self_test():
             expected_output=("virt_program_number(", "get_special_function(",
                              "dispatch_virt_program_number(", "intelligent(",
                              "rogue_prog_number", "rogue_intelligent"))
+
+        # TASK-015: a checked movement hook is another command-body door.
+        # Pin its bare spelling too, so split calls and copied addresses count.
+        run_dispatch_case(
+            "dispatch-checked-movement-door", 1,
+            probe_text=DISPATCH_PROBE_SOURCE + "\nvoid rogue_move(char_data* actor)\n{\n    checked_move_handler(actor, movement, mode);\n}\n",
+            expected_output=("unregistered dispatch site", "checked_move_handler"))
+        run_dispatch_case(
+            "dispatch-checked-movement-address-copy", 1,
+            probe_text=DISPATCH_PROBE_SOURCE + "\nvoid rogue_move(char_data* actor)\n{\n    auto copied = checked_move_handler;\n}\n",
+            expected_output=("unregistered dispatch site", "checked_move_handler"))
 
         # (ag) the token SPLIT itself, pinned directly: a member CALL and an
         # address READ of the same slot must classify as DIFFERENT tokens.

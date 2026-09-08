@@ -731,13 +731,13 @@ void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
 
     int visible_rider_count, current_rider_number, viewer_is_riding, rider_index;
     int special_message;
+    // A visible player rider gives the entire line the player colour, preserving
+    // clients that trigger on whole-line ANSI sequences; other mounts use mob colour.
+    int line_color = COLOR_MOB;
     struct char_data *current_rider, *last_rider = 0;
 
     viewer_is_riding = special_message = visible_rider_count = 0;
     *buf = 0;
-
-    if (color)
-        strcat(buf, CC_USE(viewer, COLOR_CHAR));
 
     /*
      * We NEED to know if there are multiple people riding one mount and
@@ -749,11 +749,18 @@ void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
         current_rider = current_rider->mount_data.next_rider, ++rider_index) {
         if (CAN_SEE(viewer, current_rider)) {
             current_rider_number = current_rider->mount_data.next_rider_number;
+            if (!IS_NPC(current_rider)) {
+                line_color = COLOR_CHAR;
+            }
             if (GET_POS(current_rider) == POSITION_FIGHTING
                 || GET_POS(current_rider) == POSITION_RESTING)
                 special_message = 1;
         } else
             --rider_index;
+    }
+
+    if (color) {
+        strcat(buf, CC_USE(viewer, line_color));
     }
 
     current_rider = mount->mount_data.rider;
@@ -785,7 +792,7 @@ void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
                     !visible_rider_count ? PERS(current_rider, viewer, TRUE, FALSE)
                                          : PERS(current_rider, viewer, FALSE, FALSE));
                 if (color)
-                    strcat(buf, CC_USE(viewer, COLOR_CHAR));
+                    strcat(buf, CC_USE(viewer, line_color));
             }
 
             get_char_flag_line(viewer, current_rider, buf + strlen(buf));
@@ -821,7 +828,7 @@ void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
                             strcat(buf,
                                 PERS(current_rider->specials.fighting, viewer, FALSE, FALSE));
                             if (color)
-                                strcat(buf, CC_USE(viewer, COLOR_CHAR));
+                                strcat(buf, CC_USE(viewer, line_color));
                         } else
                             strcat(buf, "SOMEONE THAT ALREADY LEFT! *BUG*");
                     }
@@ -962,8 +969,8 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
                 // SWEEP" block comment above get_char_position_line for why
                 // that web stays as-is.
                 strcpy(buf,
-                    std::format("{}{}{}", CC_USE(ch, COLOR_CHAR), PERS(i, ch, TRUE, FALSE),
-                        CC_USE(ch, COLOR_CHAR))
+                    std::format("{}{}{}", CC_USE(ch, char_color_slot(i)), PERS(i, ch, TRUE, FALSE),
+                        CC_USE(ch, char_color_slot(i)))
                         .c_str());
                 if (!IS_NPC(i) && !other_side(ch, i))
                     strcpy(buf + strlen(buf), std::format(" {}", GET_TITLE(i)).c_str());
@@ -979,7 +986,7 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
             }
         } else { /* npc with long that's in the usual position */
             *buf = 0;
-            strcat(buf, CC_USE(ch, COLOR_CHAR));
+            strcat(buf, CC_USE(ch, char_color_slot(i)));
             strcat(buf, i->player.long_descr);
             get_char_flag_line(ch, i, buf + strlen(buf));
         }

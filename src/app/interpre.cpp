@@ -2110,8 +2110,12 @@ void clear_account_login_state(struct descriptor_data* d)
 {
     *d->account_name = '\0';
     *d->account_email = '\0';
-    *d->account_password = '\0';
-    *d->account_character_name = '\0';
+    std::memset(d->account_password, 0, sizeof(d->account_password));
+    std::memset(d->account_character_name, 0, sizeof(d->account_character_name));
+    d->state_deadline = 0;
+    d->roster_sort = static_cast<int>(account::RosterSort::Account);
+    d->roster_filter = static_cast<int>(account::RosterFilter::None);
+    d->roster_sort_dirty = false;
 }
 
 void copy_account_text(char* destination, std::size_t destination_capacity, std::string_view text)
@@ -2528,7 +2532,10 @@ void show_account_menu(struct descriptor_data* d, const account::AccountData& ac
 
 void show_account_character_list(struct descriptor_data* d, const account::AccountData& account_data)
 {
-    const std::string character_list = account::format_account_character_list(kAccountStorageRoot, account_data);
+    account::RosterSort stored_sort = account::RosterSort::Account;
+    account::roster_sort_from_string(account_data.roster_sort, &stored_sort);
+    const std::string character_list = account::format_account_character_list(
+        kAccountStorageRoot, account_data, stored_sort);
     SEND_TO_Q(character_list.c_str(), d);
 }
 
@@ -2568,6 +2575,11 @@ void complete_existing_character_login(struct descriptor_data* d, int load_resul
             REMOVE_BIT(PLR_FLAGS(d->character), PLR_MAILING | PLR_WRITING);
             clear_account_backed_object_bytes_for_character(d->character);
             STATE(d) = CON_PLYNG;
+            if (!d->pProtocol) {
+                d->pProtocol = ProtocolCreate();
+            }
+            ProtocolNegotiate(d);
+            msdp_room_update(d->character);
             vmudlog(NRM, "%s [%s] has reconnected.", GET_NAME(d->character), d->host);
             return;
         }
@@ -2627,8 +2639,40 @@ void complete_existing_character_login(struct descriptor_data* d, int load_resul
 
 void show_account_character_prompt(struct descriptor_data* d, const account::AccountData& account_data)
 {
-    const std::string prompt = account::format_account_character_prompt(kAccountStorageRoot, account_data);
+    const std::string prompt = account::format_account_character_prompt(kAccountStorageRoot, account_data,
+        static_cast<account::RosterSort>(d->roster_sort),
+        static_cast<account::RosterFilter>(d->roster_filter));
     SEND_TO_Q(prompt.c_str(), d);
+}
+
+void persist_roster_sort_if_dirty(struct descriptor_data* descriptor, account::AccountData& out_account_data)
+{
+    if (!descriptor->roster_sort_dirty) {
+        return;
+    }
+
+    account::AccountData current_account;
+    std::string read_error;
+    if (!account::read_account_file(kAccountStorageRoot, descriptor->account_name, &current_account, &read_error)) {
+        vmudlog(BRF, "Failed to reload account to persist roster sort for %s: %s",
+            descriptor->account_name, read_error.c_str());
+        descriptor->roster_sort_dirty = false;
+        return;
+    }
+
+    account::RosterSort current_sort = static_cast<account::RosterSort>(descriptor->roster_sort);
+    const std::string current_sort_string = account::roster_sort_to_string(current_sort);
+    if (current_account.roster_sort != current_sort_string) {
+        current_account.roster_sort = current_sort_string;
+        std::string persist_error;
+        if (!account::write_account_file(kAccountStorageRoot, current_account, &persist_error)) {
+            vmudlog(BRF, "Failed to persist roster sort for %s: %s",
+                descriptor->account_name, persist_error.c_str());
+        } else {
+            out_account_data.roster_sort = current_sort_string;
+        }
+    }
+    descriptor->roster_sort_dirty = false;
 }
 
 void handle_account_authenticated(struct descriptor_data* d, const account::AccountData& account_data)
@@ -2637,6 +2681,13 @@ void handle_account_authenticated(struct descriptor_data* d, const account::Acco
     set_account_login_email(d, account_data.normalized_email);
     d->bad_pws = 0;
     mudlog_account_event(d, "Account login", account_data.normalized_email.c_str());
+
+    const std::string login_failure_notice = account::format_account_login_failure_notice(account_data);
+    if (!login_failure_notice.empty()) {
+        SEND_TO_Q(login_failure_notice.c_str(), d);
+        account::clear_account_login_failures(kAccountStorageRoot, account_data.account_name, nullptr);
+    }
+
     show_account_menu(d, account_data);
     STATE(d) = CON_ACCTMENU;
 }
@@ -2655,6 +2706,19 @@ void start_account_login(struct descriptor_data* d, std::string_view email)
     SEND_TO_Q("Account password: ", d);
     echo_off(d->descriptor);
     STATE(d) = CON_ACCTPWD;
+}
+
+static constexpr int ACCOUNT_RESET_MENU_TIMEOUT_SECONDS = 90;
+
+void show_account_reset_menu(struct descriptor_data* descriptor)
+{
+    SEND_TO_Q("\n\r"
+              "1) Reset your account password\n\r"
+              "0) Disconnect\n\r"
+              "\n\r"
+              "This menu will close in 90 seconds.\n\r"
+              "Choice: ",
+        descriptor);
 }
 
 } // namespace
@@ -2938,9 +3002,12 @@ void nanny(struct descriptor_data* d, char* arg)
                 }
 
                 mudlog_account_event(d, "Bad account password");
+                account::record_account_login_failure(kAccountStorageRoot, d->account_email, d->host, time(0), nullptr);
                 if (++(d->bad_pws) >= 5) {
-                    SEND_TO_Q("Invalid account credentials... disconnecting.\n\r", d);
-                    STATE(d) = CON_CLOSE;
+                    SEND_TO_Q("Invalid account credentials.\n\r", d);
+                    d->state_deadline = time(0) + ACCOUNT_RESET_MENU_TIMEOUT_SECONDS;
+                    show_account_reset_menu(d);
+                    STATE(d) = CON_ACCTPWDFAIL;
                 } else {
                     SEND_TO_Q("Invalid account credentials.\n\rAccount password: ", d);
                     echo_off(d->descriptor);
@@ -3006,6 +3073,168 @@ void nanny(struct descriptor_data* d, char* arg)
             handle_account_authenticated(d, account_data);
         }
         break;
+    case CON_ACCTPWDFAIL: /* password attempts exhausted -- offer a reset */
+        for (; isspace(*arg); arg++) {
+            continue;
+        }
+
+        if (*arg == '0') {
+            d->state_deadline = 0;
+            SEND_TO_Q("Goodbye.\n\r", d);
+            STATE(d) = CON_CLOSE;
+            return;
+        }
+
+        if (*arg == '1') {
+            long code_expires_at = 0;
+            // Nothing the player can observe branches on the outcome: the message, the state
+            // transition, and the deadline below are identical whether a code was sent, suppressed
+            // by the cooldown, or skipped because no account exists -- that is exactly what would
+            // leak whether the address has an account. The log is not player-observable, so it can
+            // and does distinguish a failed send, which is the only reason a player with a real
+            // account hits the dead end this flow otherwise cannot explain to them. The no-account
+            // and cooldown cases stay indistinguishable here by design.
+            const bool reset_code_sent = account::start_password_reset(kAccountStorageRoot, d->account_email, time(0), &code_expires_at, nullptr);
+            std::string_view reset_event = "Account password reset send failed";
+            if (reset_code_sent) {
+                reset_event = "Account password reset requested";
+            }
+            mudlog_account_event(d, reset_event);
+
+            d->bad_pws = 0;
+            d->state_deadline = code_expires_at;
+            SEND_TO_Q("\n\rIf an account exists for that address, a reset code has been sent to it.\n\r"
+                      "The code is valid for 15 minutes.\n\r"
+                      "\n\rReset code: ",
+                d);
+            STATE(d) = CON_ACCTFORGOTCODE;
+            return;
+        }
+
+        show_account_reset_menu(d);
+        return;
+    case CON_ACCTFORGOTCODE: /* reset code from the email */
+        echo_on(d->descriptor);
+
+        for (; isspace(*arg); arg++) {
+            continue;
+        }
+
+        if (!*arg) {
+            d->state_deadline = 0;
+            STATE(d) = CON_CLOSE;
+            return;
+        }
+
+        {
+            // Checked without being consumed: complete_password_reset re-checks it when the new
+            // password is applied. A correct code never charges an attempt, so checking twice is
+            // free -- and a wrong one is reported here rather than after two password prompts.
+            //
+            // The account layer's error text is deliberately not read. It varies with the cause,
+            // and for an address with no account there is no stored record to vary it at all --
+            // branching on it left an unknown address re-prompted forever while a real one
+            // disconnected on the fifth wrong code, which is an account-existence oracle. The
+            // attempt cap the player sees is therefore counted here, on the descriptor, and every
+            // failure says exactly one thing. The account layer keeps its own persistent cap; that
+            // is what durably kills the code across a reconnect.
+            if (!account::verify_password_reset_code(kAccountStorageRoot, d->account_email, arg, time(0), nullptr)) {
+                std::memset(d->account_character_name, 0, sizeof(d->account_character_name));
+
+                if (++(d->bad_pws) >= account::MAX_PASSWORD_RESET_ATTEMPTS) {
+                    d->state_deadline = 0;
+                    SEND_TO_Q("\n\rToo many invalid reset codes.\n\rPlease reconnect and try again.\n\r", d);
+                    STATE(d) = CON_CLOSE;
+                    return;
+                }
+
+                SEND_TO_Q("\n\rThat reset code is invalid.\n\rReset code: ", d);
+                return;
+            }
+        }
+
+        copy_account_text(d->account_character_name, sizeof(d->account_character_name), arg);
+
+        SEND_TO_Q("\n\rNew account password: ", d);
+        echo_off(d->descriptor);
+        STATE(d) = CON_ACCTFORGOTNEW;
+        return;
+    case CON_ACCTFORGOTNEW: /* new password after a verified reset code */
+        echo_on(d->descriptor);
+
+        for (; isspace(*arg); arg++) {
+            continue;
+        }
+
+        if (!*arg || strlen(arg) > MAX_ACCOUNT_PASSWORD_LENGTH) {
+            SEND_TO_Q("\n\rIllegal password.\n\rNew account password: ", d);
+            std::memset(d->account_password, 0, sizeof(d->account_password));
+            echo_off(d->descriptor);
+            return;
+        }
+
+        {
+            std::string error_message;
+            if (!account::is_valid_password(arg, &error_message)) {
+                SEND_TO_Q(("\n\r" + error_message + "\n\rNew account password: ").c_str(), d);
+                std::memset(d->account_password, 0, sizeof(d->account_password));
+                echo_off(d->descriptor);
+                return;
+            }
+        }
+
+        copy_account_text(d->account_password, sizeof(d->account_password), arg);
+        SEND_TO_Q("\n\rRetype the new password: ", d);
+        echo_off(d->descriptor);
+        STATE(d) = CON_ACCTFORGOTCNF;
+        return;
+
+    case CON_ACCTFORGOTCNF: /* confirm the new password and apply the reset */
+        echo_on(d->descriptor);
+
+        for (; isspace(*arg); arg++) {
+            continue;
+        }
+
+        if (strcmp(arg, d->account_password)) {
+            SEND_TO_Q("\n\rPasswords don't match... start over.\n\rNew account password: ", d);
+            std::memset(d->account_password, 0, sizeof(d->account_password));
+            echo_off(d->descriptor);
+            STATE(d) = CON_ACCTFORGOTNEW;
+            return;
+        }
+
+        {
+            const std::string reset_code = d->account_character_name;
+            const std::string new_password = d->account_password;
+            std::memset(d->account_password, 0, sizeof(d->account_password));
+            std::memset(d->account_character_name, 0, sizeof(d->account_character_name));
+            d->state_deadline = 0;
+
+            account::AccountData account_data;
+            std::string error_message;
+            if (!account::complete_password_reset(kAccountStorageRoot, d->account_email, reset_code,
+                    new_password, time(0), &account_data, &error_message)) {
+                mudlog_account_event(d, "Account password reset failed");
+                SEND_TO_Q("\n\rThat reset code is not valid.\n\rPlease reconnect and try again.\n\r", d);
+                STATE(d) = CON_CLOSE;
+                return;
+            }
+
+            const bool had_active_session
+                = !active_account_character_sessions(d, account_data).empty();
+            std::string_view reset_event = "Account password reset completed";
+            if (had_active_session) {
+                reset_event = "Account password reset completed (session active)";
+            }
+            mudlog_account_event(d, reset_event, account_data.normalized_email.c_str());
+
+            SEND_TO_Q("\n\rYour password has been updated.\n\r"
+                      "Please log in again with your new password.\n\r",
+                d);
+            STATE(d) = CON_CLOSE;
+            return;
+        }
     case CON_ACCTSLCT: /* get linked character for authenticated account */
         for (; isspace(*arg); arg++)
             continue;
@@ -3030,14 +3259,87 @@ void nanny(struct descriptor_data* d, char* arg)
                 return;
             }
 
+            // Single-letter sort and filter keys. Unambiguous because character names are a minimum
+            // of 3 characters, enforced by valid_name (ban.cpp) and is_valid_account_name.
+            if (strlen(arg) == 1) {
+                const char key = LOWER(*arg);
+                account::RosterSort new_sort = static_cast<account::RosterSort>(d->roster_sort);
+                account::RosterFilter new_filter = static_cast<account::RosterFilter>(d->roster_filter);
+                bool handled = true;
+                bool sort_changed = false;
+
+                switch (key) {
+                case 'a':
+                    sort_changed = (new_sort != account::RosterSort::Name);
+                    new_sort = account::RosterSort::Name;
+                    break;
+                case 'l':
+                    sort_changed = (new_sort != account::RosterSort::Level);
+                    new_sort = account::RosterSort::Level;
+                    break;
+                case 'c':
+                    sort_changed = (new_sort != account::RosterSort::Race);
+                    new_sort = account::RosterSort::Race;
+                    break;
+                case 's':
+                    sort_changed = (new_sort != account::RosterSort::Side);
+                    new_sort = account::RosterSort::Side;
+                    break;
+                case 'w':
+                    if (new_filter == account::RosterFilter::Warrior) {
+                        new_filter = account::RosterFilter::None;
+                    } else {
+                        new_filter = account::RosterFilter::Warrior;
+                    }
+                    break;
+                case 'r':
+                    if (new_filter == account::RosterFilter::Ranger) {
+                        new_filter = account::RosterFilter::None;
+                    } else {
+                        new_filter = account::RosterFilter::Ranger;
+                    }
+                    break;
+                case 't':
+                    if (new_filter == account::RosterFilter::Mystic) {
+                        new_filter = account::RosterFilter::None;
+                    } else {
+                        new_filter = account::RosterFilter::Mystic;
+                    }
+                    break;
+                case 'm':
+                    if (new_filter == account::RosterFilter::Mage) {
+                        new_filter = account::RosterFilter::None;
+                    } else {
+                        new_filter = account::RosterFilter::Mage;
+                    }
+                    break;
+                default:
+                    handled = false;
+                    break;
+                }
+
+                if (handled) {
+                    d->roster_sort = static_cast<int>(new_sort);
+                    d->roster_filter = static_cast<int>(new_filter);
+                    if (sort_changed) {
+                        d->roster_sort_dirty = true;
+                    }
+                    show_account_character_prompt(d, account_data);
+                    return;
+                }
+            }
+
             if (!strcmp(arg, "0")) {
+                persist_roster_sort_if_dirty(d, account_data);
                 show_account_menu(d, account_data);
                 STATE(d) = CON_ACCTMENU;
                 return;
             }
 
             std::string selected_character_name;
-            if (!account::select_linked_character(account_data, arg, &selected_character_name, &error_message)) {
+            if (!account::select_linked_character(kAccountStorageRoot, account_data, arg,
+                    static_cast<account::RosterSort>(d->roster_sort), static_cast<account::RosterFilter>(d->roster_filter),
+                    &selected_character_name, &error_message)) {
                 SEND_TO_Q((error_message + "\n\r").c_str(), d);
                 show_account_character_prompt(d, account_data);
                 return;
@@ -3151,6 +3453,7 @@ void nanny(struct descriptor_data* d, char* arg)
                 return;
             }
 
+            persist_roster_sort_if_dirty(d, account_data);
             complete_existing_character_login(d, load_result);
         }
         break;
@@ -3288,8 +3591,8 @@ void nanny(struct descriptor_data* d, char* arg)
             case '0':
                 mudlog_account_event(d, "Account logout");
                 clear_account_login_state(d);
-                show_account_email_prompt(d);
-                STATE(d) = CON_NME;
+                SEND_TO_Q("Goodbye.\n\r", d);
+                STATE(d) = CON_CLOSE;
                 break;
             case '1':
                 show_account_character_list(d, account_data);
@@ -3300,6 +3603,11 @@ void nanny(struct descriptor_data* d, char* arg)
                     SEND_TO_Q("\n\rNo linked characters are available to play.\n\r", d);
                     show_account_menu(d, account_data);
                 } else {
+                    account::RosterSort stored_sort = account::RosterSort::Account;
+                    account::roster_sort_from_string(account_data.roster_sort, &stored_sort);
+                    d->roster_sort = static_cast<int>(stored_sort);
+                    d->roster_filter = static_cast<int>(account::RosterFilter::None);
+                    d->roster_sort_dirty = false;
                     show_account_character_prompt(d, account_data);
                     STATE(d) = CON_ACCTSLCT;
                 }
@@ -3882,6 +4190,11 @@ void nanny(struct descriptor_data* d, char* arg)
                     tmp_ch->specials.timer = 0;
                     REMOVE_BIT(PLR_FLAGS(d->character), PLR_MAILING | PLR_WRITING);
                     STATE(d) = CON_PLYNG;
+                    if (!d->pProtocol) {
+                        d->pProtocol = ProtocolCreate();
+                    }
+                    ProtocolNegotiate(d);
+                    msdp_room_update(d->character);
                     return;
                 }
             }

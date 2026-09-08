@@ -1,15 +1,17 @@
 #include "../char_utils.h"
+#include "../comm.h"
 #include "../handler.h"
+#include "../interpre.h"
 #include "../player_limits.h"
 #include "../protocol.h"
 #include "../rots_net.h"
+#include "../utils.h"
 #include "../world_hooks.h"
 #include "rots/core/character.h"
-#include "rots/core/room.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
-#include "../utils.h"
 #include "test_char_cleanup.h"
 #include "test_world.h"
 
@@ -51,6 +53,8 @@ void clear_char(struct char_data* ch, int mode);
 // directly (world-seed Task 5b, Candidate 1).
 void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind);
 void msdp_update();
+ACMD(do_gen_tog);
+void weather_change();
 int get_percent_absorb(char_data* character);
 // act_move.cpp's msdp_room_update_impl(), forward-declared here (like
 // msdp_update()/broadcast_weather_msdp_update() above) so the coverage
@@ -707,7 +711,7 @@ TEST(MSDPProtocol, ProtocolCreateInitializesExpectedDefaults)
 
     for (int i = eMSDP_NONE + 1; i < eMSDP_MAX; ++i) {
         EXPECT_TRUE(protocol->pVariables[i]->bReport) << "MSDP enum " << i;
-        EXPECT_FALSE(protocol->pVariables[i]->bDirty) << "MSDP enum " << i;
+        EXPECT_EQ(protocol->pVariables[i]->bDirty, i < eMSDP_CLIENT_ID) << "MSDP enum " << i;
     }
 
     EXPECT_EQ(protocol->pVariables[eMSDP_SNIPPET_VERSION]->ValueInt, 8);
@@ -781,7 +785,8 @@ TEST(MSDPProtocol, SetNumberMarksDirtyOnlyWhenValueChanges)
 {
     ProtocolDescriptor context;
 
-    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+    context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty = false;
 
     MSDPSetNumber(&context.descriptor, eMSDP_HEALTH, 42);
     EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
@@ -1187,6 +1192,7 @@ TEST(MSDPProtocol, SendPairAndListRejectOversizedPayloads)
 TEST(MSDPProtocol, PublicSetHelpersIgnoreInvalidVariables)
 {
     ProtocolDescriptor context;
+    context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty = false;
 
     EXPECT_FALSE(MSDPIsValidVariable(eMSDP_NONE));
     EXPECT_FALSE(MSDPIsValidVariable(eMSDP_MAX));
@@ -2073,7 +2079,7 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
     ScopedMSDPTestRoom room_scope;
     ScopedTimeInfoHours time_scope(13); // "1:00 PM"
 
-    descriptor_data no_character {};
+    descriptor_data no_character { };
     ProtocolDescriptor npc_context;
     ProtocolDescriptor valid_context;
     // pProtocol left null. NOTE (post-review correction): this does NOT exercise a
@@ -2084,8 +2090,8 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
     // `apDescriptor->pProtocol` for null and silently no-op when it is. This fixture exists
     // solely to prove the descriptor_list walk does not crash on a null pProtocol -- a
     // no-crash/robustness fixture, not an assertion-backed coverage claim.
-    descriptor_data missing_protocol {};
-    char_data missing_protocol_character {};
+    descriptor_data missing_protocol { };
+    char_data missing_protocol_character { };
 
     clear_char(&missing_protocol_character, MOB_VOID);
     // Releases missing_protocol_character.profs/skills/knowledge (clear_char()
@@ -2101,9 +2107,7 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
     npc_context.character.player.short_descr = strdup("ignored npc");
 
     initialize_msdp_player(&valid_context.character, "Updated");
-    // enable_msdp_reports() here mirrors the sibling msdp_update() tests' setup pattern for
-    // consistency -- it is NOT required by broadcast_weather_msdp_update() itself, which
-    // (unlike update()'s call sites) never consults bReport/subscription state at all.
+    // The immediate world-time flush honors the same subscription as the periodic sweep.
     enable_msdp_reports(valid_context.descriptor.pProtocol, { eMSDP_WORLD_TIME });
 
     no_character.next = &npc_context.descriptor;
@@ -2117,15 +2121,8 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
         "It is about 1:00 PM on ");
     EXPECT_EQ(valid_context.read_output(),
         expected_msdp_pair("WORLD_TIME", "It is about 1:00 PM on "));
-    // broadcast_weather_msdp_update() calls MSDPSend() directly (unlike
-    // msdp_update()'s call site, which routes through update() and clears
-    // bDirty afterward) -- so the variable is still marked dirty even though
-    // the fresh value already went out over the wire. Pinning this asymmetry
-    // against msdp_update()'s equivalent assertions (bDirty == false) above
-    // in this file.
-    EXPECT_TRUE(valid_context.descriptor.pProtocol->pVariables[eMSDP_WORLD_TIME]->bDirty);
+    EXPECT_FALSE(valid_context.descriptor.pProtocol->pVariables[eMSDP_WORLD_TIME]->bDirty);
     EXPECT_EQ(npc_context.read_output(), "");
-
     RELEASE(missing_protocol_character.player.name);
 }
 
@@ -2188,7 +2185,7 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
 // task's conversion.
 // -----------------------------------------------------------------------
 
-TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNegative)
+TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainForValidLocation)
 {
     ScopedTestWorld test_world { 2 };
     // Site 9 (LS-2 whole-branch review B1, second-reviewer addendum):
@@ -2213,12 +2210,7 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
 
     ProtocolDescriptor context;
     context.character.desc = &context.descriptor;
-    // Negative, but deliberately NOT NOWHERE (-1) -- act_move.cpp:593's
-    // inner-loop `location_of(ch) == NOWHERE` guard would otherwise break
-    // out of the exits scan before touching dir_option[NORTH] at all,
-    // leaving the :605 room_by_id_total(room_direction.to_room) conversion
-    // this test targets unreached.
-    set_location(&context.character, -2);
+    set_location(&context.character, 0);
     enable_msdp_reports(context.descriptor.pProtocol,
         { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM, eMSDP_ROOM_EXITS, eMSDP_ROOM });
 
@@ -2249,20 +2241,15 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
     room_by_id_total(0)->dir_option[NORTH] = original_room0_dir_north;
 }
 
-TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterHasAnOrdinaryNonNegativeLocation)
+TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterIsUnplaced)
 {
     ScopedTestWorld test_world { 1 };
     ProtocolDescriptor context;
     context.character.desc = &context.descriptor;
-    set_location(&context.character, 0); // the ordinary case: a valid, non-negative room
+    set_location(&context.character, NOWHERE);
     enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM });
-
     msdp_room_update_impl(&context.character);
-
-    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->bDirty)
-        << "Expected act_move.cpp:566's converted location_of(ch) >= 0 guard to return before "
-           "any MSDPSet* call, exactly as the pre-conversion ch->in_room >= 0 guard did, for "
-           "every character in an ordinary (non-negative) room.";
+    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->bDirty);
     EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString, "");
 }
 
@@ -2295,6 +2282,464 @@ TEST(ScopedMSDPTestRoomGuard, FailsTheTestWhenAnotherFixtureReplacedTheStringsIt
     // sat on the room, this would be the second free of both pointers.
     std::free(replacement_name);
     std::free(replacement_description);
+}
+
+// --- Regression tests for the "dirty flag dropped while MSDP is off" bug -------------------------
+// MSDP is off by default for new characters; a client may enable it after login. Values dirtied
+// while MSDP was off (notably login-time constants like CHARACTER_NAME) must NOT be marked clean
+// without actually being sent, or they are lost for the session.
+
+TEST(MSDPProtocol, MsdpUpdateKeepsVariableDirtyWhenMsdpIsOff)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ProtocolDescriptor context;
+
+    initialize_msdp_player(&context.character, "Aragorn");
+    REMOVE_BIT(context.character.specials2.pref, PRF_MSDP);
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_CHARACTER_NAME });
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, "Aragorn");
+    ASSERT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+
+    MSDPUpdate(&context.descriptor);
+
+    EXPECT_EQ(context.read_output(), "");
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+}
+
+TEST(MSDPProtocol, MsdpUpdateFlushesValueDirtiedWhileMsdpWasOff)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ProtocolDescriptor context;
+
+    initialize_msdp_player(&context.character, "Aragorn");
+    REMOVE_BIT(context.character.specials2.pref, PRF_MSDP);
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_CHARACTER_NAME });
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, "Aragorn");
+    MSDPUpdate(&context.descriptor);
+    context.read_output();
+
+    SET_BIT(context.character.specials2.pref, PRF_MSDP);
+    MSDPUpdate(&context.descriptor);
+
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("CHARACTER_NAME", "Aragorn"));
+}
+
+TEST(MSDPProtocol, MsdpFlushKeepsVariableDirtyWhenMsdpIsOff)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ProtocolDescriptor context;
+
+    initialize_msdp_player(&context.character, "Aragorn");
+    REMOVE_BIT(context.character.specials2.pref, PRF_MSDP);
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_CHARACTER_NAME });
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, "Aragorn");
+
+    MSDPFlush(&context.descriptor, eMSDP_CHARACTER_NAME);
+
+    EXPECT_EQ(context.read_output(), "");
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+}
+
+TEST(MSDPProtocol, MsdpSendTableKeepsVariableDirtyWhenMsdpIsOff)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ProtocolDescriptor context;
+
+    initialize_msdp_player(&context.character, "Aragorn");
+    REMOVE_BIT(context.character.specials2.pref, PRF_MSDP);
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_ROOM });
+
+    MSDPSendTable(&context.descriptor, eMSDP_ROOM, "contents");
+
+    EXPECT_EQ(context.read_output(), "");
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_ROOM]->bDirty);
+}
+
+TEST(MSDPProtocol, CharsetRequestsLatin1AndAcceptanceDoesNotEnableUtf8)
+{
+    ProtocolDescriptor context;
+    char output[MAX_INPUT_LENGTH] = { };
+    feed_protocol_input(&context.descriptor, telnet_sequence(WILL, TELOPT_CHARSET), output);
+    std::string request = telnet_sequence(SB, TELOPT_CHARSET);
+    request.push_back(1);
+    request += " ISO-8859-1";
+    request.push_back(static_cast<char>(IAC));
+    request.push_back(static_cast<char>(SE));
+    EXPECT_EQ(context.read_output(), telnet_sequence(DO, TELOPT_CHARSET) + request);
+    feed_protocol_input(&context.descriptor, telnet_sequence(WILL, TELOPT_CHARSET), output);
+    EXPECT_EQ(context.read_output(), "");
+    std::string accepted = telnet_sequence(SB, TELOPT_CHARSET);
+    accepted.push_back(2);
+    accepted += "ISO-8859-1";
+    accepted.push_back(static_cast<char>(IAC));
+    accepted.push_back(static_cast<char>(SE));
+    feed_protocol_input(&context.descriptor, accepted, output);
+    EXPECT_EQ(context.descriptor.pProtocol->pVariables[eMSDP_UTF_8]->ValueInt, 0);
+    EXPECT_STREQ(output, "");
+}
+
+TEST(MSDPProtocol, SendPairAndListSanitizeValuesBeforeSerialization)
+{
+    ProtocolDescriptor context;
+    MSDPSendPair(&context.descriptor, "NAME", "A \"B\"\n");
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("NAME", "A \\\"B\\\"\\n"));
+    MSDPSendList(&context.descriptor, "VALUES", "A\n B\t");
+    EXPECT_EQ(context.read_output(), expected_msdp_array_pair("VALUES", { "A\\n", "B\\t" }));
+}
+
+TEST(MSDPProtocol, SendPairRejectsPayloadThatOverflowsOnlyAfterSanitization)
+{
+    ProtocolDescriptor context;
+    const std::string expanding_value(MAX_VARIABLE_LENGTH / 2 + 1, '\n');
+    MSDPSendPair(&context.descriptor, "NAME", expanding_value);
+    EXPECT_EQ(context.read_output(), "");
+}
+
+TEST(MSDPProtocol, DefaultMsdpNegotiationStoresServerIdForLaterExplicitSend)
+{
+    ProtocolDescriptor context;
+    char output[MAX_INPUT_LENGTH] = { };
+    ASSERT_TRUE(context.descriptor.pProtocol->bMSDP);
+    feed_protocol_input(&context.descriptor, telnet_sequence(DO, TELOPT_MSDP), output);
+    context.read_output();
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_SERVER_ID]->pValueString, MUD_NAME);
+    feed_msdp_command(&context.descriptor, "SEND", "SERVER_ID");
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("SERVER_ID", MUD_NAME));
+}
+
+TEST(MSDPProtocol, InitiallyZeroServerValueIsSentOnceWithoutChanging)
+{
+    ProtocolDescriptor context;
+    for (int variable = eMSDP_NONE + 1; variable < eMSDP_MAX; ++variable) {
+        context.descriptor.pProtocol->pVariables[variable]->bReport = variable == eMSDP_ALIGNMENT;
+    }
+    MSDPSetNumber(&context.descriptor, eMSDP_ALIGNMENT, 0);
+    MSDPUpdate(&context.descriptor);
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("ALIGNMENT", "0"));
+    MSDPUpdate(&context.descriptor);
+    EXPECT_EQ(context.read_output(), "");
+}
+
+TEST(MSDPProtocol, MissingProtocolChannelPreservesDirtyUntilAtcpBecomesAvailable)
+{
+    ProtocolDescriptor context;
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_HEALTH });
+    context.descriptor.pProtocol->bMSDP = false;
+    context.descriptor.pProtocol->bATCP = false;
+    MSDPSetNumber(&context.descriptor, eMSDP_HEALTH, 17);
+    MSDPUpdate(&context.descriptor);
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+    EXPECT_EQ(context.read_output(), "");
+    context.descriptor.pProtocol->bATCP = true;
+    MSDPUpdate(&context.descriptor);
+    EXPECT_EQ(context.read_output(), expected_atcp_pair("HEALTH", "17"));
+    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+}
+
+TEST(MSDPProtocol, PlacedMenuCharacterIsIgnoredUntilPlaying)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor context;
+    initialize_msdp_player(&context.character, "MenuCharacter");
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_CHARACTER_NAME });
+    descriptor_list = &context.descriptor;
+    context.descriptor.connected = CON_SLCT;
+    msdp_update();
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->pValueString, "");
+    EXPECT_EQ(context.read_output(), "");
+    context.descriptor.connected = CON_PLYNG;
+    msdp_update();
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("CHARACTER_NAME", "MenuCharacter"));
+}
+
+TEST(MSDPProtocol, WorldTimeFlushDoesNotRepeatAtNextUpdate)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ProtocolDescriptor context;
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_WORLD_TIME });
+    descriptor_list = &context.descriptor;
+    const int saved_hour = time_info.hours;
+    time_info.hours = 13;
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::world_time);
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("WORLD_TIME", "It is about 1:00 PM on "));
+    MSDPUpdate(&context.descriptor);
+    EXPECT_EQ(context.read_output(), "");
+    time_info.hours = saved_hour;
+}
+TEST(MSDPProtocol, RoomUpdateThroughRealOutputSeamReportsSuppliedActorsRoomOnce)
+{
+    ScopedTestWorld test_world { 2 };
+    ProtocolDescriptor context;
+    context.character.desc = &context.descriptor;
+    set_location(&context.character, 0);
+    char_data descriptor_actor { };
+    set_location(&descriptor_actor, 1);
+    SET_BIT(descriptor_actor.specials2.pref, PRF_MSDP);
+    context.descriptor.character = &descriptor_actor;
+    room_by_id_total(0)->number = 4010;
+    room_by_id_total(1)->number = 4011;
+    room_direction_data north_exit { };
+    north_exit.to_room = 1;
+    room_direction_data negative_exit { };
+    negative_exit.to_room = -2;
+    room_direction_data oversized_exit { };
+    oversized_exit.to_room = top_of_world + 1;
+    room_data* const actor_room = room_by_id_total(0);
+    room_direction_data* const previous_north = actor_room->dir_option[NORTH];
+    room_direction_data* const previous_east = actor_room->dir_option[EAST];
+    room_direction_data* const previous_west = actor_room->dir_option[WEST];
+    actor_room->dir_option[NORTH] = &north_exit;
+    actor_room->dir_option[EAST] = &negative_exit;
+    actor_room->dir_option[WEST] = &oversized_exit;
+    enable_msdp_reports(context.descriptor.pProtocol,
+        { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM, eMSDP_ROOM_EXITS, eMSDP_ROOM });
+    register_game_output_sinks();
+    msdp_room_update(&context.character);
+    const std::string wire = context.read_output();
+    EXPECT_EQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt, 4010);
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString,
+        room_by_id_total(0)->name);
+    EXPECT_NE(std::string(context.descriptor.pProtocol->pVariables[eMSDP_ROOM]->pValueString).find("4010"), std::string::npos);
+    const std::string exits_packet = expected_msdp_array_pair("ROOM_EXITS", { "n" });
+    EXPECT_EQ(wire.find(exits_packet), 0u);
+    EXPECT_EQ(wire.find(exits_packet, exits_packet.size()), std::string::npos);
+    MSDPUpdate(&context.descriptor);
+    EXPECT_EQ(context.read_output(), "");
+    actor_room->dir_option[NORTH] = previous_north;
+    actor_room->dir_option[EAST] = previous_east;
+    actor_room->dir_option[WEST] = previous_west;
+    context.descriptor.character = &context.character;
+}
+
+TEST(MSDPProtocol, RoomUpdateRejectsBothNegativeAndAboveWorldLocations)
+{
+    ScopedTestWorld test_world { 1 };
+    ProtocolDescriptor context;
+    context.character.desc = &context.descriptor;
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM });
+    for (const int invalid_location : { NOWHERE, -2, top_of_world + 1 }) {
+        set_location(&context.character, invalid_location);
+        msdp_room_update_impl(&context.character);
+        EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString, "");
+        EXPECT_EQ(context.read_output(), "");
+    }
+}
+TEST(MSDPProtocol, ProfessionAndSpecializationVariablesAreReportedByTheirWireNames)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor context;
+    initialize_msdp_player(&context.character, "Aragorn");
+    context.character.specials.carry_weight = 2550;
+    context.character.profs->specialization = game_types::PS_Archery;
+    context.character.profs->prof_coof[PROF_WARRIOR] = 144;
+    context.character.profs->prof_coof[PROF_RANGER] = 49;
+    context.character.profs->prof_coof[PROF_CLERIC] = 16;
+    context.character.profs->prof_coof[PROF_MAGE] = 25;
+    disable_all_msdp_reports(context.descriptor.pProtocol);
+    for (const std::string variable : { "CARRIED_WEIGHT", "SPECIALIZATION", "WARRIOR_LEVEL", "WARRIOR_LEVEL_MAX",
+             "RANGER_LEVEL", "RANGER_LEVEL_MAX", "MYSTIC_LEVEL", "MYSTIC_LEVEL_MAX", "MAGE_LEVEL", "MAGE_LEVEL_MAX" }) {
+        feed_msdp_command(&context.descriptor, "REPORT", variable);
+    }
+    context.read_output();
+    descriptor_list = &context.descriptor;
+    msdp_update();
+    const std::string wire = context.read_output();
+    EXPECT_NE(wire.find(expected_msdp_pair("CARRIED_WEIGHT", "2550")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("SPECIALIZATION", "archery")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("WARRIOR_LEVEL", "5")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("WARRIOR_LEVEL_MAX", "36")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("RANGER_LEVEL", "2")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("RANGER_LEVEL_MAX", "21")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("MYSTIC_LEVEL", "3")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("MYSTIC_LEVEL_MAX", "12")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("MAGE_LEVEL", "4")), std::string::npos);
+    EXPECT_NE(wire.find(expected_msdp_pair("MAGE_LEVEL_MAX", "15")), std::string::npos);
+}
+
+TEST(MSDPProtocol, GroupVariableIsListedAndUngroupedPlayerClearsMembers)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor context;
+    initialize_msdp_player(&context.character, "Aragorn");
+    feed_msdp_command(&context.descriptor, "LIST", "REPORTABLE_VARIABLES");
+    EXPECT_TRUE(output_contains_array_value(context.read_output(), "GROUP"));
+    disable_all_msdp_reports(context.descriptor.pProtocol);
+    feed_msdp_command(&context.descriptor, "REPORT", "GROUP");
+    context.read_output();
+    descriptor_list = &context.descriptor;
+    msdp_update();
+    std::string empty_group;
+    empty_group.push_back(static_cast<char>(MSDP_TABLE_OPEN));
+    empty_group += msdp_pair_payload("MEMBERS", "");
+    empty_group.push_back(static_cast<char>(MSDP_ARRAY_OPEN));
+    empty_group.push_back(static_cast<char>(MSDP_ARRAY_CLOSE));
+    empty_group.push_back(static_cast<char>(MSDP_TABLE_CLOSE));
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("GROUP", empty_group));
+}
+TEST(MSDPProtocol, GroupWireIncludesRemoteAndNpcMembersWithSanitizedNames)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor context;
+    ProtocolDescriptor remote_member;
+    ProtocolDescriptor npc_member;
+    initialize_msdp_player(&context.character, "Leader");
+    initialize_msdp_player(&remote_member.character, "Remote");
+    initialize_msdp_player(&npc_member.character, "Npc");
+    SET_BIT(npc_member.character.specials2.act, MOB_ISNPC);
+    npc_member.character.player.short_descr = strdup("orc \"guard\"\n");
+    set_location(&remote_member.character, NOWHERE);
+    set_location(&npc_member.character, NOWHERE);
+    context.character.abilities.hit = 200;
+    context.character.tmpabilities.hit = 150;
+    context.character.abilities.mana = 100;
+    context.character.tmpabilities.mana = 50;
+    context.character.abilities.move = 80;
+    context.character.tmpabilities.move = 20;
+    remote_member.character.abilities.hit = 90;
+    remote_member.character.tmpabilities.hit = 180;
+    remote_member.character.abilities.mana = 120;
+    remote_member.character.tmpabilities.mana = 90;
+    remote_member.character.abilities.move = 100;
+    remote_member.character.tmpabilities.move = 100;
+    npc_member.character.abilities.hit = 40;
+    npc_member.character.tmpabilities.hit = 10;
+    npc_member.character.abilities.mana = 0;
+    npc_member.character.tmpabilities.mana = 10;
+    npc_member.character.abilities.move = 20;
+    npc_member.character.tmpabilities.move = -5;
+    group_data group(&context.character);
+    group.add_member(&remote_member.character);
+    group.add_member(&npc_member.character);
+    disable_all_msdp_reports(context.descriptor.pProtocol);
+    feed_msdp_command(&context.descriptor, "REPORT", "GROUP");
+    context.read_output();
+    descriptor_list = &context.descriptor;
+    msdp_update();
+    const std::string wire = context.read_output();
+    const auto member_table = [](std::string_view name, std::string_view health, std::string_view mana, std::string_view movement) -> std::string {
+        std::string table(1, static_cast<char>(MSDP_TABLE_OPEN));
+        table += msdp_pair_payload("NAME", name);
+        table += msdp_pair_payload("HEALTH", health);
+        table += msdp_pair_payload("MANA", mana);
+        table += msdp_pair_payload("MOVEMENT", movement);
+        table += static_cast<char>(MSDP_TABLE_CLOSE);
+        return table;
+    };
+    const std::string leader_table = member_table("Leader", "75", "50", "25");
+    const std::string remote_table = member_table("Remote", "200", "75", "100");
+    const std::string npc_table = member_table("orc \\\"guard\\\"\\n", "25", "0", "0");
+    ASSERT_NE(wire.find(leader_table), std::string::npos);
+    ASSERT_NE(wire.find(remote_table), std::string::npos);
+    ASSERT_NE(wire.find(npc_table), std::string::npos);
+    EXPECT_LT(wire.find(leader_table), wire.find(remote_table));
+    EXPECT_LT(wire.find(remote_table), wire.find(npc_table));
+    msdp_update();
+    EXPECT_EQ(context.read_output(), "");
+    group.remove_member(&remote_member.character);
+    msdp_update();
+    const std::string changed_wire = context.read_output();
+    EXPECT_EQ(changed_wire.find(remote_table), std::string::npos);
+    EXPECT_NE(changed_wire.find(leader_table), std::string::npos);
+    group.remove_member(&npc_member.character);
+    group.remove_member(&context.character);
+}
+TEST(MSDPProtocol, WeatherChangeLeavesMsdpPublicationToPeriodicUpdate)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor context;
+    initialize_msdp_player(&context.character, "Aragorn");
+    context.descriptor.output = context.descriptor.small_outbuf;
+    context.descriptor.bufspace = SMALL_BUFSIZE - 1;
+    enable_msdp_reports(context.descriptor.pProtocol, { eMDSP_WEATHER });
+    descriptor_list = &context.descriptor;
+    const weather_data previous_weather = weather_info;
+    register_weather_msdp_hook();
+    weather_change();
+    EXPECT_EQ(context.read_output(), "");
+    msdp_update();
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("WEATHER", "You can have no feeling about the weather here."));
+    msdp_update();
+    EXPECT_EQ(context.read_output(), "");
+    weather_info = previous_weather;
+}
+
+TEST(MSDPProtocol, EnablingMsdpThroughSetCommandReprimesOnlyOnAnOffToOnTransition)
+{
+    ProtocolDescriptor context;
+    context.character.desc = &context.descriptor;
+    context.descriptor.output = context.descriptor.small_outbuf;
+    context.descriptor.bufspace = SMALL_BUFSIZE - 1;
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_HEALTH });
+    MSDPSetNumber(&context.descriptor, eMSDP_HEALTH, 17);
+    MSDPUpdate(&context.descriptor);
+    context.read_output();
+    char turn_off[] = "off";
+    char turn_on[] = "on";
+    do_gen_tog(&context.character, turn_off, nullptr, 0, SCMD_MSDP);
+    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+    do_gen_tog(&context.character, turn_on, nullptr, 0, SCMD_MSDP);
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_MANA]->bDirty);
+    MSDPUpdate(&context.descriptor);
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("HEALTH", "17"));
+    do_gen_tog(&context.character, turn_on, nullptr, 0, SCMD_MSDP);
+    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+}
+
+TEST(MSDPProtocol, OverflowAndMissingActorPreserveReportedDirtyValues)
+{
+    ProtocolDescriptor context;
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_CHARACTER_NAME });
+    const std::string oversized(MAX_VARIABLE_LENGTH, 'z');
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, oversized);
+    MSDPUpdate(&context.descriptor);
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+    EXPECT_EQ(context.read_output(), "");
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, "Aragorn");
+    context.descriptor.character = nullptr;
+    MSDPFlush(&context.descriptor, eMSDP_CHARACTER_NAME);
+    EXPECT_TRUE(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+    EXPECT_EQ(context.read_output(), "");
+    context.descriptor.character = &context.character;
+    MSDPFlush(&context.descriptor, eMSDP_CHARACTER_NAME);
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("CHARACTER_NAME", "Aragorn"));
+}
+
+TEST(MSDPProtocol, InvalidSpecializationAndNegativeUrukMageMaximumHaveSafeDisplayValues)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor context;
+    initialize_msdp_player(&context.character, "Uglook");
+    context.character.player.race = RACE_URUK;
+    context.character.profs->prof_coof[PROF_MAGE] = 0;
+    context.character.profs->specialization = static_cast<game_types::player_specs>(game_types::PS_Count + 1);
+    enable_msdp_reports(context.descriptor.pProtocol, { eMDSP_SPECIALIZATION, eMDSP_MAGE_LEVEL_MAX });
+    MSDPSetNumber(&context.descriptor, eMDSP_MAGE_LEVEL_MAX, 17);
+    descriptor_list = &context.descriptor;
+    msdp_update();
+    EXPECT_EQ(context.descriptor.pProtocol->pVariables[eMDSP_MAGE_LEVEL_MAX]->ValueInt, 0);
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMDSP_SPECIALIZATION]->pValueString, "nothing");
+    context.character.profs->specialization = game_types::PS_None;
+    msdp_update();
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMDSP_SPECIALIZATION]->pValueString, "nothing");
+}
+
+TEST(MSDPProtocol, AtcpNegotiationStoresServerIdAndPairSanitizationRetainsFallback)
+{
+    ProtocolDescriptor context;
+    context.descriptor.pProtocol->bMSDP = false;
+    char output[MAX_INPUT_LENGTH] = { };
+    feed_protocol_input(&context.descriptor, telnet_sequence(WILL, TELOPT_ATCP), output);
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_SERVER_ID]->pValueString, MUD_NAME);
+    context.read_output();
+    MSDPSendPair(&context.descriptor, "NAME", "A\tB\\C");
+    EXPECT_EQ(context.read_output(), expected_atcp_pair("NAME", "A\\tB\\\\C"));
 }
 
 } // namespace

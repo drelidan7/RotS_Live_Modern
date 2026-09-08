@@ -198,7 +198,7 @@ set(ROTS_ENTITY_SOURCES
 # ROTS_SERVER_SOURCES below -- verified via `nm -uC` on the built archive,
 # see the rots_persist_linkcheck load-bearing test below.
 set(ROTS_PERSIST_SOURCES
-    persist/account_cache.cpp persist/account_management.cpp persist/boards_json.cpp persist/character_json.cpp
+    persist/account_cache.cpp persist/roster_cache.cpp persist/account_management.cpp persist/boards_json.cpp persist/character_json.cpp
     persist/color_convert.cpp persist/convert_exploits.cpp persist/convert_plrobjs.cpp persist/db_players.cpp
     persist/exploits_json.cpp persist/mail_json.cpp persist/objects_json.cpp persist/obj_files.cpp
     persist/pkill_json.cpp persist/save_benchmark.cpp
@@ -1349,6 +1349,7 @@ if(ROTS_BUILD_TESTS)
     # Explicit list, matching the style above — no file(GLOB).
     set(ROTS_TEST_SOURCES
         tests/account_cache_tests.cpp
+        tests/roster_cache_tests.cpp
         tests/account_management_assets_header_compile.cpp
         tests/account_management_identity_header_compile.cpp
         tests/account_management_migration_header_compile.cpp

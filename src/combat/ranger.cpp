@@ -14,6 +14,8 @@
 #include <format>
 #include <stdio.h>
 #include <string.h>
+#include <utility>
+#include <vector>
 
 #include "comm.h"
 #include "db.h"
@@ -3593,15 +3595,23 @@ void on_windblast_hit(char_data* ch)
         attempt = number(0, NUM_OF_DIRS - 1);
         res = CAN_GO(ch, attempt) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOFLEE) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOWALK);
 
+        int destination_room = NOWHERE;
         if (res) {
-            res = !IS_SET(room_by_id_total(EXIT(ch, attempt)->to_room)->room_flags, DEATH);
+            destination_room = EXIT(ch, attempt)->to_room;
+            res = !IS_SET(room_by_id_total(destination_room)->room_flags, DEATH);
             if (IS_NPC(ch)) {
-                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->sector_type == room_of(ch)->sector_type)));
+                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(destination_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(destination_room)->sector_type == room_of(ch)->sector_type)));
             }
         }
 
         if (res) {
+            const rots::combat::checked_movement transition {
+                GET_ABS_NUM(ch), attempt, location_of(ch), destination_room
+            };
             die = rots::combat::check_simple_move(ch, attempt, &move_cost, SCMD_FLEE);
+            if (!rots::combat::matches_checked_movement(ch, transition)) {
+                return;
+            }
 
             if (!die) {
                 if (ch->specials.fighting) {
@@ -3621,17 +3631,7 @@ void on_windblast_hit(char_data* ch)
                 act("$n gets sweep out from the wave of thunderous force!", FALSE, ch, 0, 0,
                     TO_ROOM);
 
-                // do_move()'s argument is a mutable char*; dirs[] is now a
-                // const string table, so copy the direction name into a
-                // small mutable buffer before passing it (do_move never
-                // writes through argument for the flee path, this is purely
-                // to satisfy the parameter type).
-                {
-                    char flee_dir[16];
-                    strncpy(flee_dir, dirs[attempt].data(), sizeof(flee_dir) - 1);
-                    flee_dir[sizeof(flee_dir) - 1] = '\0';
-                    rots::combat::issue_command(rots::combat::combat_command::move, ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
-                }
+                rots::combat::move_after_validation(ch, transition, SCMD_FLEE);
                 return;
             }
         }
@@ -3645,7 +3645,7 @@ void on_windblast_hit(char_data* ch)
 void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 {
     int dam_value, power_level;
-    struct char_data *tmpch, *tmpch_next;
+    const int caster_number = GET_ABS_NUM(ch);
 
     GET_MANA(ch) -= mana_cost;
     GET_MOVE(ch) -= move_cost;
@@ -3659,22 +3659,40 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 
     send_to_char("Vile black wind eminates from you, slamming into all!\r\n", ch);
 
-    for (tmpch = rots::entity::first_occupant(room_of(ch)); tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via damage)
-        if (tmpch != ch) {
-            if (!rots::entity::dispatch_target_valid(ch, tmpch)) {
+    const int origin = location_of(ch);
+    std::vector<std::pair<int, char_data*>> occupants;
+    room_data* const origin_room = room_of(ch);
+    const auto room_occupants = rots::entity::occupants(origin_room);
+    for (char_data* occupant : room_occupants) {
+        occupants.emplace_back(GET_ABS_NUM(occupant), occupant);
+    }
+    for (const auto& [victim_number, original_victim] : occupants) {
+        if (char_by_abs_number(caster_number) != ch || location_of(ch) != origin) {
+            return;
+        }
+        char_data* victim = char_by_abs_number(victim_number);
+        if (!victim || victim != original_victim || location_of(victim) != origin) {
+            continue;
+        }
+        if (victim != ch) {
+            if (!rots::entity::dispatch_target_valid(ch, victim)) {
                 send_to_char(
                     "You feel the Gods looking down upon you, and protecting your target.\r\n", ch);
                 continue;
             }
 
-            int saved = harad_skill_calculate_save(ch, tmpch, 0);
+            int saved = harad_skill_calculate_save(ch, victim, 0);
             if (saved < 0) {
                 dam_value >>= 1;
-                damage(ch, tmpch, dam_value, SKILL_WINDBLAST, 0);
+                damage(ch, victim, dam_value, SKILL_WINDBLAST, 0);
             } else {
-                on_windblast_hit(tmpch);
-                damage(ch, tmpch, dam_value, SKILL_WINDBLAST, 0);
+                on_windblast_hit(victim);
+                if (char_by_abs_number(caster_number) != ch) {
+                    return;
+                }
+                if (char_by_abs_number(victim_number) == victim) {
+                    damage(ch, victim, dam_value, SKILL_WINDBLAST, 0);
+                }
             }
         }
     }

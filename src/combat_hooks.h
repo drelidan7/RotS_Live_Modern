@@ -530,6 +530,32 @@ using check_simple_move_fn = int (*)(char_data* ch, int cmd, int* mv_cost, int m
 void set_check_simple_move_hook(check_simple_move_fn hook);
 int check_simple_move(char_data* ch, int cmd, int* mv_cost, int mode);
 
+// Identifies one synchronous transition whose before-enter trigger accepted.
+// This carries no entity ownership and must not be retained for a later action.
+struct checked_movement {
+    // Registered identity of the actor that was checked.
+    int actor_number;
+    // Zero-based direction accepted by the probe.
+    int direction;
+    // Actor's origin before the callback-bearing probe.
+    int source_room;
+    // Destination of that exact exit before the probe.
+    int destination_room;
+};
+
+// Returns whether the registered actor and current exit still match the probe.
+// Null, stale, unplaced, invalid-direction and changed-transition inputs refuse.
+bool matches_checked_movement(const char_data* character, const checked_movement& movement);
+
+// Completes the checked move synchronously through the app owner. The caller
+// must just have received success from check_simple_move for this exact tuple;
+// other checks still run, while only the accepted before-enter trigger is reused.
+using checked_move_fn = void (*)(char_data* character, const checked_movement& movement, int mode);
+// Installs the boot-owned checked-move adapter; nullptr restores the safe no-op.
+void set_checked_move_hook(checked_move_fn hook);
+// Refuses stale transitions before dispatch; transfers no ownership or lifetime.
+void move_after_validation(char_data* character, const checked_movement& movement, int mode);
+
 // list_char_to_char() (act_info.cpp:1037) -- mage.cpp's future upward
 // list_char_to_char(world[caster->in_room].people, caster, 0) call sites
 // (mage.cpp:631/:1999, consumer-free this task) are the edge this hook

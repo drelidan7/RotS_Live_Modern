@@ -220,13 +220,25 @@ typedef enum {
     eMDSP_DODGE,
     eMDSP_ATTACK_SPEED,
     eMDSP_TACTIC,
+    eMDSP_SPECIALIZATION, // Player specialization name; "nothing" when unset.
     eMDSP_PERCEPTION,
     eMDSP_WILLPOWER,
     eMDSP_SKILL_ENCUMBRANCE,
     eMDSP_MOVEMENT_ENCUMBRANCE,
+    eMDSP_CARRIED_WEIGHT, // Native hundredths of a pound carried.
+    eMDSP_WARRIOR_LEVEL, // Current profession level.
+    eMDSP_WARRIOR_LEVEL_MAX, // Advancement maximum, floored at zero.
+    eMDSP_RANGER_LEVEL, // Current profession level.
+    eMDSP_RANGER_LEVEL_MAX, // Advancement maximum, floored at zero.
+    eMDSP_MYSTIC_LEVEL, // Current profession level.
+    eMDSP_MYSTIC_LEVEL_MAX, // Advancement maximum, floored at zero.
+    eMDSP_MAGE_LEVEL, // Current profession level.
+    eMDSP_MAGE_LEVEL_MAX, // Advancement maximum, floored at zero.
     eMDSP_HEALTH_REGENERATION,
     eMDSP_STAMINA_REGENERATION,
     eMDSP_MOVEMENT_REGENERATION,
+
+    eMSDP_GROUP, // Ordered MEMBERS table of names and vital percentages.
 
     /* Combat */
     eMSDP_OPPONENT_HEALTH,
@@ -513,7 +525,12 @@ void MSDPFlush(descriptor_t* apDescriptor, variable_t aMSDP);
  * need to do this manually, except perhaps when debugging something.  This
  * will automatically use ATCP instead if MSDP is not supported by the client.
  */
-void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP);
+// Returns true when an eligible packet is handed to the protocol writer. This
+// is not transport acknowledgement: partial-frame retries are not supported.
+bool MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP);
+
+// Requests a fresh snapshot of all subscribed variables on the next eligible update.
+void MSDPMarkAllReportedDirty(descriptor_t* descriptor);
 
 // Registers protocol.cpp's real broadcast_weather_msdp_update() as
 // world_hooks.h's weather-MSDP hook (world-seed Task 3): the former

@@ -35,24 +35,49 @@ std::string format_account_timestamp(long timestamp)
 
 } // namespace
 
-std::string format_account_character_prompt(std::string_view root_directory, const AccountData& account)
+std::string format_account_character_prompt(std::string_view root_directory,
+    const AccountData& account, RosterSort sort, RosterFilter filter)
 {
     std::string output;
     output.append("\n\rLinked characters for your account:\n\r");
-    output.append(format_account_character_short_roster(root_directory, account));
-    output.append("\n\r0) Back to Account Menu.\n\r");
-    output.append("\n\rCharacter number: ");
+    output.append(format_account_character_short_roster(root_directory, account, sort, filter));
+    output.append("\n\rSort: (A)-Z  (L)evel  ra(C)e  (S)ide      Show only: (W)arrior (R)anger (T)mystic (M)age\n\r");
+    output.append("0) Back to Account Menu.\n\r");
+    output.append("\n\rCharacter number or name: ");
     return output;
 }
 
-std::string format_account_character_list(std::string_view root_directory, const AccountData& account)
+std::string format_account_character_list(std::string_view root_directory,
+    const AccountData& account, RosterSort sort)
 {
     if (account.characters.empty())
         return "\n\rNo linked characters yet.\n\r";
 
     std::string output;
     output.append("\n\rLinked characters:\n\r");
-    output.append(format_account_character_short_roster(root_directory, account));
+    output.append(format_account_character_short_roster(root_directory, account, sort, RosterFilter::None));
+    return output;
+}
+
+std::string format_account_login_failure_notice(const AccountData& account)
+{
+    if (account.failed_login_count <= 0) {
+        return { };
+    }
+    std::string_view plural_suffix = "S";
+    if (account.failed_login_count == 1) {
+        plural_suffix = "";
+    }
+    std::string output = std::format("\n\r{} FAILED LOGIN ATTEMPT{} SINCE YOUR LAST SUCCESSFUL LOGIN.\n\r",
+        account.failed_login_count, plural_suffix);
+    if (account.failed_login_last_at > 0) {
+        const std::string timestamp = format_account_timestamp(account.failed_login_last_at);
+        std::format_to(std::back_inserter(output), "Most recent: {}", timestamp);
+        if (!account.failed_login_last_host.empty()) {
+            std::format_to(std::back_inserter(output), " from {}", account.failed_login_last_host);
+        }
+        output.append("\n\r");
+    }
     return output;
 }
 

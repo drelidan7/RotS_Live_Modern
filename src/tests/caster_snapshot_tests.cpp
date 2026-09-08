@@ -538,3 +538,17 @@ TEST(RoomAffectCaster, TheTwoArgumentFormRecordsNobody) {
     EXPECT_TRUE(recorded->is_none());
     affect_remove_room(room, room_affected_by_spell(room, SPELL_HAZE));
 }
+
+TEST(CharacterRegistry, InvalidRemovalPreservesValidEntries)
+{
+    char_data character { };
+    constexpr int registered_number = 7903;
+    set_char_exists(registered_number, &character);
+    remove_char_exists(-1);
+    remove_char_exists(MAX_CHARACTERS);
+    EXPECT_EQ(char_by_abs_number(registered_number), &character);
+    EXPECT_TRUE(char_exists(registered_number));
+    remove_char_exists(registered_number);
+    EXPECT_EQ(char_by_abs_number(registered_number), nullptr);
+    EXPECT_FALSE(char_exists(registered_number));
+}

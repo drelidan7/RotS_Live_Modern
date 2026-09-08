@@ -1375,8 +1375,8 @@ TEST_F(MageProcTest, SummonMovesAWillingPlayerVictimToTheCastersRoom) {
     context.caster.desc = &caster_descriptor;
 
     // new_saves_spell(): DC = 10 + 0 (mage prof) + (20-8)/4 = 13; save value
-    // = (20-8)/4 + save_bonus 4 (the same-zone XOR distance term) = 7; a
-    // minimum roll of 1 gives 8 > 13 false, so the victim fails to save.
+    // = (20-8)/4 + save_bonus 0 (same-zone distance) = 3; a
+    // minimum roll of 1 gives 4 > 13 false, so the victim fails to save.
     push_test_random_value(0.0);
 
     spell_summon(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
@@ -1392,4 +1392,49 @@ TEST_F(MageProcTest, SummonMovesAWillingPlayerVictimToTheCastersRoom) {
     // world's occupant chains before they go out of scope.
     detach_char_from_room(&context.victim);
     detach_char_from_room(&context.caster);
+}
+
+// Equal zones must contribute zero; positive and negative deltas use the same
+// squared metric. A roll of 8 separates zero from the former XOR result 4.
+TEST_F(MageProcTest, SummonSavingThrowUsesSquaredZoneDistance)
+{
+    struct Scenario {
+        // Caster zone coordinates relative to the victim at the origin.
+        int horizontal;
+        int vertical;
+        // Expected destination after the fixed roll of 8.
+        int destination;
+    };
+    const Scenario scenarios[] = { { 0, 0, 7 }, { 2, 2, 8 }, { -2, -2, 8 } };
+    for (const Scenario& scenario : scenarios) {
+        SCOPED_TRACE(::testing::Message() << scenario.horizontal << "," << scenario.vertical);
+        MageTestContext context;
+        context.victim.player.name = context.victim_short_descr;
+        ScopedZoneTableOwner zone_owner;
+        zone_data distance_zones[2] { };
+        zone_table = distance_zones;
+        top_of_zone_table = 2;
+        room_data* caster_room = room_by_id_total(7);
+        room_data* victim_room = room_by_id_total(8);
+        const int previous_caster_zone = caster_room->zone;
+        const int previous_victim_zone = victim_room->zone;
+        caster_room->zone = 0;
+        victim_room->zone = 1;
+        zone_table[0].x = scenario.horizontal;
+        zone_table[0].y = scenario.vertical;
+        zone_table[1].x = 0;
+        zone_table[1].y = 0;
+        register_char_from_room_hook();
+        char_to_room(&context.caster, 7);
+        char_to_room(&context.victim, 8);
+        push_test_random_value(0.35);
+
+        spell_summon(&context.caster, nullptr, 0, &context.victim, nullptr, 0, 0);
+
+        EXPECT_EQ(location_of(&context.victim), scenario.destination);
+        detach_char_from_room(&context.victim);
+        detach_char_from_room(&context.caster);
+        caster_room->zone = previous_caster_zone;
+        victim_room->zone = previous_victim_zone;
+    }
 }

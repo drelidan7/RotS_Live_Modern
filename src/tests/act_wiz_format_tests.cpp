@@ -3464,3 +3464,20 @@ TEST(ActWizComm,
         "Gandalf wiznets 'The council convenes.'\n\r");
     EXPECT_EQ(std::string(actor_descriptor.output), "Ok.\n\r");
 }
+
+TEST(ActWizPlayerAdmin, DoWizsetMatchesObWithoutCaseSensitivity)
+{
+    RoomPairContext context;
+    context.actor.player.level = LEVEL_IMPL;
+    SET_BIT(context.victim.specials2.act, MOB_ISNPC);
+    context.victim.player.short_descr = const_cast<char*>("Legolas");
+    char lower_case[] = "Legolas ob 73";
+    do_wizset(&context.actor, lower_case, nullptr, 0, 0);
+    EXPECT_EQ(SET_OB(&context.victim), 73);
+    char upper_case[] = "Legolas OB 81";
+    do_wizset(&context.actor, upper_case, nullptr, 0, 0);
+    EXPECT_EQ(SET_OB(&context.victim), 81);
+    char mixed_case[] = "Legolas oB 92";
+    do_wizset(&context.actor, mixed_case, nullptr, 0, 0);
+    EXPECT_EQ(SET_OB(&context.victim), 92);
+}

@@ -1,8 +1,10 @@
 #include "../comm.h"
+#include "../comm_testing.h"
+#include "../protocol.h"
 #include "../rots_net.h"
 #include "rots/core/character.h"
-#include "rots/core/room.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "test_char_cleanup.h"
 #include "test_placement.h"
@@ -10,12 +12,15 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstring>
 #include <format>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 #if defined(PREDEF_PLATFORM_LINUX)
 #include <sys/socket.h>
@@ -23,6 +28,10 @@
 
 extern descriptor_data* descriptor_list;
 void show_string(descriptor_data* descriptor, char* input);
+int process_output(descriptor_data* descriptor);
+int process_input(descriptor_data* descriptor);
+int get_from_q(txt_q* queue, char* destination);
+extern int iCommands;
 
 namespace {
 
@@ -396,3 +405,328 @@ TEST(CommOutput, SendToCharAcceptsAViewForACharacterId)
 
     EXPECT_STREQ(context.descriptor.output, "message");
 }
+
+#if defined(PREDEF_PLATFORM_LINUX)
+namespace {
+
+// Saturates a nonblocking socket so the next write deterministically sends no bytes.
+void fill_socket_send_buffer(SocketType socket_handle)
+{
+    rots_net::set_nonblocking(socket_handle);
+    const std::string filler(8192, 'x');
+    for (;;) {
+        const auto written = rots_net::write_socket(socket_handle, filler.data(), filler.size());
+        if (written < 0) {
+            ASSERT_TRUE(rots_net::error_is_would_block(rots_net::last_error()));
+            return;
+        }
+        ASSERT_GT(written, 0);
+    }
+}
+
+TEST(CommOutput, ZeroByteWouldBlockIsDeferredInsteadOfFatal)
+{
+    LocalSocketPair sockets;
+    fill_socket_send_buffer(sockets.writer);
+    EXPECT_EQ(write_to_descriptor(sockets.writer, "queued game output"), -2);
+}
+
+TEST(CommOutput, DeferredFlushRetainsSmallOutputForRetry)
+{
+    LocalSocketPair sockets;
+    ConnectedCharacterContext context;
+    context.descriptor.descriptor = sockets.writer;
+    context.descriptor.connected = CON_SLCT;
+    write_to_output("queued game output", &context.descriptor);
+    ASSERT_STREQ(context.descriptor.output, "queued game output");
+    const int original_space = context.descriptor.bufspace;
+    const int original_length = context.descriptor.bufptr;
+    fill_socket_send_buffer(sockets.writer);
+    EXPECT_EQ(process_output(&context.descriptor), 0);
+    EXPECT_EQ(context.descriptor.output, context.descriptor.small_outbuf);
+    EXPECT_STREQ(context.descriptor.output, "queued game output");
+    EXPECT_EQ(context.descriptor.bufspace, original_space);
+    EXPECT_EQ(context.descriptor.bufptr, original_length);
+
+    rots_net::set_nonblocking(sockets.reader);
+    char drain[8192];
+    while (rots_net::read_socket(sockets.reader, drain, sizeof(drain)) > 0) {
+    }
+    EXPECT_EQ(process_output(&context.descriptor), 1);
+    const auto received = rots_net::read_socket(sockets.reader, drain, sizeof(drain));
+    ASSERT_GT(received, 0);
+    EXPECT_EQ(std::string(drain, static_cast<size_t>(received)), "queued game output");
+    EXPECT_STREQ(context.descriptor.output, "");
+    EXPECT_EQ(context.descriptor.bufptr, 0);
+}
+
+TEST(CommOutput, DeferredFlushRetainsLargeOutputOwnershipForRetry)
+{
+    LocalSocketPair sockets;
+    ConnectedCharacterContext context;
+    context.descriptor.descriptor = sockets.writer;
+    context.descriptor.connected = CON_SLCT;
+    const std::string long_output(SMALL_BUFSIZE + 50, 'z');
+    write_to_output(long_output, &context.descriptor);
+    ASSERT_NE(context.descriptor.large_outbuf, nullptr);
+    auto* const original_large_buffer = context.descriptor.large_outbuf;
+    char* const original_output = context.descriptor.output;
+    const int original_space = context.descriptor.bufspace;
+    const int original_length = context.descriptor.bufptr;
+    fill_socket_send_buffer(sockets.writer);
+    EXPECT_EQ(process_output(&context.descriptor), 0);
+    EXPECT_EQ(context.descriptor.large_outbuf, original_large_buffer);
+    EXPECT_EQ(context.descriptor.output, original_output);
+    EXPECT_EQ(std::string(context.descriptor.output), long_output);
+    EXPECT_EQ(context.descriptor.bufspace, original_space);
+    EXPECT_EQ(context.descriptor.bufptr, original_length);
+    rots_net::set_nonblocking(sockets.reader);
+    char drain[8192];
+    while (rots_net::read_socket(sockets.reader, drain, sizeof(drain)) > 0) {
+    }
+    EXPECT_EQ(process_output(&context.descriptor), 1);
+    EXPECT_EQ(context.descriptor.large_outbuf, nullptr);
+}
+
+} // namespace
+#endif
+
+namespace {
+
+// Owns deterministic write outcomes and restores the borrowed I/O callback at scope exit.
+class ScopedScriptedWrites {
+public:
+    ScopedScriptedWrites()
+        : previous_(comm_testing::set_socket_write_override(write_bytes))
+    {
+        active_ = this;
+    }
+    ~ScopedScriptedWrites()
+    {
+        comm_testing::set_socket_write_override(previous_);
+        active_ = nullptr;
+    }
+    // Ordered byte counts; a negative count means a zero-byte would-block outcome.
+    std::vector<rots_net::ssize_type> outcomes;
+    // Exact bytes accepted before a deferred/fatal outcome.
+    std::string accepted;
+    // Number of write attempts, including failed attempts.
+    size_t calls = 0;
+
+private:
+    static rots_net::ssize_type write_bytes(SocketType, const void* bytes, size_t length)
+    {
+        const auto call_index = active_->calls++;
+        auto result = static_cast<rots_net::ssize_type>(length);
+        if (call_index < active_->outcomes.size()) {
+            result = active_->outcomes[call_index];
+        }
+        if (result < 0) {
+#if defined(_WIN32)
+            WSASetLastError(WSAEWOULDBLOCK);
+#else
+            errno = EWOULDBLOCK;
+#endif
+            return -1;
+        }
+        result = std::min(result, static_cast<rots_net::ssize_type>(length));
+        active_->accepted.append(static_cast<const char*>(bytes), static_cast<size_t>(result));
+        return result;
+    }
+    // Restores any enclosing test's override; this fixture is used without nesting.
+    comm_testing::socket_write_fn previous_;
+    // Borrows the single synchronous writer fixture while its override is installed.
+    static ScopedScriptedWrites* active_;
+};
+ScopedScriptedWrites* ScopedScriptedWrites::active_ = nullptr;
+
+TEST(CommOutput, PartialWriteThenWouldBlockRemainsFatalWithoutWholeBufferRetry)
+{
+    ScopedScriptedWrites writes;
+    writes.outcomes = { 3, -1 };
+    EXPECT_EQ(write_to_descriptor(42, "abcdef"), -1);
+    EXPECT_EQ(writes.accepted, "abc");
+    EXPECT_EQ(writes.calls, 2u);
+}
+
+TEST(CommOutput, PendingBarePromptSurvivesDeferredFlushThenBreaksExactlyOnce)
+{
+    ScopedScriptedWrites writes;
+    writes.outcomes = { -1 };
+    ConnectedCharacterContext context;
+    context.descriptor.descriptor = 42;
+    context.descriptor.connected = CON_SLCT;
+    context.descriptor.prompt_mode = 1;
+    context.descriptor.bare_prompt_pending = true;
+    write_to_output("room text", &context.descriptor);
+    ASSERT_STREQ(context.descriptor.output, "room text");
+    EXPECT_EQ(comm_testing::flush_pending_output(&context.descriptor, true), 0);
+    EXPECT_EQ(context.descriptor.prompt_mode, 0);
+    EXPECT_TRUE(context.descriptor.bare_prompt_pending);
+    EXPECT_TRUE(writes.accepted.empty());
+    EXPECT_EQ(comm_testing::flush_pending_output(&context.descriptor, true), 1);
+    EXPECT_EQ(writes.accepted, "\n\rroom text");
+    EXPECT_FALSE(context.descriptor.bare_prompt_pending);
+    EXPECT_EQ(context.descriptor.prompt_mode, 1);
+}
+
+TEST(CommOutput, UnwritableQueuedOutputSuppressesPromptUntilFlushed)
+{
+    ScopedScriptedWrites writes;
+    ConnectedCharacterContext context;
+    context.descriptor.descriptor = 42;
+    context.descriptor.prompt_mode = 1;
+    send_to_char("room text", &context.character);
+    EXPECT_EQ(comm_testing::flush_pending_output(&context.descriptor, false), 0);
+    comm_testing::write_prompt(&context.descriptor);
+    EXPECT_EQ(writes.calls, 0u);
+    EXPECT_STREQ(context.descriptor.output, "room text");
+    EXPECT_EQ(context.descriptor.prompt_mode, 0);
+    EXPECT_EQ(comm_testing::flush_pending_output(&context.descriptor, true), 1);
+    comm_testing::write_prompt(&context.descriptor);
+    EXPECT_EQ(writes.accepted, "room text\n\r>");
+    EXPECT_TRUE(context.descriptor.bare_prompt_pending);
+}
+
+TEST(CommOutput, EditorPagerAndNormalPromptsMarkOnlySuccessfulWrites)
+{
+    for (const int prompt_kind : { 0, 1, 2 }) {
+        ScopedScriptedWrites writes;
+        writes.outcomes = { -1 };
+        ConnectedCharacterContext context;
+        context.descriptor.descriptor = 42;
+        context.descriptor.prompt_mode = 1;
+        char page[] = "more";
+        if (prompt_kind == 0) {
+            SET_BIT(context.character.specials2.act, PLR_WRITING);
+        } else if (prompt_kind == 1) {
+            context.descriptor.showstr_point = page;
+        }
+        comm_testing::write_prompt(&context.descriptor);
+        EXPECT_FALSE(context.descriptor.bare_prompt_pending) << prompt_kind;
+        EXPECT_TRUE(writes.accepted.empty());
+        context.descriptor.prompt_mode = 1;
+        comm_testing::write_prompt(&context.descriptor);
+        EXPECT_TRUE(context.descriptor.bare_prompt_pending) << prompt_kind;
+        EXPECT_FALSE(writes.accepted.empty());
+    }
+}
+
+TEST(CommOutput, EmptyOrInvalidPromptWritesNeverClaimABarePromptReachedTheSocket)
+{
+    ScopedScriptedWrites writes;
+    ConnectedCharacterContext context;
+    context.descriptor.descriptor = 42;
+    comm_testing::write_bare_prompt(&context.descriptor, "");
+    comm_testing::write_bare_prompt(&context.descriptor, std::string_view("\0ignored", 8));
+    context.descriptor.descriptor = 0;
+    comm_testing::write_bare_prompt(&context.descriptor, ">");
+    context.descriptor.descriptor = rots_net::kInvalidSocket;
+    comm_testing::write_bare_prompt(&context.descriptor, ">");
+    EXPECT_FALSE(context.descriptor.bare_prompt_pending);
+    EXPECT_EQ(writes.calls, 0u);
+}
+
+} // namespace
+
+namespace {
+
+// Supplies bounded read fragments without depending on TCP packet coalescing.
+class ScopedScriptedReads {
+public:
+    ScopedScriptedReads()
+        : previous_(comm_testing::set_socket_read_override(read_bytes))
+        , previous_command_count_(iCommands)
+    {
+        active_ = this;
+        iCommands = 0;
+    }
+    ~ScopedScriptedReads()
+    {
+        comm_testing::set_socket_read_override(previous_);
+        active_ = nullptr;
+        iCommands = previous_command_count_;
+    }
+    // Each entry is one read result; empty entries represent orderly EOF.
+    std::vector<std::string> chunks;
+    // Number of attempted reads, including the final would-block.
+    size_t calls = 0;
+
+private:
+    static rots_net::ssize_type read_bytes(SocketType, void* buffer, size_t capacity)
+    {
+        const auto chunk_index = active_->calls++;
+        if (chunk_index >= active_->chunks.size()) {
+#if defined(_WIN32)
+            WSASetLastError(WSAEWOULDBLOCK);
+#else
+            errno = EWOULDBLOCK;
+#endif
+            return -1;
+        }
+        const std::string_view chunk = active_->chunks[chunk_index];
+        EXPECT_LE(chunk.size(), capacity);
+        const size_t count = std::min(chunk.size(), capacity);
+        std::memcpy(buffer, chunk.data(), count);
+        return static_cast<rots_net::ssize_type>(count);
+    }
+    // Restores the prior test callback when the fixture leaves scope.
+    comm_testing::socket_read_fn previous_;
+    // Avoids the unrelated command-log rotation threshold while processing fixture input.
+    int previous_command_count_;
+    // Borrows the active fixture only during its synchronous callback lifetime.
+    static ScopedScriptedReads* active_;
+};
+ScopedScriptedReads* ScopedScriptedReads::active_ = nullptr;
+
+TEST(CommOutput, ReadQuotaRetainsPartialLineForNextPulse)
+{
+    ScopedScriptedReads reads;
+    reads.chunks = { "a", "b", "c", "d", "e", "f", "g", "h", "\r\n" };
+    descriptor_data descriptor { };
+    descriptor.descriptor = 42;
+    descriptor.connected = CON_NME;
+    EXPECT_EQ(process_input(&descriptor), 0);
+    EXPECT_EQ(reads.calls, 8u);
+    EXPECT_STREQ(descriptor.buf, "abcdefgh");
+    EXPECT_EQ(descriptor.input.head, nullptr);
+    EXPECT_EQ(process_input(&descriptor), 1);
+    char command[MAX_INPUT_LENGTH] = { };
+    EXPECT_EQ(get_from_q(&descriptor.input, command), 1);
+    EXPECT_STREQ(command, "abcdefgh");
+    EXPECT_STREQ(descriptor.buf, "");
+}
+
+TEST(CommOutput, NegotiationOnlyReadsConsumeQuotaWithoutInspectingAnEmptyTextTail)
+{
+    ScopedScriptedReads reads;
+    const std::string negotiation { static_cast<char>(255), static_cast<char>(252), 1 };
+    reads.chunks.assign(9, negotiation);
+    descriptor_data descriptor { };
+    descriptor.descriptor = 42;
+    descriptor.connected = CON_NME;
+    descriptor.pProtocol = ProtocolCreate();
+    EXPECT_EQ(process_input(&descriptor), 0);
+    EXPECT_EQ(reads.calls, 8u);
+    EXPECT_STREQ(descriptor.buf, "");
+    EXPECT_EQ(process_input(&descriptor), 0);
+    EXPECT_EQ(reads.calls, 10u);
+    EXPECT_STREQ(descriptor.buf, "");
+    ProtocolDestroy(descriptor.pProtocol);
+}
+
+TEST(CommOutput, ScriptedInputEofIsFatalAndWouldBlockRetainsPartialText)
+{
+    ScopedScriptedReads reads;
+    descriptor_data descriptor { };
+    descriptor.descriptor = 42;
+    descriptor.connected = CON_NME;
+    std::strcpy(descriptor.buf, "partial");
+    EXPECT_EQ(process_input(&descriptor), 0);
+    EXPECT_STREQ(descriptor.buf, "partial");
+    reads.chunks = { "unused", "" };
+    EXPECT_EQ(process_input(&descriptor), -1);
+    EXPECT_STREQ(descriptor.buf, "partial");
+}
+
+} // namespace

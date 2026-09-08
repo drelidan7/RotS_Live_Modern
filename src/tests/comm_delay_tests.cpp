@@ -242,3 +242,137 @@ TEST(CommDelay, GetFromTxtBlockPoolReachesTheRealSinkWhenRegistered)
 
     put_to_txt_block_pool(block);
 }
+
+namespace {
+
+// Counts completion and abort dispatches while testing reentrant delay replacement.
+int replacement_completion_count = 0;
+int replacement_abort_count = 0;
+
+void queue_replacement_delay(char_data* character)
+{
+    ++replacement_completion_count;
+    character->delay.wait_value = 0;
+    WAIT_STATE_FULL(character, 17, 23, 29, 31, 37, 41, character,
+        AFF_WAITWHEEL, TARGET_CHAR);
+}
+
+void finish_without_replacement(char_data* character)
+{
+    ++replacement_completion_count;
+    character->delay.wait_value = 0;
+}
+
+void record_delay_abort(char_data*)
+{
+    ++replacement_abort_count;
+}
+
+void request_incoming_delay(char_data* character, bool full)
+{
+    if (full) {
+        WAIT_STATE_FULL(character, 5, 6, 7, 80, 9, 10, nullptr,
+            AFF_WAITING, TARGET_IGNORE);
+    } else {
+        WAIT_STATE_BRIEF(character, 5, 6, 7, 80, AFF_WAITING);
+    }
+}
+
+} // namespace
+
+TEST(CommDelay, BothWaitMacrosPreserveTheDelayQueuedDuringCompletion)
+{
+    for (const bool full : { false, true }) {
+        SCOPED_TRACE(full);
+        ScopedOutputSinks restore_sinks;
+        ScopedWaitingListReset restore_waiting;
+        rots::output::Sinks sinks { };
+        sinks.complete_delay = queue_replacement_delay;
+        sinks.abort_delay = record_delay_abort;
+        rots::output::set_sinks(sinks);
+        replacement_completion_count = 0;
+        replacement_abort_count = 0;
+        char_data character { };
+        char_data other_waiter { };
+        character.delay.wait_value = 3;
+        character.delay.priority = 10;
+        character.delay.next = &other_waiter;
+        waiting_list = &character;
+
+        request_incoming_delay(&character, full);
+
+        EXPECT_EQ(replacement_completion_count, 1);
+        EXPECT_EQ(replacement_abort_count, 0);
+        EXPECT_EQ(character.delay.wait_value, 17);
+        EXPECT_EQ(character.delay.cmd, 23);
+        EXPECT_EQ(character.delay.subcmd, 29);
+        EXPECT_EQ(character.delay.priority, 31);
+        EXPECT_EQ(character.delay.flg, 37);
+        EXPECT_EQ(character.delay.targ1.ch_num, 41);
+        EXPECT_EQ(character.delay.targ1.ptr.ch, &character);
+        EXPECT_EQ(character.delay.targ1.type, TARGET_CHAR);
+        EXPECT_EQ(character.delay.targ2.type, TARGET_IGNORE);
+        EXPECT_TRUE(IS_AFFECTED(&character, AFF_WAITWHEEL));
+        EXPECT_FALSE(IS_AFFECTED(&character, AFF_WAITING));
+        EXPECT_EQ(waiting_list, &other_waiter);
+        EXPECT_EQ(other_waiter.delay.next, &character);
+        EXPECT_EQ(character.delay.next, nullptr);
+    }
+}
+
+TEST(CommDelay, BothWaitMacrosReplaceACompletedDelayThatQueuesNothing)
+{
+    for (const bool full : { false, true }) {
+        ScopedOutputSinks restore_sinks;
+        ScopedWaitingListReset restore_waiting;
+        rots::output::Sinks sinks { };
+        sinks.complete_delay = finish_without_replacement;
+        sinks.abort_delay = record_delay_abort;
+        rots::output::set_sinks(sinks);
+        replacement_completion_count = 0;
+        replacement_abort_count = 0;
+        char_data character { };
+        character.delay.wait_value = 3;
+        character.delay.priority = 10;
+
+        request_incoming_delay(&character, full);
+
+        EXPECT_EQ(replacement_completion_count, 1);
+        EXPECT_EQ(replacement_abort_count, 1);
+        EXPECT_EQ(character.delay.wait_value, 5);
+        EXPECT_EQ(character.delay.cmd, 6);
+        EXPECT_EQ(character.delay.subcmd, 7);
+        EXPECT_EQ(character.delay.priority, 80);
+        EXPECT_EQ(waiting_list, &character);
+    }
+}
+
+TEST(CommDelay, BothWaitMacrosPreserveHigherPriorityAndInstallIntoEmptySlots)
+{
+    for (const bool full : { false, true }) {
+        ScopedOutputSinks restore_sinks;
+        ScopedWaitingListReset restore_waiting;
+        rots::output::Sinks sinks { };
+        sinks.complete_delay = queue_replacement_delay;
+        sinks.abort_delay = record_delay_abort;
+        rots::output::set_sinks(sinks);
+        replacement_completion_count = 0;
+        replacement_abort_count = 0;
+        char_data character { };
+        character.delay.wait_value = 3;
+        character.delay.priority = 90;
+        request_incoming_delay(&character, full);
+        EXPECT_EQ(character.delay.wait_value, 3);
+        EXPECT_EQ(character.delay.priority, 90);
+        EXPECT_EQ(replacement_completion_count, 0);
+        EXPECT_EQ(replacement_abort_count, 0);
+
+        character.delay.wait_value = 0;
+        request_incoming_delay(&character, full);
+        EXPECT_EQ(character.delay.wait_value, 5);
+        EXPECT_EQ(character.delay.cmd, 6);
+        EXPECT_EQ(waiting_list, &character);
+        EXPECT_EQ(replacement_completion_count, 0);
+        EXPECT_EQ(replacement_abort_count, 0);
+    }
+}

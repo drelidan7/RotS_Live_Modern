@@ -620,6 +620,33 @@ struct char_data* resolve_poisoner(const struct char_data& victim);
 // entity_lifecycle.cpp:2724-2725 (affect_remove(), when the last SPELL_POISON
 // affect goes), and sets it nowhere.
 void record_poison_origin(struct char_data* victim, struct char_data* poisoner);
+// Selects the penalty policy independently of the character credited with a death.
+enum class death_punishment {
+    legacy, // Preserve the historical killer-based policy for other death causes.
+    mob_death, // Apply full mob XP loss and harsh stat penalties.
+    player_death, // Apply the gentle player-death penalty and the baseline XP tenth.
+};
+
+// True for an NPC acting for itself; null, players, pets and orcfriends return false.
+bool is_real_mob(const char_data* character);
+// Only PC SPELL_POISON deaths override legacy policy, based on real-mob engagement.
+death_punishment classify_pc_death(int attack_type, bool engaged_with_real_mob);
+// Finds either engagement direction, preferring the victim's captured outgoing target.
+// All inputs and combat-list members must still be live; visibility does not matter.
+char_data* find_engaged_real_mob(char_data* victim, char_data* engaged_opponent);
+// Selects full mob XP loss in addition to the unconditional baseline tenth.
+bool death_takes_full_mob_xp_loss(const char_data* killer, death_punishment punishment);
+// Selects gentle rather than harsh stat penalties under the supplied policy.
+bool death_counts_as_player_kill(const char_data* killer, death_punishment punishment);
+// Selects the real mob named by MOBDEATH, or null if the policy suppresses that record.
+// A real-mob killer takes precedence over the engaged mob for mob_death policy.
+char_data* mobdeath_record_mob(char_data* killer, char_data* engaged_mob,
+    death_punishment punishment);
+// Applies death handling with an explicit penalty policy; the three-argument entry
+// point retains legacy killer-based penalties for direct callers.
+void raw_kill(char_data* dead_man, char_data* killer, int attack_type,
+    death_punishment punishment);
+
 int check_sanctuary(char_data* ch, char_data* victim);
 // Registers fight.cpp's poison_removal_hook_impl() as entity_hooks.h's
 // poison-removal notification. Called once from run_the_game(), before

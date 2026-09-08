@@ -64,6 +64,11 @@ int close_socket(SocketType socket_handle);
 // made nonblocking is not a state the single-threaded select() loop can run in.
 void set_nonblocking(SocketType socket_handle);
 
+// Enables low-latency TCP writes / dead-peer probes. Failure leaves the socket
+// open and preserves the OS error for the accepting connection's diagnostic.
+bool set_tcp_nodelay(SocketType socket_handle);
+bool set_keepalive(SocketType socket_handle);
+
 // ::read/::write vs Winsock ::recv/::send (Windows cannot read()/write() a
 // SOCKET handle). Signatures mirror POSIX read/write; return value mirrors
 // ssize_t (bytes transferred, 0 on orderly EOF, -1 on error with last_error()

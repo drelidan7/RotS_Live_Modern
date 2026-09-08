@@ -2464,3 +2464,40 @@ TEST(DbLoader, LegacyPlayerTextLoadPerformsNoHeapAllocations)
     ASSERT_EQ(load_player_from_text(player_name, player_text, &loaded), 1);
     EXPECT_EQ(counter.allocations(), 0u);
 }
+
+TEST(DbLoader, TruncatesLongDescriptionAndContinuesAtTheNextField)
+{
+    ScopedPlayerTableEntry player_table_entry;
+    char player_name[] = "aragorn";
+    char_file_u stored_character { };
+    std::string player_text = "#player\nname        aragorn\ndescription \n";
+    player_text.append(600, 'x');
+    player_text += "~\nlevel       27\nend\n";
+    EXPECT_GE(load_char_from_text(player_name, player_text, &stored_character), 0);
+    EXPECT_EQ(std::string(stored_character.description), std::string(511, 'x'));
+    EXPECT_EQ(stored_character.level, 27);
+}
+
+TEST(DbLoader, LoadsDescriptionAtTheStorageBoundary)
+{
+    ScopedPlayerTableEntry player_table_entry;
+    char player_name[] = "aragorn";
+    char_file_u stored_character { };
+    std::string player_text = "#player\nname        aragorn\ndescription \n";
+    player_text.append(511, 'x');
+    player_text += "~\nlevel       27\nend\n";
+    ASSERT_GE(load_char_from_text(player_name, player_text, &stored_character), 0);
+    EXPECT_EQ(std::string(stored_character.description), std::string(511, 'x'));
+    EXPECT_EQ(stored_character.level, 27);
+}
+
+TEST(DbLoader, RejectsOverlongDescriptionWithoutTerminator)
+{
+    ScopedPlayerTableEntry player_table_entry;
+    char player_name[] = "aragorn";
+    char_file_u stored_character { };
+    std::string player_text = "#player\nname        aragorn\ndescription \n";
+    player_text.append(600, 'x');
+    player_text += "\nend\n";
+    EXPECT_LT(load_char_from_text(player_name, player_text, &stored_character), 0);
+}

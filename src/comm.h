@@ -137,7 +137,9 @@ void act(std::string_view str, int hide_invisible, struct char_data* ch,
 #define TO_NOTVICT 2
 #define TO_CHAR 3
 
-/// Writes a bounded message to a socket, retrying until every byte is sent or an error occurs.
+/// Writes first-null-truncated text: 0 means fully written or a benign empty/closed-socket no-op.
+/// Returns -2 for would-block before any bytes, and -1 for fatal errors including partial writes.
+/// Callers retaining queued text may retry only the zero-byte -2 result.
 int write_to_descriptor(SocketType descriptor, std::string_view text);
 /// Copies a bounded message into the owning text queue.
 void write_to_q(std::string_view text, struct txt_q* queue);
@@ -149,11 +151,20 @@ void page_string(struct descriptor_data* descriptor, std::string_view text);
 void page_string_borrowed(struct descriptor_data* descriptor, char* text);
 /// Builds the in-round status prompt text for a descriptor into the supplied buffer.
 void build_prompt(struct descriptor_data* point, std::string& out);
+/// Marks expired absolute state deadlines CON_CLOSE and clears staged recovery secrets.
+/// Does not free descriptors; the game-loop close sweep owns their lifetime.
+void check_state_deadlines(time_t now);
+
+// Closes character-free descriptors idle for more than 900 seconds, using the supplied clock.
+// Character-bearing sessions remain owned by the character idle policy.
+void check_pre_login_idle(time_t now);
+
 bool parse_startup_options(int argc, char** argv, StartupOptions* options, std::string* error_message);
 #ifdef TESTING
 /// Parses a bounded port value through the production startup-option parser for focused tests.
 bool parse_port_value_for_testing(
     std::string_view text, sh_int* port, std::string* error_message);
+
 #endif
 
 /* #define SEND_TO_Q(messg, desc)  write_to_q((messg), &(desc)->output) */

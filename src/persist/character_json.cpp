@@ -142,7 +142,7 @@ namespace {
         "group",
         "magic",
         "weather",
-        "reserved_15",
+        "mob",
     };
 
     ColorValueData default_color_value()
@@ -701,6 +701,10 @@ namespace {
         for (int index = 0; index < MAX_COLOR_FIELDS; ++index) {
             if (color_key_for_index(index) == key)
                 return index;
+        }
+        // Previously written slot15 values remain readable under their old name.
+        if (key == "reserved_15") {
+            return COLOR_MOB;
         }
         return -1;
     }

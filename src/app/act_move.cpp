@@ -8,10 +8,13 @@
  *  CircleMUD is based on DikuMUD, Copyright (C) 1990, 1991.               *
  ************************************************************************ */
 
+#include <algorithm>
 #include <format>
 #include <stdio.h>
 #include <string.h>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "char_utils.h"
 #include "comm.h"
@@ -34,6 +37,7 @@
 typedef char* string;
 
 extern struct room_data world;
+extern int top_of_world;
 extern struct char_data* character_list;
 extern struct descriptor_data* descriptor_list;
 extern struct index_data* obj_index;
@@ -134,7 +138,8 @@ int room_move_cost(char_data* character, room_data* new_room)
 }
 
 //***********************************************************************
-int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
+static int check_simple_move_impl(char_data* character, int direction, int* move_cost, int mode,
+    const rots::combat::checked_movement* checked)
 /* Assumes,
      1. That there is no master and no followers.
      2. That the direction exists.
@@ -151,49 +156,69 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
      7 : riders can't go indoors
      8 : race guard mob is in the room
 
-     Also returns movement cost in mv_cost
+     Also returns movement cost in move_cost
   */
 {
     int need_movement;
     struct room_data *room_to, *room_from;
 
-    if (mode != SCMD_MOVING)
-        /* check for special routines (north = 1) */
-        if (special(ch, cmd + 1, mutable_arg(""), SPECIAL_COMMAND, 0))
+    if (!character || direction < 0 || direction >= NUM_OF_DIRS || location_of(character) == NOWHERE || !move_cost) {
+        return 1;
+    }
+    room_from = room_of(character);
+    const auto* initial_exit = room_from->dir_option[direction];
+    const rots::combat::checked_movement transition {
+        GET_ABS_NUM(character), direction, location_of(character), initial_exit ? initial_exit->to_room : NOWHERE
+    };
+    if (!rots::combat::matches_checked_movement(character, transition)) {
+        return 1;
+    }
+    if (mode != SCMD_MOVING) {
+        const bool intercepted = special(character, direction + 1, mutable_arg(""), SPECIAL_COMMAND, 0);
+        if (intercepted || !rots::combat::matches_checked_movement(character, transition)) {
             return 1;
-    if ((GET_POS(ch) < POSITION_FIGHTING) || (PLR_FLAGGED(ch, PLR_WRITING)))
+        }
+    }
+    if (checked && !rots::combat::matches_checked_movement(character, *checked)) {
+        return 1;
+    }
+    if ((GET_POS(character) < POSITION_FIGHTING) || (PLR_FLAGGED(character, PLR_WRITING)))
         return 1;
 
-    room_from = room_of(ch);
-
-    if (!room_from->dir_option[cmd])
+    if (!room_from->dir_option[direction])
         return 1;
-    if (room_from->dir_option[cmd]->to_room < 0)
+    if (room_from->dir_option[direction]->to_room < 0)
         return 1;
-    if (ch->delay.wait_value > 0)
+    if (character->delay.wait_value > 0)
         return 1;
 
-    room_to = room_by_id_total(room_from->dir_option[cmd]->to_room);
+    room_to = room_by_id_total(room_from->dir_option[direction]->to_room);
     if (!room_to)
         return 1;
 
-    if (call_trigger(ON_BEFORE_ENTER, room_to, ch, 0) == FALSE)
-        return 1; //  Trigger doesn't allow them to enter the new room
-    if (IS_SET(EXIT(ch, cmd)->exit_info, EX_NOWALK))
+    if (!checked && call_trigger(ON_BEFORE_ENTER, room_to, character, 0) == FALSE) {
+        return 1;
+    }
+    // A callback may move/extract the actor or retarget the accepted exit.
+    // Its own effects stand, but the outer transition is no longer valid.
+    if (!rots::combat::matches_checked_movement(character, transition)) {
+        return 1;
+    }
+    if (IS_SET(EXIT(character, direction)->exit_info, EX_NOWALK))
         return 8;
 
     // look out for the same need_movement in do_simple_move and others...
-    need_movement = (room_move_cost(ch, room_from) + room_move_cost(ch, room_to)) / 2;
+    need_movement = (room_move_cost(character, room_from) + room_move_cost(character, room_to)) / 2;
 
     /// if bloodied, +2 mvs to walk
-    if ((GET_HIT(ch) < GET_MAX_HIT(ch) / 4) || has_critical_stat_damage(ch))
+    if ((GET_HIT(character) < GET_MAX_HIT(character) / 4) || has_critical_stat_damage(character))
         need_movement += 2;
 
     // If "sundelayed", harder to move. now, affects with power of Arda
-    if (EVIL_RACE(ch))
-        do_power_of_arda(ch);
+    if (EVIL_RACE(character))
+        do_power_of_arda(character);
 
-    if (IS_SHADOW(ch))
+    if (IS_SHADOW(character))
         need_movement = 0;
 
     if (room_from->sector_type == SECT_WATER_NOSWIM || room_to->sector_type == SECT_WATER_NOSWIM) {
@@ -201,7 +226,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
          *    room_from->sector_type == SECT_WATER_SWIM ||
          *    room_to->sector_type == SECT_WATER_SWIM) {
          */
-        if (!can_swim(ch) && !IS_RIDING(ch)) {
+        if (!can_swim(character) && !IS_RIDING(character)) {
             // can swim on mounts
             return 2;
         } else {
@@ -209,13 +234,13 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
             struct obj_data* tmpobj;
             int tmp;
 
-            for (tmpobj = ch->carrying; tmpobj && !boat; tmpobj = tmpobj->next_content) {
+            for (tmpobj = character->carrying; tmpobj && !boat; tmpobj = tmpobj->next_content) {
                 if (tmpobj->obj_flags.type_flag == ITEM_BOAT)
                     boat = 1;
             }
             for (tmp = 0; tmp < MAX_WEAR && !boat; tmp++) {
-                if (ch->equipment[tmp])
-                    if ((ch->equipment[tmp])->obj_flags.type_flag == ITEM_BOAT)
+                if (character->equipment[tmp])
+                    if ((character->equipment[tmp])->obj_flags.type_flag == ITEM_BOAT)
                         boat = 1;
             }
 
@@ -228,7 +253,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
                  * this means that a 36r with mastered swim can swim a NOSWIM
                  * room with 1 movement cost.
                  */
-                m = GET_PROF_LEVEL(PROF_RANGER, ch) + GET_SKILL(ch, SKILL_SWIM);
+                m = GET_PROF_LEVEL(PROF_RANGER, character) + GET_SKILL(character, SKILL_SWIM);
                 m /= 20;
 
                 need_movement = MAX(1, need_movement - m);
@@ -236,45 +261,62 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
         }
     }
 
-    *mv_cost = need_movement;
+    *move_cost = need_movement;
 
-    if (IS_NPC(ch)) { // checking mob limitations on movement.
-        if ((mode != SCMD_FOLLOW) && (mode != SCMD_MOUNT) && IS_SET(room_to->room_flags, NO_MOB) && !IS_AFFECTED(ch, AFF_CHARM))
+    if (IS_NPC(character)) { // checking mob limitations on movement.
+        if ((mode != SCMD_FOLLOW) && (mode != SCMD_MOUNT) && IS_SET(room_to->room_flags, NO_MOB) && !IS_AFFECTED(character, AFF_CHARM))
             return 5;
 
-        if ((mode != SCMD_FOLLOW) && MOB_FLAGGED(ch, MOB_STAY_ZONE) && !IS_AFFECTED(ch, AFF_CHARM) && (room_from->zone != room_to->zone))
+        if ((mode != SCMD_FOLLOW) && MOB_FLAGGED(character, MOB_STAY_ZONE) && !IS_AFFECTED(character, AFF_CHARM) && (room_from->zone != room_to->zone))
             return 5;
-        if ((mode != SCMD_FOLLOW) && MOB_FLAGGED(ch, MOB_STAY_TYPE) && !IS_AFFECTED(ch, AFF_CHARM) && (room_from->sector_type != room_to->sector_type))
+        if ((mode != SCMD_FOLLOW) && MOB_FLAGGED(character, MOB_STAY_TYPE) && !IS_AFFECTED(character, AFF_CHARM) && (room_from->sector_type != room_to->sector_type))
             return 5;
     }
 
-    if (GET_MOVE(ch) < need_movement)
+    if (GET_MOVE(character) < need_movement)
         return 3;
 
-    // okay, ch can move now - checking his mount.
-    if (IS_RIDING(ch)) {
-        if (!char_exists(ch->mount_data.mount_number)) {
-            ch->mount_data.mount = 0;
-            ch->mount_data.next_rider = 0;
+    // okay, character can move now - checking his mount.
+    if (IS_RIDING(character)) {
+        if (!char_exists(character->mount_data.mount_number)) {
+            character->mount_data.mount = 0;
+            character->mount_data.next_rider = 0;
         }
-        if (IS_SET(EXIT(ch, cmd)->exit_info, EX_NORIDE))
+        if (IS_SET(EXIT(character, direction)->exit_info, EX_NORIDE))
             return 7;
-        if (IS_SET(room_by_id_total(room_of(ch)->dir_option[cmd]->to_room)->room_flags, INDOORS))
+        if (IS_SET(room_by_id_total(room_of(character)->dir_option[direction]->to_room)->room_flags, INDOORS))
             return 7;
-        if (IS_SET(room_by_id_total(room_of(ch)->dir_option[cmd]->to_room)->room_flags, NORIDE))
+        if (IS_SET(room_by_id_total(room_of(character)->dir_option[direction]->to_room)->room_flags, NORIDE))
             return 7;
-        else if ((mode != SCMD_CARRIED) && ((ch->mount_data.mount)->mount_data.rider != ch))
+        else if ((mode != SCMD_CARRIED) && ((character->mount_data.mount)->mount_data.rider != character))
             return 6;
     }
 
-    // Checking for race_guard mobs in the room the ch wants to move to
+    // Checking for race_guard mobs in the room the character wants to move to
 
-    for (auto* tmpch : rots::entity::occupants(room_by_id_total(room_of(ch)->dir_option[cmd]->to_room)))
+    for (auto* tmpch : rots::entity::occupants(room_by_id_total(room_of(character)->dir_option[direction]->to_room)))
         if (IS_NPC(tmpch) && MOB_FLAGGED(tmpch, MOB_RACE_GUARD))
-            if ((GET_RACE(ch) != GET_RACE(tmpch)) && !IS_NPC(ch))
+            if ((GET_RACE(character) != GET_RACE(tmpch)) && !IS_NPC(character))
                 return 8;
 
     return 0;
+}
+
+int check_simple_move(char_data* character, int direction, int* move_cost, int mode)
+{
+    return check_simple_move_impl(character, direction, move_cost, mode, nullptr);
+}
+
+static void do_move_impl(char_data* character, char* argument, waiting_type*, int command, int subcommand,
+    const rots::combat::checked_movement* checked);
+
+static void move_after_validation_impl(char_data* character,
+    const rots::combat::checked_movement& movement, int mode)
+{
+    char direction[16];
+    snprintf(direction, sizeof(direction), "%.*s", static_cast<int>(dirs[movement.direction].size()),
+        dirs[movement.direction].data());
+    do_move_impl(character, direction, nullptr, movement.direction + 1, mode, &movement);
 }
 
 // Registers the real check_simple_move() body above as combat_hooks.h's
@@ -284,6 +326,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
 void register_check_simple_move_hook()
 {
     rots::combat::set_check_simple_move_hook(check_simple_move);
+    rots::combat::set_checked_move_hook(move_after_validation_impl);
 }
 
 /*=================================================================================
@@ -318,17 +361,25 @@ void set_blood_trail(struct char_data* ch, int dir)
  */
 int perform_move_mount(struct char_data* ch, int dir)
 {
-    char_data *tmpch, *tmpch2;
-    int was_in, new_room, num2, is_death, move_cost, tmp, should_show;
+    int was_in, new_room, is_death, move_cost, tmp, should_show;
     char buff[1000];
     char buff2[1000];
     void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
         std::string_view singular_rider_text, std::string_view plural_rider_text, int color);
 
-    if (!EXIT(ch, dir) || !ch->mount_data.rider)
+    if (!ch || dir < 0 || dir >= NUM_OF_DIRS || location_of(ch) == NOWHERE
+        || !EXIT(ch, dir) || !ch->mount_data.rider) {
         return 0;
-
-    if (!char_exists(ch->mount_data.rider_number)) {
+    }
+    const rots::combat::checked_movement transition {
+        GET_ABS_NUM(ch), dir, location_of(ch), EXIT(ch, dir)->to_room
+    };
+    if (!rots::combat::matches_checked_movement(ch, transition)) {
+        return 0;
+    }
+    char_data* const primary_rider = ch->mount_data.rider;
+    const int primary_number = ch->mount_data.rider_number;
+    if (char_by_abs_number(primary_number) != primary_rider) {
         ch->mount_data.rider = 0;
         return 0;
     }
@@ -338,21 +389,54 @@ int perform_move_mount(struct char_data* ch, int dir)
 
     is_death = IS_SET(room_by_id_total(new_room)->room_flags, DEATH);
 
-    /* supposedly, the primary rider has already passed special() */
-    special(ch->mount_data.rider, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0);
+    // Snapshot identities, not list links that a rider's callback may free.
+    std::vector<std::pair<int, char_data*>> riders;
+    for (char_data* rider = primary_rider; rider; rider = rider->mount_data.next_rider) {
+        const int rider_number = GET_ABS_NUM(rider);
+        if (char_by_abs_number(rider_number) != rider
+            || std::find(riders.begin(), riders.end(), std::pair { rider_number, rider }) != riders.end()) {
+            return 0;
+        }
+        riders.emplace_back(rider_number, rider);
+        if (rider->mount_data.next_rider
+            && char_by_abs_number(rider->mount_data.next_rider_number) != rider->mount_data.next_rider) {
+            return 0;
+        }
+    }
+    special(primary_rider, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0);
+    if (!rots::combat::matches_checked_movement(ch, transition)
+        || char_by_abs_number(primary_number) != primary_rider
+        || location_of(primary_rider) != was_in || ch->mount_data.rider != primary_rider
+        || primary_rider->mount_data.mount != ch) {
+        return 0;
+    }
 
-    for (tmpch = ch->mount_data.rider->mount_data.next_rider,
-        num2 = ch->mount_data.rider->mount_data.next_rider_number;
-         char_exists(num2) && tmpch;
-         num2 = ch->mount_data.next_rider_number, tmpch = tmpch->mount_data.next_rider) {
-
-        if (location_of(tmpch) != location_of(ch))
-            stop_riding(tmpch);
-
-        if ((tmp = check_simple_move(tmpch, dir, &move_cost, SCMD_CARRIED))) {
+    for (const auto& [rider_number, original_rider] : riders) {
+        if (rider_number == primary_number) {
+            continue;
+        }
+        char_data* rider = char_by_abs_number(rider_number);
+        if (rider != original_rider || rider->mount_data.mount != ch) {
+            continue;
+        }
+        if (location_of(rider) != was_in) {
+            stop_riding(rider);
+            continue;
+        }
+        tmp = check_simple_move(rider, dir, &move_cost, SCMD_CARRIED);
+        if (!rots::combat::matches_checked_movement(ch, transition)
+            || char_by_abs_number(primary_number) != primary_rider
+            || ch->mount_data.rider != primary_rider || location_of(primary_rider) != was_in
+            || primary_rider->mount_data.mount != ch) {
+            return 0;
+        }
+        if (char_by_abs_number(rider_number) != rider || rider->mount_data.mount != ch) {
+            continue;
+        }
+        if (tmp || location_of(rider) != was_in) {
             if (tmp == 3)
                 send_to_char("You are too exhausted!\n\r", ch);
-            stop_riding(tmpch);
+            stop_riding(rider);
         } else {
             // if bloodied harder to move -Z
             if (GET_HIT(ch) < GET_MAX_HIT(ch) / 4)
@@ -364,13 +448,8 @@ int perform_move_mount(struct char_data* ch, int dir)
             // if (GET_RACE(ch) == RACE_ORC) move_cost += number(2,3);
             // else move_cost += number(1,2);
 
-            GET_MOVE(tmpch) -= move_cost;
+            GET_MOVE(rider) -= move_cost;
         }
-    }
-    if (tmpch) {
-        /* something happened.. dismount all and abort */
-        stop_riding_all(ch);
-        return 0;
     }
 
     /* now forming and sending the "leave" message */
@@ -387,17 +466,22 @@ int perform_move_mount(struct char_data* ch, int dir)
     }
 
     /* moving all people involved */
-    for (tmpch = ch->mount_data.rider; tmpch; tmpch = tmpch2) {
-        tmpch2 = tmpch->mount_data.next_rider;
-
-        if (tmpch != ch->mount_data.rider) {
-
-            send_to_char(std::format("You are carried {} by {}.\n\r", dirs[dir], PERS(ch, tmpch, FALSE, FALSE)), tmpch);
+    for (const auto& [rider_number, original_rider] : riders) {
+        char_data* rider = char_by_abs_number(rider_number);
+        if (rider != original_rider || rider->mount_data.mount != ch || location_of(rider) != was_in) {
+            continue;
         }
-        char_from_room(tmpch);
-        char_to_room(tmpch, new_room);
-        if (is_death)
-            raw_kill(tmpch, NULL, 0);
+        if (rider != primary_rider) {
+            send_to_char(std::format("You are carried {} by {}.\n\r", dirs[dir], PERS(ch, rider, FALSE, FALSE)), rider);
+        }
+        char_from_room(rider);
+        char_to_room(rider, new_room);
+        if (is_death) {
+            raw_kill(rider, NULL, 0);
+            if (!rots::combat::matches_checked_movement(ch, transition)) {
+                return 0;
+            }
+        }
     }
     /* Setting tracks in room */
     if ((IS_NPC(ch) || (GET_RACE(ch) != RACE_GOD)) && !(IS_AFFECTED(ch, AFF_FLYING))) {
@@ -425,8 +509,11 @@ int perform_move_mount(struct char_data* ch, int dir)
     }
     do_look(ch, mutable_arg(""), 0, 0, SCMD_LOOK_BRIEF);
 
-    for (tmpch = ch->mount_data.rider; tmpch; tmpch = tmpch->mount_data.next_rider) {
-        do_look(tmpch, mutable_arg(""), 0, CMD_LOOK, SCMD_LOOK_BRIEF);
+    for (const auto& [rider_number, original_rider] : riders) {
+        char_data* rider = char_by_abs_number(rider_number);
+        if (rider == original_rider && rider->mount_data.mount == ch && location_of(rider) == new_room) {
+            do_look(rider, mutable_arg(""), 0, CMD_LOOK, SCMD_LOOK_BRIEF);
+        }
     }
     /* now forming and sending the "enter" message */
 
@@ -450,16 +537,26 @@ int perform_move_mount(struct char_data* ch, int dir)
             show_mount_to_char(ch, tmpvict, buff, buff2, FALSE);
     }
 
-    for (tmpch = ch->mount_data.rider; tmpch; tmpch = tmpch2) {
-        tmpch2 = tmpch->mount_data.next_rider;
-
-        special(tmpch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
-
-        call_trigger(ON_ENTER, (void*)room_of(tmpch), (void*)tmpch, 0);
+    for (const auto& [rider_number, original_rider] : riders) {
+        char_data* rider = char_by_abs_number(rider_number);
+        if (rider != original_rider || rider->mount_data.mount != ch || location_of(rider) != new_room) {
+            continue;
+        }
+        special(rider, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
+        if (char_by_abs_number(transition.actor_number) != ch || location_of(ch) != new_room) {
+            return 0;
+        }
+        if (char_by_abs_number(rider_number) == rider && location_of(rider) != NOWHERE) {
+            call_trigger(ON_ENTER, (void*)room_of(rider), (void*)rider, 0);
+            if (char_by_abs_number(transition.actor_number) != ch || location_of(ch) != new_room) {
+                return 0;
+            }
+        }
     }
-    if (special(ch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0))
+    const bool intercepted = special(ch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
+    if (intercepted || char_by_abs_number(transition.actor_number) != ch || location_of(ch) == NOWHERE) {
         return 0;
-
+    }
     call_trigger(ON_ENTER, (void*)room_of(ch), (void*)ch, 0);
 
     return 1;
@@ -553,59 +650,58 @@ bool is_exit_valid(const room_direction_data room_direction)
 // wave Task 1; sf-census.md section 4.2): output_seam.h now owns the plain
 // `msdp_room_update` global symbol (mirroring close_socket_impl's own
 // takeover), registered by comm.cpp's register_game_output_sinks() to
-// forward here. This body is otherwise byte-identical.
-void msdp_room_update_impl(char_data* ch)
+// forward here. TASK-015 validates the supplied actor before resolving its room.
+void msdp_room_update_impl(char_data* character)
 {
-    if (utils::is_npc(*ch)) {
+    if (!character || utils::is_npc(*character)) {
         return;
     }
 
     // A player without a descriptor (linkdead) has nothing to update -- and
-    // dereferencing ch->desc below would crash. Reachable via spell_summon
+    // dereferencing character->desc below would crash. Reachable via spell_summon
     // targeting a linkdead player (TASK-025's body test pins this).
-    if (!ch->desc) {
+    if (!character->desc) {
         return;
     }
 
-    if (!ch->desc->pProtocol) {
+    if (!character->desc->pProtocol) {
         return;
     }
 
-    if (location_of(ch) >= 0) {
+    const int actor_location = location_of(character);
+    if (actor_location < 0 || actor_location > top_of_world) {
         return;
     }
 
-    MSDPSetString(ch->desc, eMSDP_ROOM_NAME, room_of(ch->desc->character)->name);
-    MSDPSetNumber(ch->desc, eMSDP_ROOM_VNUM, room_of(ch->desc->character)->number);
+    room_data* const actor_room = room_of(character);
+    MSDPSetString(character->desc, eMSDP_ROOM_NAME, actor_room->name);
+    MSDPSetNumber(character->desc, eMSDP_ROOM_VNUM, actor_room->number);
 
-    std::string msdp_room = {};
+    std::string msdp_room = { };
     msdp_room += (char)MSDP_VAR;
     msdp_room += "VNUM";
     msdp_room += (char)MSDP_VAL;
-    msdp_room += std::to_string(room_of(ch)->number);
+    msdp_room += std::to_string(actor_room->number);
     msdp_room += (char)MSDP_VAR;
     msdp_room += "NAME";
     msdp_room += (char)MSDP_VAL;
-    msdp_room += MSDPSanitizeValue(room_of(ch)->name);
+    msdp_room += MSDPSanitizeValue(actor_room->name);
     msdp_room += (char)MSDP_VAR;
     msdp_room += "EXITS";
     msdp_room += (char)MSDP_VAL;
     msdp_room += (char)MSDP_ARRAY_OPEN;
-    std::string exits_names = {};
+    std::string exits_names = { };
     const std::string direction[NUM_OF_DIRS] = { "n", "e", "s", "w", "u", "d" };
 
     for (int exits = 0; exits < NUM_OF_DIRS; exits++) {
-        if (location_of(ch) == NOWHERE) {
-            break;
-        }
-
-        if (room_of(ch)->dir_option[exits] == nullptr) {
+        if (actor_room->dir_option[exits] == nullptr) {
             continue;
         }
 
-        const room_direction_data room_direction = *room_of(ch)->dir_option[exits];
+        const room_direction_data room_direction = *actor_room->dir_option[exits];
 
-        if (is_exit_valid(room_direction)) {
+        if (room_direction.to_room >= 0 && room_direction.to_room <= top_of_world
+            && is_exit_valid(room_direction)) {
             msdp_room += (char)MSDP_VAL;
             msdp_room += std::to_string(room_by_id_total(room_direction.to_room)->number);
             exits_names += (char)MSDP_VAL;
@@ -618,102 +714,120 @@ void msdp_room_update_impl(char_data* ch)
     msdp_room += (char)MSDP_VAL;
 
     extern const std::string_view sector_types[];
-    msdp_room += sector_types[room_of(ch)->sector_type];
+    msdp_room += MSDPSanitizeValue(sector_types[actor_room->sector_type]);
 
     // Room exits need to be sent first before anything else
-    MSDPSetArray(ch->desc, eMSDP_ROOM_EXITS, exits_names);
-    MSDPSend(ch->desc, eMSDP_ROOM_EXITS);
-    MSDPSetTable(ch->desc, eMSDP_ROOM, msdp_room);
+    MSDPSetArray(character->desc, eMSDP_ROOM_EXITS, exits_names);
+    MSDPFlush(character->desc, eMSDP_ROOM_EXITS);
+    MSDPSetTable(character->desc, eMSDP_ROOM, msdp_room);
 
-    MSDPUpdate(ch->desc);
+    MSDPUpdate(character->desc);
 }
 
-ACMD(do_move)
-/* do_move is under construction to account for riding... !!!!  */
+static void do_move_impl(char_data* character, char* argument, waiting_type*, int command, int subcommand,
+    const rots::combat::checked_movement* checked)
 {
     int was_in, res_flag, to_room, tmp, need_move, tmp_move;
     char is_death, is_fol;
-    struct follow_type *k, *next_dude;
-    follow_type fol_people;
+    std::vector<std::pair<int, char_data*>> followers;
     waiting_type tmpwtl;
     int mounts;
 
-    if (IS_AFFECTED(ch, AFF_HAZE) && number(1, 4) == 1) {
-        send_to_char("You feel dizzy, and move randomly.\n\r", ch);
-        cmd = number(1, NUM_OF_DIRS);
+    if (!character || location_of(character) == NOWHERE || command < 1 || command > NUM_OF_DIRS) {
+        return;
     }
-    --cmd;
-
-    if ((ch->delay.wait_value > 0) && (ch->delay.priority <= 30)) {
-        send_to_char("You could not concentrate anymore.\n\r", ch);
-        abort_delay(ch);
+    const int actor_number = GET_ABS_NUM(character);
+    if (checked && !rots::combat::matches_checked_movement(character, *checked)) {
+        return;
+    }
+    if (IS_AFFECTED(character, AFF_HAZE) && number(1, 4) == 1) {
+        send_to_char("You feel dizzy, and move randomly.\n\r", character);
+        command = number(1, NUM_OF_DIRS);
+    }
+    --command;
+    if (checked && command != checked->direction) {
+        checked = nullptr;
     }
 
-    if ((is_fol = (ch->followers != 0)))
-        fol_people = *ch->followers;
+    if ((character->delay.wait_value > 0) && (character->delay.priority <= 30)) {
+        send_to_char("You could not concentrate anymore.\n\r", character);
+        abort_delay(character);
+    }
 
-    if (IS_RIDDEN(ch)) {
-        perform_move_mount(ch, cmd);
+    for (const follow_type* follower = character->followers; follower; follower = follower->next) {
+        followers.emplace_back(follower->fol_number, follower->follower);
+    }
+    is_fol = !followers.empty();
+
+    if (IS_RIDDEN(character)) {
+        perform_move_mount(character, command);
         return;
     }
 
-    if (!room_of(ch)->dir_option[cmd]) {
-        send_to_char("You cannot go that way.\n\r", ch);
+    if (!room_of(character)->dir_option[command]) {
+        send_to_char("You cannot go that way.\n\r", character);
         return;
-    } else if (room_of(ch)->dir_option[cmd]->to_room == NOWHERE) {
-        send_to_char("You cannot go that way.\n\r", ch);
+    } else if (room_of(character)->dir_option[command]->to_room == NOWHERE) {
+        send_to_char("You cannot go that way.\n\r", character);
         return;
     } else { /* Direction is possible */
-        if (IS_NPC(ch) && (subcmd == SCMD_MOVING) && IS_SET(EXIT(ch, cmd)->exit_info, EX_ISDOOR | EX_CLOSED) && !IS_SET(EXIT(ch, cmd)->exit_info, EX_ISHIDDEN | EX_LOCKED)) {
+        if (IS_NPC(character) && (subcommand == SCMD_MOVING) && IS_SET(EXIT(character, command)->exit_info, EX_ISDOOR | EX_CLOSED) && !IS_SET(EXIT(character, command)->exit_info, EX_ISHIDDEN | EX_LOCKED)) {
             tmpwtl.cmd = CMD_OPEN;
             tmpwtl.targ1.type = TARGET_DIR;
-            tmpwtl.targ1.ch_num = cmd;
+            tmpwtl.targ1.ch_num = command;
             tmpwtl.targ2.type = TARGET_NONE;
-            do_open(ch, mutable_arg(""), &tmpwtl, CMD_OPEN, 0);
+            do_open(character, mutable_arg(""), &tmpwtl, CMD_OPEN, 0);
         }
 
-        if (!CAN_GO(ch, cmd)) {
-            if (IS_SET(EXIT(ch, cmd)->exit_info, EX_ISHIDDEN) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT)) {
-                send_to_char("You cannot go that way.\n\r", ch);
+        if (!CAN_GO(character, command)) {
+            if (IS_SET(EXIT(character, command)->exit_info, EX_ISHIDDEN) && !PRF_FLAGGED(character, PRF_HOLYLIGHT)) {
+                send_to_char("You cannot go that way.\n\r", character);
                 return;
-            } else if (EXIT(ch, cmd)->keyword) {
-                if (IS_SHADOW(ch))
-                    send_to_char(std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword)), ch);
+            } else if (EXIT(character, command)->keyword) {
+                if (IS_SHADOW(character))
+                    send_to_char(std::format("You cannot pass through the {}.\n\r", fname(EXIT(character, command)->keyword)), character);
                 else
-                    send_to_char(std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword)), ch);
+                    send_to_char(std::format("The {} seems to be closed.\n\r", fname(EXIT(character, command)->keyword)), character);
                 return;
             } else {
-                send_to_char("It seems to be closed.\n\r", ch);
+                send_to_char("It seems to be closed.\n\r", character);
                 return;
             }
-        } else if (EXIT(ch, cmd)->to_room == NOWHERE) {
-            send_to_char("You cannot go that way.\n\r", ch);
+        } else if (EXIT(character, command)->to_room == NOWHERE) {
+            send_to_char("You cannot go that way.\n\r", character);
             return;
         }
-        if (IS_AFFECTED(ch, AFF_CHARM) && (ch->master) && (location_of(ch) == location_of(ch->master)) && (subcmd != SCMD_FOLLOW && subcmd != SCMD_FLEE)) {
-            send_to_char("The thought of leaving your master makes you weep.\n\r", ch);
-            act("$n bursts into tears.", FALSE, ch, 0, 0, TO_ROOM);
+        if (IS_AFFECTED(character, AFF_CHARM) && (character->master) && (location_of(character) == location_of(character->master)) && (subcommand != SCMD_FOLLOW && subcommand != SCMD_FLEE)) {
+            send_to_char("The thought of leaving your master makes you weep.\n\r", character);
+            act("$n bursts into tears.", FALSE, character, 0, 0, TO_ROOM);
             return;
         }
 
         // Exit does exist, trying to move there
 
-        to_room = EXIT(ch, cmd)->to_room;
+        to_room = EXIT(character, command)->to_room;
         is_death = IS_SET(room_by_id_total(to_room)->room_flags, DEATH);
-        was_in = location_of(ch);
+        was_in = location_of(character);
 
-        bool different_zone = room_by_id_total(was_in)->zone != room_by_id_total(to_room)->zone;
+        const bool different_zone = room_by_id_total(was_in)->zone != room_by_id_total(to_room)->zone;
+        const rots::combat::checked_movement transition { actor_number, command, was_in, to_room };
+        if (!rots::combat::matches_checked_movement(character, transition)) {
+            return;
+        }
 
-        if (!IS_RIDING(ch)) {
-            res_flag = check_simple_move(ch, cmd, &need_move, subcmd);
+        if (!IS_RIDING(character)) {
+            res_flag = check_simple_move_impl(character, command, &need_move, subcommand, checked);
+            if (!rots::combat::matches_checked_movement(character, transition)) {
+                return;
+            }
 
-            if (subcmd == SCMD_FOLLOW) {
+            if (subcommand == SCMD_FOLLOW) {
                 if (res_flag != 0) {
-                    act("ACK! $n could not follow, you lost $m!", FALSE, ch, 0, ch->master,
+                    act("ACK! $n could not follow, you lost $m!", FALSE, character, 0, character->master,
                         TO_VICT);
-                    act("ACK! You could not follow $M!", FALSE, ch, 0, ch->master, TO_CHAR);
+                    act("ACK! You could not follow $M!", FALSE, character, 0, character->master, TO_CHAR);
                 } else
-                    act("You follow $N.\n\r", FALSE, ch, 0, ch->master, TO_CHAR);
+                    act("You follow $N.\n\r", FALSE, character, 0, character->master, TO_CHAR);
             }
 
             switch (res_flag) {
@@ -722,26 +836,26 @@ ACMD(do_move)
             case 1:
                 return;
             case 2:
-                send_to_char("You need to swim better or find a boat to go there.\n\r", ch);
+                send_to_char("You need to swim better or find a boat to go there.\n\r", character);
                 return;
             case 3:
-                send_to_char("You are too exhausted to move.\n\r", ch);
+                send_to_char("You are too exhausted to move.\n\r", character);
                 return;
             case 4:
                 return;
             case 5:
                 return;
             case 6:
-                send_to_char("You do not control your mount.\n\r", ch);
+                send_to_char("You do not control your mount.\n\r", character);
                 return;
             case 7:
-                send_to_char("Can not go there mounted.\n\r", ch);
+                send_to_char("Can not go there mounted.\n\r", character);
                 return;
             case 8:
-                send_to_char("You are prevented from entering there.\n\r", ch);
+                send_to_char("You are prevented from entering there.\n\r", character);
                 return;
             case 9:
-                send_to_char("You cannot go that way.\n\r", ch);
+                send_to_char("You cannot go that way.\n\r", character);
                 return;
             }
 
@@ -749,105 +863,123 @@ ACMD(do_move)
             // master does, just for group randomness.
 
             if (is_fol) {
-                for (k = &fol_people; k; k = next_dude) {
-                    next_dude = k->next;
-                    if ((was_in == location_of(k->follower)) && (GET_POS(k->follower) >= POSITION_STANDING) && (IS_NPC(k->follower) && MOB_FLAGGED(k->follower, MOB_ORC_FRIEND) && MOB_FLAGGED(k->follower, MOB_PET)) && (number(1, 100) > 50)) {
-                        // act("$n moves ahead of you.", FALSE, k->follower, 0, ch, TO_VICT);
+                for (const auto& [follower_number, original_follower] : followers) {
+                    char_data* follower = char_by_abs_number(follower_number);
+                    if (!follower || follower != original_follower || follower->master != character) {
+                        continue;
+                    }
+                    if ((was_in == location_of(follower)) && (GET_POS(follower) >= POSITION_STANDING) && (IS_NPC(follower) && MOB_FLAGGED(follower, MOB_ORC_FRIEND) && MOB_FLAGGED(follower, MOB_PET)) && (number(1, 100) > 50)) {
+                        // act("$n moves ahead of you.", FALSE, follower, 0, character, TO_VICT);
                         memset((char*)&tmpwtl, 0, sizeof(waiting_type));
-                        tmpwtl.cmd = cmd + 1;
+                        tmpwtl.cmd = command + 1;
                         tmpwtl.subcmd = SCMD_FOLLOW;
-                        command_interpreter(k->follower, argument, &tmpwtl);
+                        command_interpreter(follower, argument, &tmpwtl);
+                        if (!rots::combat::matches_checked_movement(character, transition)) {
+                            return;
+                        }
                     }
                 }
             }
 
-            if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 125) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch)) {
-                strcpy(buf2, std::format(" leaves {}.", dirs[cmd]).c_str());
-                for (auto* tmpvict : rots::entity::occupants(room_of(ch))) {
-                    if ((ch == tmpvict) || !CAN_SEE(tmpvict, ch) || ((ch->master == tmpvict) && IS_NPC(ch) && MOB_FLAGGED(ch, MOB_ORC_FRIEND)))
+            if (!IS_AFFECTED(character, AFF_SNEAK) || (subcommand == SCMD_FLEE) || number(0, 125) > GET_SKILL(character, SKILL_SNEAK) + get_real_stealth(character)) {
+                strcpy(buf2, std::format(" leaves {}.", dirs[command]).c_str());
+                for (auto* tmpvict : rots::entity::occupants(room_of(character))) {
+                    if ((character == tmpvict) || !CAN_SEE(tmpvict, character) || ((character->master == tmpvict) && IS_NPC(character) && MOB_FLAGGED(character, MOB_ORC_FRIEND)))
                         continue;
-                    show_char_to_char(ch, tmpvict, 0, buf2);
+                    show_char_to_char(character, tmpvict, 0, buf2);
                 }
-            } else if (IS_AFFECTED(ch, AFF_SNEAK)) {
-                snuck_out(ch);
+            } else if (IS_AFFECTED(character, AFF_SNEAK)) {
+                snuck_out(character);
                 need_move *= 1.50;
             }
 
-            const auto room_type = room_of(ch)->sector_type;
-            const auto race = ch->player.race;
+            const auto room_type = room_of(character)->sector_type;
+            const auto race = character->player.race;
 
             need_move = racial_movement_reduction(room_type, race, need_move);
 
             // Here setting his tracks...
 
-            if ((IS_NPC(ch) || (GET_RACE(ch) != RACE_GOD)) && !IS_SHADOW(ch) && !IS_AFFECTED(ch, AFF_FLYING)) { // &&
-                //!(world[ch->in_room].sector_type == SECT_WATER_NOSWIM) &&
-                //!(world[ch->in_room].sector_type == SECT_WATER_SWIM) ) now hunt will work in water
+            if ((IS_NPC(character) || (GET_RACE(character) != RACE_GOD)) && !IS_SHADOW(character) && !IS_AFFECTED(character, AFF_FLYING)) { // &&
+                //!(world[character->in_room].sector_type == SECT_WATER_NOSWIM) &&
+                //!(world[character->in_room].sector_type == SECT_WATER_SWIM) ) now hunt will work in water
 
-                if ((subcmd == SCMD_STALK) && (GET_KNOWLEDGE(ch, SKILL_STALK) > number(0, 119))) {
+                if ((subcommand == SCMD_STALK) && (GET_KNOWLEDGE(character, SKILL_STALK) > number(0, 119))) {
 
-                    send_to_char("You have found sure foothold.\n\r", ch);
+                    send_to_char("You have found sure foothold.\n\r", character);
                     tmp = -1;
                 } else
                     tmp = number(0, NUM_OF_TRACKS - 1);
 
                 if (tmp >= 0) {
-                    if (IS_NPC(ch))
-                        room_of(ch)->room_track[tmp].char_number = ch->nr;
+                    if (IS_NPC(character))
+                        room_of(character)->room_track[tmp].char_number = character->nr;
                     else
-                        room_of(ch)->room_track[tmp].char_number = -GET_RACE(ch);
+                        room_of(character)->room_track[tmp].char_number = -GET_RACE(character);
 
-                    room_of(ch)->room_track[tmp].data = time_info.hours * 8 + cmd;
-                    room_of(ch)->room_track[tmp].condition = 0;
+                    room_of(character)->room_track[tmp].data = time_info.hours * 8 + command;
+                    room_of(character)->room_track[tmp].condition = 0;
                 }
             }
 
-            if (utils::is_affected_by_spell(*ch, SKILL_MARK)) {
-                set_blood_trail(ch, cmd);
+            if (utils::is_affected_by_spell(*character, SKILL_MARK)) {
+                set_blood_trail(character, command);
             }
 
             // Check for item_stay_zone in players inventory and equipment.
             if (different_zone) {
-                prohibit_item_stay_zone_move(ch, was_in);
+                prohibit_item_stay_zone_move(character, was_in);
             }
 
-            char_from_room(ch);
-            char_to_room(ch, to_room);
-            do_look(ch, mutable_arg("\0"), 0, 0, 0);
-            GET_MOVE(ch) -= need_move;
-            if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 100) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch) - 25) {
-                strcpy(buf2, std::format(" enters from {}.", refer_dirs[rev_dir[cmd]]).c_str());
-                for (auto* tmpvict : rots::entity::occupants(room_of(ch))) {
-                    if ((tmpvict == ch) || !CAN_SEE(tmpvict, ch))
+            char_from_room(character);
+            char_to_room(character, to_room);
+            do_look(character, mutable_arg("\0"), 0, 0, 0);
+            GET_MOVE(character) -= need_move;
+            if (!IS_AFFECTED(character, AFF_SNEAK) || (subcommand == SCMD_FLEE) || number(0, 100) > GET_SKILL(character, SKILL_SNEAK) + get_real_stealth(character) - 25) {
+                strcpy(buf2, std::format(" enters from {}.", refer_dirs[rev_dir[command]]).c_str());
+                for (auto* tmpvict : rots::entity::occupants(room_of(character))) {
+                    if ((tmpvict == character) || !CAN_SEE(tmpvict, character))
                         continue;
-                    if (!PRF_FLAGGED(ch, PRF_SPAM) && (subcmd == SCMD_FOLLOW) && ch->master && ((tmpvict->master == ch->master) || (tmpvict == ch->master)))
+                    if (!PRF_FLAGGED(character, PRF_SPAM) && (subcommand == SCMD_FOLLOW) && character->master && ((tmpvict->master == character->master) || (tmpvict == character->master)))
                         continue;
-                    show_char_to_char(ch, tmpvict, 0, buf2);
+                    show_char_to_char(character, tmpvict, 0, buf2);
                 }
-            } else if (IS_AFFECTED(ch, AFF_SNEAK))
-                snuck_in(ch);
+            } else if (IS_AFFECTED(character, AFF_SNEAK))
+                snuck_in(character);
 
-            if (!ch->spec_busy) {
-                special(ch, rev_dir[cmd] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
+            if (!character->spec_busy) {
+                special(character, rev_dir[command] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
             }
 
-            call_trigger(ON_ENTER, (void*)room_of(ch), (void*)ch, 0);
-
-            if (is_death)
-                raw_kill(ch, NULL, 0);
-        } else { // riding...
-            if ((ch->mount_data.mount)->mount_data.rider != ch) {
-                send_to_char("You do not control your mount.\n\r", ch);
+            if (char_by_abs_number(actor_number) != character || location_of(character) == NOWHERE) {
                 return;
             }
-            res_flag = check_simple_move(ch, cmd, &need_move, subcmd);
+            call_trigger(ON_ENTER, (void*)room_of(character), (void*)character, 0);
+            if (char_by_abs_number(actor_number) != character || location_of(character) != to_room) {
+                return;
+            }
+            if (is_death) {
+                raw_kill(character, NULL, 0);
+                return;
+            }
+        } else { // riding...
+            char_data* const mount = character->mount_data.mount;
+            const int mount_number = character->mount_data.mount_number;
+            if (char_by_abs_number(mount_number) != mount || mount->mount_data.rider != character) {
+                send_to_char("You do not control your mount.\n\r", character);
+                return;
+            }
+            res_flag = check_simple_move_impl(character, command, &need_move, subcommand, checked);
+            if (!rots::combat::matches_checked_movement(character, transition)) {
+                return;
+            }
 
-            if (subcmd == SCMD_FOLLOW) {
+            if (subcommand == SCMD_FOLLOW) {
                 if (res_flag != 0) {
-                    act("ACK! $n could not follow, you lost $m!", TRUE, ch, 0, ch->master, TO_VICT);
-                    act("ACK! You could not follow $M!", TRUE, ch, 0, ch->master, TO_CHAR);
+                    act("ACK! $n could not follow, you lost $m!", TRUE, character, 0, character->master, TO_VICT);
+                    act("ACK! You could not follow $M!", TRUE, character, 0, character->master, TO_CHAR);
                 } else
-                    act("You follow $N.\n\r", FALSE, ch, 0, ch->master, TO_CHAR);
+                    act("You follow $N.\n\r", FALSE, character, 0, character->master, TO_CHAR);
             }
             switch (res_flag) {
             case 0:
@@ -855,38 +987,47 @@ ACMD(do_move)
             case 1:
                 return;
             case 2:
-                send_to_char("Your mount cannot swim.\n\r", ch);
+                send_to_char("Your mount cannot swim.\n\r", character);
                 return;
             case 3:
-                send_to_char("You are too exhausted to ride.\n\r", ch);
+                send_to_char("You are too exhausted to ride.\n\r", character);
                 return;
             case 4:
-                send_to_char("Your mount is too exhausted to move.\n\r", ch);
+                send_to_char("Your mount is too exhausted to move.\n\r", character);
                 return;
             case 5:
-                send_to_char("Your mount would not go there.\n\r", ch);
+                send_to_char("Your mount would not go there.\n\r", character);
                 return;
             case 6:
-                send_to_char("You do not control your mount.\n\r", ch);
+                send_to_char("You do not control your mount.\n\r", character);
                 return;
             case 7:
-                send_to_char("Can not go there mounted.\n\r", ch);
+                send_to_char("Can not go there mounted.\n\r", character);
                 return;
             case 8:
-                send_to_char("You cannot go that way.\n\r", ch);
+                send_to_char("You cannot go that way.\n\r", character);
                 return;
             }
-            // GET_MOVE(ch) -= need_move;       // This belongs below.
-            res_flag = check_simple_move(ch->mount_data.mount, cmd, &tmp_move, SCMD_MOUNT);
+            // GET_MOVE(character) -= need_move;       // This belongs below.
+            if (!IS_RIDING(character) || character->mount_data.mount != mount
+                || char_by_abs_number(mount_number) != mount || mount->mount_data.rider != character) {
+                return;
+            }
+            res_flag = check_simple_move(mount, command, &tmp_move, SCMD_MOUNT);
+            if (!rots::combat::matches_checked_movement(character, transition)
+                || char_by_abs_number(mount_number) != mount || !IS_RIDING(character)
+                || character->mount_data.mount != mount || mount->mount_data.rider != character) {
+                return;
+            }
 
-            if (subcmd == SCMD_FOLLOW) {
+            if (subcommand == SCMD_FOLLOW) {
                 if (res_flag != 0) {
-                    act("ACK! $n could not follow riding, you lost $m!", TRUE, ch, 0, ch->master,
+                    act("ACK! $n could not follow riding, you lost $m!", TRUE, character, 0, character->master,
                         TO_VICT);
-                    act("ACK! You could not follow $M riding!", TRUE, ch, 0, ch->master, TO_CHAR);
+                    act("ACK! You could not follow $M riding!", TRUE, character, 0, character->master, TO_CHAR);
                 }
                 // 	else
-                // 	  act("You follow $N.\n\r", FALSE, ch, 0, ch->master, TO_CHAR);
+                // 	  act("You follow $N.\n\r", FALSE, character, 0, character->master, TO_CHAR);
             }
             switch (res_flag) {
             case 0:
@@ -894,78 +1035,108 @@ ACMD(do_move)
             case 1:
                 return;
             case 2:
-                send_to_char("Your mount cannot swim.\n\r", ch);
+                send_to_char("Your mount cannot swim.\n\r", character);
                 return;
             case 3:
-                send_to_char("Your mount is too exhausted to move.\n\r", ch);
+                send_to_char("Your mount is too exhausted to move.\n\r", character);
                 return;
             case 5:
-                send_to_char("Your mount would not go there.\n\r", ch);
+                send_to_char("Your mount would not go there.\n\r", character);
                 return;
             case 6:
-                send_to_char("Your mount does not control its mount (\?\?).\n\r", ch);
+                send_to_char("Your mount does not control its mount (\?\?).\n\r", character);
                 return;
             case 7:
-                send_to_char("Can not go there mounted.\n\r", ch);
+                send_to_char("Can not go there mounted.\n\r", character);
                 return;
             case 8:
-                send_to_char("You cannot go that way.\n\r", ch);
+                send_to_char("You cannot go that way.\n\r", character);
                 return;
             }
-            GET_MOVE(ch) -= need_move;
+            GET_MOVE(character) -= need_move;
 
             // At this point, check for common orc "followers" to move before their
             // master does, just for group randomness.
 
             if (is_fol) {
-                for (k = &fol_people; k; k = next_dude) {
-                    next_dude = k->next;
-                    if ((was_in == location_of(k->follower)) && (GET_POS(k->follower) >= POSITION_STANDING) && (IS_NPC(k->follower) && MOB_FLAGGED(k->follower, MOB_ORC_FRIEND) && MOB_FLAGGED(k->follower, MOB_PET)) && (number(1, 100) > 50)) {
-                        // act("$n moves ahead of you.", FALSE, k->follower, 0, ch, TO_VICT);
+                for (const auto& [follower_number, original_follower] : followers) {
+                    char_data* follower = char_by_abs_number(follower_number);
+                    if (!follower || follower != original_follower || follower->master != character) {
+                        continue;
+                    }
+                    if ((was_in == location_of(follower)) && (GET_POS(follower) >= POSITION_STANDING) && (IS_NPC(follower) && MOB_FLAGGED(follower, MOB_ORC_FRIEND) && MOB_FLAGGED(follower, MOB_PET)) && (number(1, 100) > 50)) {
+                        // act("$n moves ahead of you.", FALSE, follower, 0, character, TO_VICT);
                         memset((char*)&tmpwtl, 0, sizeof(waiting_type));
-                        tmpwtl.cmd = cmd + 1;
+                        tmpwtl.cmd = command + 1;
                         tmpwtl.subcmd = SCMD_FOLLOW;
-                        command_interpreter(k->follower, argument, &tmpwtl);
+                        command_interpreter(follower, argument, &tmpwtl);
+                        if (!rots::combat::matches_checked_movement(character, transition)
+                            || char_by_abs_number(mount_number) != mount || !IS_RIDING(character)
+                            || character->mount_data.mount != mount || mount->mount_data.rider != character
+                            || location_of(mount) != was_in) {
+                            return;
+                        }
                     }
                 }
             }
 
-            GET_MOVE(ch->mount_data.mount) -= tmp_move;
+            if (char_by_abs_number(mount_number) != mount || !IS_RIDING(character)
+                || character->mount_data.mount != mount || mount->mount_data.rider != character
+                || location_of(mount) != was_in) {
+                return;
+            }
+            GET_MOVE(mount) -= tmp_move;
 
-            strcpy(buf2, std::format("$N has forced you {}.\n\r", dirs[cmd]).c_str());
-            act(buf2, FALSE, ch->mount_data.mount, 0, ch, TO_CHAR);
+            strcpy(buf2, std::format("$N has forced you {}.\n\r", dirs[command]).c_str());
+            act(buf2, FALSE, mount, 0, character, TO_CHAR);
 
-            res_flag = perform_move_mount(ch->mount_data.mount, cmd);
+            res_flag = perform_move_mount(mount, command);
         }
 
-        msdp_room_update_impl(ch);
+        if (char_by_abs_number(actor_number) != character || location_of(character) != to_room) {
+            return;
+        }
+        msdp_room_update_impl(character);
 
         mounts = 0;
-        if (IS_RIDING(ch))
+        if (IS_RIDING(character))
             mounts++;
         if (is_fol) { /* If success move followers */
-            for (k = &fol_people; k; k = next_dude) {
-                next_dude = k->next;
-                if ((was_in == location_of(k->follower)) && (GET_POS(k->follower) >= POSITION_STANDING)) {
-                    //	  act("You follow $N.\n\r", FALSE, k->follower, 0, ch, TO_CHAR);
+            for (const auto& [follower_number, original_follower] : followers) {
+                char_data* follower = char_by_abs_number(follower_number);
+                if (!follower || follower != original_follower || follower->master != character) {
+                    continue;
+                }
+                if ((was_in == location_of(follower)) && (GET_POS(follower) >= POSITION_STANDING)) {
+                    //	  act("You follow $N.\n\r", FALSE, follower, 0, character, TO_CHAR);
 
                     memset((char*)&tmpwtl, 0, sizeof(waiting_type));
-                    tmpwtl.cmd = cmd + 1;
+                    tmpwtl.cmd = command + 1;
                     tmpwtl.subcmd = SCMD_FOLLOW;
-                    //	  do_move(k->follower, argument, &tmpwtl, cmd + 1, SCMD_FOLLOW);
+                    //	  do_move(follower, argument, &tmpwtl, command + 1, SCMD_FOLLOW);
                     // Can not lead too many mounts:
-                    if (IS_NPC(k->follower) && (MOB_FLAGGED(k->follower, MOB_MOUNT))) {
+                    if (IS_NPC(follower) && (MOB_FLAGGED(follower, MOB_MOUNT))) {
                         mounts++;
-                        if (mounts <= 2 || number(1, 20) != 20)
-                            command_interpreter(k->follower, argument, &tmpwtl);
-                        else
-                            send_to_char("One of your mounts has fallen behind!\r\n", ch);
-                    } else
-                        command_interpreter(k->follower, argument, &tmpwtl);
+                        if (mounts <= 2 || number(1, 20) != 20) {
+                            command_interpreter(follower, argument, &tmpwtl);
+                        } else {
+                            send_to_char("One of your mounts has fallen behind!\r\n", character);
+                        }
+                    } else {
+                        command_interpreter(follower, argument, &tmpwtl);
+                    }
+                    if (char_by_abs_number(actor_number) != character || location_of(character) != to_room) {
+                        return;
+                    }
                 }
             }
         }
     }
+}
+
+ACMD(do_move)
+{
+    do_move_impl(ch, argument, wtl, cmd, subcmd, nullptr);
 }
 
 // find_door() relocated verbatim to fight.cpp (spell-family closure wave

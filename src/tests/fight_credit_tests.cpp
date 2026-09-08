@@ -23,13 +23,14 @@
 // copies affect_update_tests.cpp's, on the two-argument set_char_exists()
 // TASK-021 added so char_by_abs_number()/resolve() can recover the pointer.
 
-#include "../db.h"
-#include "../entity_hooks.h"
 #include "../big_brother.h"
 #include "../combat_hooks.h"
+#include "../db.h"
+#include "../entity_hooks.h"
 #include "../handler.h"
 #include "../persist_hooks.h"
 #include "../pkill.h"
+#include "../script.h"
 #include "../spells.h"
 #include "../utils.h"
 #include "../zone.h"
@@ -59,6 +60,7 @@ extern int mortal_start_room[];
 extern struct skill_data skills[];
 extern int r_mortal_start_room[];
 
+void group_gain(char_data* killer, char_data* dead_man);
 void point_update(void);
 // limits.cpp's per-character affect tick -- the ORDINARY poison DoT's home
 // (its `case SPELL_POISON:` arm), as distinct from point_update()'s
@@ -1070,7 +1072,7 @@ TEST(PoisonOrigin, AffectUpdatePersonPoisonTickTakesThePlayerKillArmForAPlayerPo
     expect_player_kill_arm(player);
 }
 
-TEST(PoisonOrigin, AffectUpdatePersonPoisonTickTakesTheStatPenaltyArmForAMobPoisoner)
+TEST(PoisonOrigin, AffectUpdatePersonPoisonTickTakesTheGentleArmForAnUnengagedMobPoisoner)
 {
     ScopedTestWorld test_world { kWorldRoomCount };
     ScopedCreditZoneTable zone_table_owner;
@@ -1101,8 +1103,8 @@ TEST(PoisonOrigin, AffectUpdatePersonPoisonTickTakesTheStatPenaltyArmForAMobPois
 
     ASSERT_TRUE(g_recorded_death.called);
     EXPECT_EQ(g_recorded_death.killer, &snake.ch);
-    // A mob's poison is not a player kill -- the retired heuristic said it was.
-    expect_stat_penalty_arm(player);
+    // The mob receives credit, while the absence of engagement selects gentle penalties.
+    expect_player_kill_arm(player);
 }
 
 TEST(PoisonOrigin, AffectUpdatePersonPoisonTickCreditsNobodyWhenThePoisonerIsGone)
@@ -1319,7 +1321,7 @@ TEST(SourcelessKillCredit, CreditsNobodyWhenTheVictimIsNotFightingAnybody)
     ASSERT_TRUE(g_recorded_death.called);
     EXPECT_EQ(g_recorded_death.killer, nullptr)
         << "with no opponent there is nothing to fall back to -- the nobody arm is unchanged";
-    expect_stat_penalty_arm(player);
+    expect_player_kill_arm(player);
 }
 
 // ---------------------------------------------------------------------------
@@ -1742,11 +1744,18 @@ void capturing_pkill_create(char_data* victim,
 // Which exploit record types the death captured, in order. The suite reads it
 // for EXPLOIT_MOBDEATH (was this a mob death?) and EXPLOIT_PK.
 std::vector<int> g_captured_exploits;
+// Owned identity captured at the persistence seam for the mob-death record.
+std::string g_captured_mob_name;
+int g_captured_mob_id = 0;
 
-void capturing_exploit_capture(int record_type, char_data* /*victim*/, int /*int_param*/,
-    const char* /*extra*/)
+void capturing_exploit_capture(int record_type, char_data* /*victim*/, int identifier,
+    const char* name)
 {
     g_captured_exploits.push_back(record_type);
+    if (record_type == EXPLOIT_MOBDEATH) {
+        g_captured_mob_name = name;
+        g_captured_mob_id = identifier;
+    }
 }
 
 bool captured(int record_type)
@@ -1762,6 +1771,8 @@ public:
     {
         g_recorded_pkill = RecordedPkillCreate {};
         g_captured_exploits.clear();
+        g_captured_mob_name.clear();
+        g_captured_mob_id = 0;
         rots::combat::set_pkill_create_hook(capturing_pkill_create);
         rots::persist::set_exploit_capture_hook(capturing_exploit_capture);
     }
@@ -1830,44 +1841,27 @@ TEST(DieContributorRecord, PlayerPoisonOnANonFightingVictimRecordsThePoisoner)
     expect_player_kill_arm(player);
 }
 
-// Case 2: mob poison kills a non-fighting victim.
-TEST(DieContributorRecord, MobPoisonOnANonFightingVictimIsAMobDeath)
+// Unengaged mob poison keeps mob credit but uses the gentle poison policy.
+TEST(DieContributorRecord, MobPoisonOnANonFightingVictimUsesGentlePenalties)
 {
     DeathHarness harness;
     MortalPlayer player;
-    CreditedKiller snake { /*npc=*/true };
+    CreditedKiller snake { true };
     ScopedPoisonOrigin origin { player.ch, snake.ch, kKillerAbsNumber };
     ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
         { &player.ch, &snake.ch } };
     obj_data* const previous_object_list = object_list;
-
-    // The XP arithmetic this case now reaches. base_xp_gain is
-    // -(exp - 3000) / (level + 2) = -(15000 - 3000) / 12 = -1000, which every
-    // arm below takes std::min(0, ...) of. NOTE: 15000 exp is far below the
-    // level-10 threshold (xp_to_level(10) = 150000), so gain_exp_regardless()'s
-    // level-loss loop DOES fire during the first award (the fixture drops
-    // several levels) -- that loop never touches points.exp, so the assertion
-    // below still isolates the two awards: 15000 - 100 - 1000. (Corrected at
-    // the TASK-026 re-review; an earlier draft of this comment said the loop
-    // could not fire.)
+    // At level 10, the baseline tenth is 100 from 15000 starting XP.
     player.ch.points.exp = 15000;
-    ASSERT_EQ(GET_LEVEL(&player.ch), 10);
 
     die(&player.ch, &snake.ch, SPELL_POISON);
     release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
 
-    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH)) << "a mob's poison is a mob death";
+    EXPECT_FALSE(captured(EXPLOIT_MOBDEATH));
     EXPECT_TRUE(captured(EXPLOIT_POISON));
-    // TASK-026's named consequence on this very criterion: the retired
-    // early-out RETURNED, so a mob's poison kill of a victim who was not
-    // fighting stopped after the -100 (base_xp_gain / 10) award and never
-    // reached die()'s own `if (IS_NPC(killer))` mob-death arm. It does now, and
-    // that arm is the full -1000 -- a ten-fold XP loss where AC#2 asks for
-    // "mob death (EXPLOIT_MOBDEATH, stat penalty)". 15000 - 100 - 1000.
-    EXPECT_EQ(player.ch.points.exp, 13900)
-        << "the mob-death XP arm applies to a non-fighting poison death now; the "
-           "old early-out charged only base_xp_gain / 10";
-    expect_stat_penalty_arm(player);
+    EXPECT_EQ(player.ch.points.exp, 14900);
+    EXPECT_EQ(g_recorded_death.killer, &snake.ch);
+    expect_player_kill_arm(player);
 }
 
 // R4 / MINOR-4: an immortal is not a contributor, so its kill records nothing --
@@ -1944,10 +1938,10 @@ TEST(DieContributorRecord, MobPoisonOnAnEngagedVictimStillRecordsTheEngagedPlaye
     die(&player.ch, &snake.ch, SPELL_POISON);
     release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
 
-    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH)) << "the mob still gets the death";
+    EXPECT_FALSE(captured(EXPLOIT_MOBDEATH)) << "player engagement is not real-mob engagement";
     ASSERT_EQ(g_recorded_pkill.calls, 1);
     EXPECT_TRUE(g_recorded_pkill.contributors.contains(&brawler.ch));
-    expect_stat_penalty_arm(player);
+    expect_player_kill_arm(player);
 }
 
 // Case 5: poisoned by player A, finished off by player B.
@@ -1993,4 +1987,378 @@ TEST(DieContributorRecord, NobodyTookPartSoNoRecordIsCreated)
     EXPECT_EQ(g_recorded_pkill.calls, 0) << "no contributors, no PK record";
     EXPECT_FALSE(captured(EXPLOIT_PK));
     EXPECT_TRUE(captured(EXPLOIT_POISON)) << "the poison exploit is still captured, as before";
+}
+
+// The credited actor can be remote or unplaced, but XP belongs to the fighters
+// and their group members physically present in the death room.
+TEST(GroupGainDeathRoom, RemoteAndUnplacedCreditStillPaysLocalFightersAndGroups)
+{
+    for (const int credit_room : { kDeathRoom, kRemoteRoom, NOWHERE }) {
+        SCOPED_TRACE(credit_room);
+        DeathHarness harness;
+        FragileNpc victim;
+        CreditedKiller credited { false };
+        CreditedKiller fighter { false };
+        CreditedKiller group_member { false };
+        victim.ch.points.exp = 1000000;
+        ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+            { &victim.ch, &fighter.ch, &group_member.ch } };
+        if (credit_room != NOWHERE) {
+            char_to_room(&credited.ch, credit_room);
+        } else {
+            set_location(&credited.ch, NOWHERE);
+        }
+        group_data group { &fighter.ch };
+        group.add_member(&group_member.ch);
+        set_fighting(&fighter.ch, &victim.ch);
+
+        group_gain(&credited.ch, &victim.ch);
+
+        EXPECT_GT(fighter.ch.points.exp, 0);
+        EXPECT_GT(group_member.ch.points.exp, 0);
+        if (credit_room == kDeathRoom) {
+            EXPECT_GT(credited.ch.points.exp, 0);
+        } else {
+            EXPECT_EQ(credited.ch.points.exp, 0);
+        }
+        EXPECT_EQ(credited.ch.specials.fighting, nullptr);
+        if (credit_room != NOWHERE) {
+            detach_char_from_room(&credited.ch);
+        }
+    }
+}
+
+TEST(GroupGainDeathRoom, RemoteVictimTargetReceivesNoShare)
+{
+    DeathHarness harness;
+    FragileNpc victim;
+    CreditedKiller credited { false };
+    CreditedKiller remote_target { false };
+    victim.ch.points.exp = 1000000;
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &victim.ch, &credited.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom,
+        { &remote_target.ch } };
+    victim.ch.specials.fighting = &remote_target.ch;
+
+    group_gain(&credited.ch, &victim.ch);
+
+    EXPECT_GT(credited.ch.points.exp, 0);
+    EXPECT_EQ(remote_target.ch.points.exp, 0);
+    victim.ch.specials.fighting = nullptr;
+}
+
+TEST(PoisonDeathPunishment, EngagementAndPoisonSourceMatrix)
+{
+    // Source: absent, player, mob. Engagement: none, outgoing, incoming, both.
+    for (const int source_kind : { 0, 1, 2 }) {
+        for (const int engagement : { 0, 1, 2, 3 }) {
+            SCOPED_TRACE(::testing::Message() << "source " << source_kind
+                                              << " engagement " << engagement);
+            DeathHarness harness;
+            MortalPlayer player;
+            CreditedKiller poisoner { source_kind == 2 };
+            CreditedKiller opponent { true };
+            char opponent_name[] = "engaged sentinel";
+            opponent.ch.player.short_descr = opponent_name;
+            opponent.ch.specials.affected_by = AFF_INVISIBLE;
+            player.ch.points.exp = 15000;
+            char_data* credit = nullptr;
+            if (source_kind != 0) {
+                credit = &poisoner.ch;
+            }
+            ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+                { &player.ch, &opponent.ch } };
+            ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom,
+                { &poisoner.ch } };
+            if ((engagement & 1) != 0) {
+                set_fighting(&player.ch, &opponent.ch);
+            }
+            if ((engagement & 2) != 0) {
+                set_fighting(&opponent.ch, &player.ch);
+            }
+            obj_data* const previous_object_list = object_list;
+
+            die(&player.ch, credit, SPELL_POISON);
+            release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+            EXPECT_TRUE(g_recorded_death.called);
+            EXPECT_EQ(g_recorded_death.killer, credit);
+            EXPECT_TRUE(captured(EXPLOIT_POISON));
+            EXPECT_EQ(captured(EXPLOIT_MOBDEATH), engagement != 0);
+            if (engagement == 0) {
+                EXPECT_EQ(player.ch.points.exp, 14900);
+                expect_player_kill_arm(player);
+            } else {
+                EXPECT_EQ(player.ch.points.exp, 13900);
+                expect_stat_penalty_arm(player);
+                if (source_kind == 2) {
+                    EXPECT_EQ(g_captured_mob_name, "testmage");
+                    EXPECT_EQ(g_captured_mob_id, -1);
+                } else {
+                    EXPECT_EQ(g_captured_mob_name, "engaged sentinel");
+                    EXPECT_EQ(g_captured_mob_id, -1);
+                }
+            }
+            if (source_kind == 1) {
+                EXPECT_TRUE(g_recorded_pkill.contributors.contains(credit));
+                EXPECT_TRUE(captured(EXPLOIT_PK));
+                EXPECT_TRUE(captured(EXPLOIT_DEATH));
+            }
+        }
+    }
+}
+
+TEST(PoisonDeathPunishment, PetsAndOrcfriendsDoNotTriggerMobPenalties)
+{
+    for (const long controlled_flag : { MOB_PET, MOB_ORC_FRIEND }) {
+        for (const int engagement : { 1, 2, 3 }) {
+            SCOPED_TRACE(::testing::Message() << controlled_flag << ":" << engagement);
+            DeathHarness harness;
+            MortalPlayer player;
+            CreditedKiller opponent { true };
+            opponent.ch.specials2.act |= controlled_flag;
+            player.ch.points.exp = 15000;
+            ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+                { &player.ch, &opponent.ch } };
+            if ((engagement & 1) != 0) {
+                set_fighting(&player.ch, &opponent.ch);
+            }
+            if ((engagement & 2) != 0) {
+                set_fighting(&opponent.ch, &player.ch);
+            }
+            obj_data* const previous_object_list = object_list;
+
+            die(&player.ch, nullptr, SPELL_POISON);
+            release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+            EXPECT_EQ(player.ch.points.exp, 14900);
+            expect_player_kill_arm(player);
+            EXPECT_FALSE(captured(EXPLOIT_MOBDEATH));
+            EXPECT_TRUE(captured(EXPLOIT_POISON));
+        }
+    }
+}
+
+TEST(PoisonDeathPunishment, LethalDamageKeepsOutgoingEngagementBeforeStopFighting)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller poisoner { false };
+    CreditedKiller opponent { true };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &opponent.ch } };
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom,
+        { &poisoner.ch } };
+    player.ch.points.exp = 15000;
+    player.ch.tmpabilities.hit = 1;
+    player.ch.tmpabilities.con = 0;
+    set_fighting(&player.ch, &opponent.ch);
+    obj_data* const previous_object_list = object_list;
+
+    const int died = damage_credited(&player.ch, &player.ch, &poisoner.ch, 5, SPELL_POISON, 0);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(died, 1);
+    EXPECT_EQ(player.ch.points.exp, 13900);
+    expect_stat_penalty_arm(player);
+    EXPECT_EQ(g_recorded_death.killer, &poisoner.ch);
+    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH));
+}
+
+namespace {
+// Heap opponent destroyed by ON_DIE; the owned mob-death name must outlive it.
+std::unique_ptr<CreditedKiller> g_extracted_opponent;
+
+int extracting_death_trigger(int trigger, void* subject, void*, void*)
+{
+    if (trigger == ON_DIE) {
+        auto* victim = static_cast<char_data*>(subject);
+        stop_fighting(victim);
+        stop_fighting(&g_extracted_opponent->ch);
+        detach_char_from_room(&g_extracted_opponent->ch);
+        remove_char_exists(g_extracted_opponent->ch.abs_number);
+        g_extracted_opponent.reset();
+    }
+    return TRUE;
+}
+
+class ScopedExtractingDeathTrigger {
+public:
+    ScopedExtractingDeathTrigger()
+    {
+        rots::combat::set_call_trigger_hook(extracting_death_trigger);
+    }
+    ~ScopedExtractingDeathTrigger()
+    {
+        register_call_trigger_hook();
+        g_extracted_opponent.reset();
+    }
+};
+} // namespace
+
+TEST(PoisonDeathPunishment, OnDieExtractionPreservesDeathTimeMobNameAndPenalty)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller poisoner { false };
+    g_extracted_opponent = std::make_unique<CreditedKiller>(true);
+    g_extracted_opponent->ch.abs_number = kSecondKillerAbsNumber;
+    set_char_exists(kSecondKillerAbsNumber, &g_extracted_opponent->ch);
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch } };
+    char_to_room(&g_extracted_opponent->ch, kDeathRoom);
+    ScopedRoomOccupants remote_room { room_by_id_total(kRemoteRoom), kRemoteRoom,
+        { &poisoner.ch } };
+    set_fighting(&player.ch, &g_extracted_opponent->ch);
+    ScopedExtractingDeathTrigger extracting_trigger;
+    player.ch.points.exp = 15000;
+    obj_data* const previous_object_list = object_list;
+
+    die(&player.ch, &poisoner.ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(g_extracted_opponent, nullptr);
+    EXPECT_EQ(player.ch.points.exp, 13900);
+    expect_stat_penalty_arm(player);
+    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH));
+    EXPECT_EQ(g_captured_mob_name, "testmage");
+    EXPECT_EQ(g_captured_mob_id, -1);
+}
+
+TEST(DeathClassification, PureSelectorsKeepAttributionIndependentFromPunishment)
+{
+    CreditedKiller player { false };
+    CreditedKiller mob { true };
+    CreditedKiller pet { true };
+    pet.ch.specials2.act |= MOB_PET;
+    CreditedKiller orc_friend { true };
+    orc_friend.ch.specials2.act |= MOB_ORC_FRIEND;
+    EXPECT_FALSE(is_real_mob(nullptr));
+    EXPECT_FALSE(is_real_mob(&player.ch));
+    EXPECT_FALSE(is_real_mob(&pet.ch));
+    EXPECT_FALSE(is_real_mob(&orc_friend.ch));
+    EXPECT_TRUE(is_real_mob(&mob.ch));
+    EXPECT_EQ(classify_pc_death(SPELL_POISON, false), death_punishment::player_death);
+    EXPECT_EQ(classify_pc_death(SPELL_POISON, true), death_punishment::mob_death);
+    for (const int attack_type : { TYPE_HIT, SPELL_BLAZE, SPELL_HAZE, SPELL_MIST_OF_BAAZUNGA }) {
+        EXPECT_EQ(classify_pc_death(attack_type, false), death_punishment::legacy);
+        EXPECT_EQ(classify_pc_death(attack_type, true), death_punishment::legacy);
+    }
+    for (char_data* credit : { static_cast<char_data*>(nullptr), &player.ch, &mob.ch,
+             &pet.ch, &orc_friend.ch }) {
+        EXPECT_TRUE(death_takes_full_mob_xp_loss(credit, death_punishment::mob_death));
+        EXPECT_FALSE(death_counts_as_player_kill(credit, death_punishment::mob_death));
+        EXPECT_FALSE(death_takes_full_mob_xp_loss(credit, death_punishment::player_death));
+        EXPECT_TRUE(death_counts_as_player_kill(credit, death_punishment::player_death));
+        EXPECT_EQ(mobdeath_record_mob(credit, &mob.ch, death_punishment::player_death), nullptr);
+    }
+    EXPECT_TRUE(death_takes_full_mob_xp_loss(&mob.ch, death_punishment::legacy));
+    EXPECT_FALSE(death_takes_full_mob_xp_loss(&pet.ch, death_punishment::legacy));
+    EXPECT_FALSE(death_takes_full_mob_xp_loss(nullptr, death_punishment::legacy));
+    EXPECT_TRUE(death_counts_as_player_kill(&player.ch, death_punishment::legacy));
+    EXPECT_FALSE(death_counts_as_player_kill(&mob.ch, death_punishment::legacy));
+    EXPECT_FALSE(death_counts_as_player_kill(nullptr, death_punishment::legacy));
+    EXPECT_EQ(mobdeath_record_mob(&player.ch, &mob.ch, death_punishment::mob_death), &mob.ch);
+    EXPECT_EQ(mobdeath_record_mob(&mob.ch, &pet.ch, death_punishment::mob_death), &mob.ch);
+    EXPECT_EQ(mobdeath_record_mob(&player.ch, &mob.ch, death_punishment::legacy), nullptr);
+}
+
+TEST(PoisonDeathPunishment, NonPoisonDeathsRetainLegacyPenaltyIntegration)
+{
+    for (const bool mob_credit : { false, true }) {
+        DeathHarness harness;
+        MortalPlayer player;
+        CreditedKiller killer { mob_credit };
+        player.ch.points.exp = 15000;
+        ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+            { &player.ch, &killer.ch } };
+        obj_data* const previous_object_list = object_list;
+
+        die(&player.ch, &killer.ch, SPELL_BLAZE);
+        release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+        EXPECT_FALSE(captured(EXPLOIT_POISON));
+        EXPECT_EQ(captured(EXPLOIT_MOBDEATH), mob_credit);
+        if (mob_credit) {
+            EXPECT_EQ(player.ch.points.exp, 13900);
+            expect_stat_penalty_arm(player);
+        } else {
+            EXPECT_EQ(player.ch.points.exp, 14900);
+            expect_player_kill_arm(player);
+        }
+    }
+}
+
+TEST(PoisonDeathPunishment, OnDieMayAlsoExtractTheRegisteredCreditedOpponent)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    g_extracted_opponent = std::make_unique<CreditedKiller>(true);
+    g_extracted_opponent->ch.abs_number = kSecondKillerAbsNumber;
+    set_char_exists(kSecondKillerAbsNumber, &g_extracted_opponent->ch);
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch } };
+    char_to_room(&g_extracted_opponent->ch, kDeathRoom);
+    set_fighting(&player.ch, &g_extracted_opponent->ch);
+    ScopedExtractingDeathTrigger extracting_trigger;
+    player.ch.points.exp = 15000;
+    obj_data* const previous_object_list = object_list;
+
+    die(&player.ch, &g_extracted_opponent->ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_EQ(g_extracted_opponent, nullptr);
+    EXPECT_EQ(player.ch.points.exp, 13900);
+    expect_stat_penalty_arm(player);
+    EXPECT_EQ(g_recorded_death.killer, nullptr);
+    EXPECT_TRUE(captured(EXPLOIT_MOBDEATH));
+    EXPECT_EQ(g_captured_mob_name, "testmage");
+}
+
+TEST(PoisonDeathPunishment, NonPoisonOnDieChangesStillAffectLegacyClassification)
+{
+    DeathHarness harness;
+    MortalPlayer player;
+    CreditedKiller killer { true };
+    player.ch.points.exp = 15000;
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &player.ch, &killer.ch } };
+    obj_data* const previous_object_list = object_list;
+    rots::combat::set_call_trigger_hook([](int trigger, void*, void* credited, void*) -> int {
+        if (trigger == ON_DIE) {
+            auto* killer = static_cast<char_data*>(credited);
+            killer->specials2.act |= MOB_ORC_FRIEND;
+        }
+        return TRUE;
+    });
+
+    die(&player.ch, &killer.ch, SPELL_BLAZE);
+    register_call_trigger_hook();
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_FALSE(captured(EXPLOIT_MOBDEATH));
+    EXPECT_FALSE(captured(EXPLOIT_POISON));
+    EXPECT_EQ(player.ch.points.exp, 14900);
+    expect_stat_penalty_arm(player);
+}
+
+TEST(PoisonDeathPunishment, NpcVictimsKeepTheirExistingDeathPath)
+{
+    DeathHarness harness;
+    FragileNpc victim;
+    CreditedKiller killer { true };
+    ScopedRoomOccupants death_room { room_by_id_total(kDeathRoom), kDeathRoom,
+        { &victim.ch, &killer.ch } };
+    set_fighting(&victim.ch, &killer.ch);
+    obj_data* const previous_object_list = object_list;
+
+    die(&victim.ch, &killer.ch, SPELL_POISON);
+    release_test_corpse(room_by_id_total(kDeathRoom), previous_object_list);
+
+    EXPECT_TRUE(g_recorded_death.called);
+    EXPECT_EQ(g_recorded_extraction.ch, &victim.ch);
+    EXPECT_EQ(g_recorded_death.killer, &killer.ch);
+    EXPECT_FALSE(captured(EXPLOIT_POISON));
+    EXPECT_FALSE(captured(EXPLOIT_MOBDEATH));
 }

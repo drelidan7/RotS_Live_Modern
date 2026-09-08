@@ -2924,9 +2924,13 @@ ACMD(do_wizset)
         }
     }
 
-    for (l = 0; *(fields[l].cmd) != '\n'; l++)
-        if (!strncmp(field, fields[l].cmd, strlen(field)))
+    int field_index = 0;
+    for (; *(fields[field_index].cmd) != '\n'; ++field_index) {
+        if (!strn_cmp(field, fields[field_index].cmd, strlen(field))) {
             break;
+        }
+    }
+    l = field_index;
 
     if ((GET_LEVEL(ch) < fields[l].level) && ((ch != vict) || fields[l].level > LEVEL_GRGOD)) {
         send_to_char("You are not godly enough for that!\n\r", ch);
@@ -3362,11 +3366,12 @@ ACMD(do_delete)
         }
         extract_char(vict);
     }
+    if (!delete_player_character_by_index(char_index)) {
+        send_to_char("Character deletion failed; account ownership and the player index were retained.\n\r", ch);
+        return;
+    }
     strcpy(buf, std::format("(GC) {} has deleted {}.", GET_NAME(ch), static_cast<const char*>(arg)).c_str());
     mudlog(buf, BRF, LEVEL_GOD, TRUE);
-    Crash_delete_file(player_table[char_index].name);
-    delete_exploits_file(player_table[char_index].name);
-    move_char_deleted(char_index);
 }
 
 ACMD(do_account)

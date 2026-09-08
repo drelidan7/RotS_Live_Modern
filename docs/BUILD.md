@@ -1910,9 +1910,9 @@ game-output and app-registered behavior without `rots_entity` linking upward int
 
 ### `rots_persist` (L3): the persistence library
 
-The fourth extracted layer is `rots_persist` (L3) — 14 TUs: `db_players.cpp`, `character_json.cpp`,
+The fourth extracted layer is `rots_persist` (L3) — 15 TUs: `db_players.cpp`, `character_json.cpp`,
 `objects_json.cpp`, `exploits_json.cpp`, `account_management.cpp` (+ its six `#include`d
-fragments), `account_cache.cpp`, `obj_files.cpp`, `pkill_json.cpp`, `mail_json.cpp`,
+fragments), `account_cache.cpp`, `roster_cache.cpp`, `obj_files.cpp`, `pkill_json.cpp`, `mail_json.cpp`,
 `boards_json.cpp`, `convert_exploits.cpp`, `convert_plrobjs.cpp`, `color_convert.cpp`, and
 `save_benchmark.cpp` — built as `librots_persist.a` and linked into both `ageland` and
 `rots_convert` (see below) as `RotS::persist`. It PUBLIC-links `RotS::entity` + `RotS::core` +
@@ -1923,6 +1923,8 @@ fragments), `account_cache.cpp`, `obj_files.cpp`, `pkill_json.cpp`, `mail_json.c
 `act_wiz.cpp`, `interpre.cpp`, `objsave.cpp`, `savebench.cpp`, `color.cpp`) also reach
 `persist/include` headers directly and now compile alongside `RotS::persist` inside the `ageland`
 target, so the include root has to flow transitively.
+
+`roster_cache.cpp` joins this layer through [TASK-015](../backlog/tasks/task-015%20-%20Port-release-frodo-delta-40-commits-through-upstream-PR-279.md). It owns persisted display/sort summaries with normalized, owned keys; it retains no live character pointers. The cache is disabled by default, enabled by server boot, and invalidated after successful character writes and deletion. Account recovery and roster policy remain in the existing account-management fragments; no new upward library edge is introduced.
 
 - **`rots_persist_linkcheck` / CTest `PersistLayerAcyclicity`** mirrors the `rots_entity_linkcheck`
   pattern: force-load `librots_persist.a` and normal-link only `RotS::entity` + `RotS::core` +

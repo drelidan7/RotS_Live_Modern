@@ -1,6 +1,7 @@
 #include "../comm.h"
 #include "../db.h"
 #include "../rots_net.h"
+#include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
 
@@ -15,6 +16,7 @@
 #if !defined(_WIN32)
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -36,6 +38,7 @@ using in_addr_t = unsigned long;
 
 SocketType pnew_descriptor(SocketType s);
 int process_input(struct descriptor_data* t);
+void check_pre_login_idle(time_t now);
 
 extern descriptor_data* descriptor_list;
 extern SocketType maxdesc;
@@ -473,6 +476,90 @@ TEST_F(AcceptPathTest, ProxyConnectionsRejectBannedHostsBeforeGreeting)
     EXPECT_EQ(process_input(descriptor_list), -1);
     expect_no_client_data_yet(client);
 
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
+}
+
+TEST_F(AcceptPathTest, AcceptedConnectionsEnableNoDelayAndKeepalive)
+{
+    in_port_t port = 0;
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_TRUE(rots_net::is_valid_socket(client));
+    ASSERT_EQ(pnew_descriptor(listener), 1);
+    ASSERT_NE(descriptor_list, nullptr);
+    int no_delay = 0;
+    int keepalive = 0;
+    socklen_t option_length = sizeof(no_delay);
+    EXPECT_EQ(getsockopt(descriptor_list->descriptor, IPPROTO_TCP, TCP_NODELAY,
+                  reinterpret_cast<char*>(&no_delay), &option_length),
+        0);
+    option_length = sizeof(keepalive);
+    EXPECT_EQ(getsockopt(descriptor_list->descriptor, SOL_SOCKET, SO_KEEPALIVE,
+                  reinterpret_cast<char*>(&keepalive), &option_length),
+        0);
+    EXPECT_NE(no_delay, 0);
+    EXPECT_NE(keepalive, 0);
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
+}
+
+TEST_F(AcceptPathTest, NegotiationOnlyInputDoesNotReadBeforeInputBuffer)
+{
+    in_port_t port = 0;
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_TRUE(rots_net::is_valid_socket(client));
+    ASSERT_EQ(pnew_descriptor(listener), 1);
+    ASSERT_NE(descriptor_list, nullptr);
+    read_client_data(client);
+    // IAC WONT ECHO contains no semantic text, so the assembled line is empty.
+    const char negotiation[] = { static_cast<char>(255), static_cast<char>(252), 1 };
+    ASSERT_EQ(rots_net::write_socket(client, negotiation, sizeof(negotiation)), sizeof(negotiation));
+    EXPECT_EQ(process_input(descriptor_list), 0);
+    EXPECT_STREQ(descriptor_list->buf, "");
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
+}
+
+TEST_F(AcceptPathTest, IdlePreloginSweepExpiresOnlyOlderThanFifteenMinutesAndContinues)
+{
+    in_port_t port = 0;
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType survivor_client = connect_client(port);
+    ASSERT_EQ(pnew_descriptor(listener), 1);
+    descriptor_data* const survivor = descriptor_list;
+    survivor->last_input_time = 100;
+    const SocketType idle_client = connect_client(port);
+    ASSERT_EQ(pnew_descriptor(listener), 1);
+    descriptor_list->last_input_time = 99;
+    check_pre_login_idle(1000);
+    EXPECT_EQ(descriptor_list, survivor);
+    EXPECT_EQ(survivor->next, nullptr);
+    check_pre_login_idle(1001);
+    EXPECT_EQ(descriptor_list, nullptr);
+    rots_net::close_socket(idle_client);
+    rots_net::close_socket(survivor_client);
+    rots_net::close_socket(listener);
+}
+
+TEST_F(AcceptPathTest, IdlePreloginSweepLeavesCharacterBearingDescriptorsToCharacterIdling)
+{
+    in_port_t port = 0;
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_EQ(pnew_descriptor(listener), 1);
+    descriptor_data* const survivor = descriptor_list;
+    char_data character { };
+    survivor->character = &character;
+    survivor->last_input_time = 1;
+    check_pre_login_idle(10000);
+    EXPECT_EQ(descriptor_list, survivor);
+    survivor->character = nullptr;
     rots_net::close_socket(client);
     rots_net::close_socket(listener);
 }

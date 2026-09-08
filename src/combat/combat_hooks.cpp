@@ -22,10 +22,14 @@
 #include "handler.h" /* For location_of() -- RR Wave R3 Task 1b's dispatch-invariant guard */
 #include "utils.h" /* For TRUE/LEVEL_IMPL, mudlog()'s argument spelling */
 
+#include "rots/core/character.h"
+#include "rots/core/room.h"
 #include "rots/platform/log.h"
 
 #include <array>
 #include <cstddef>
+
+extern int top_of_world;
 #include <format>
 
 namespace {
@@ -292,6 +296,42 @@ void crash_extract_objs(obj_data* obj)
 // act_move.cpp/act_info.cpp display-and-movement inversion trio dispatch
 // (spell-family closure wave Task 1) -- see combat_hooks.h's own comments
 // above for each hook's tripwire-default rationale.
+namespace {
+    // Boot-installed app adapter; validation state is passed on the caller's stack.
+    checked_move_fn checked_move_handler = nullptr;
+}
+
+bool matches_checked_movement(const char_data* character, const checked_movement& movement)
+{
+    if (!character || char_by_abs_number(movement.actor_number) != character
+        || movement.direction < 0 || movement.direction >= NUM_OF_DIRS
+        || movement.source_room < 0 || movement.destination_room < 0
+        || movement.source_room > top_of_world || movement.destination_room > top_of_world
+        || location_of(character) != movement.source_room) {
+        return false;
+    }
+    const room_data* origin = room_of(character);
+    const room_direction_data* exit = origin->dir_option[movement.direction];
+    return exit && exit->to_room == movement.destination_room;
+}
+
+void set_checked_move_hook(checked_move_fn hook)
+{
+    checked_move_handler = hook;
+}
+
+void move_after_validation(char_data* character, const checked_movement& movement, int mode)
+{
+    if (!matches_checked_movement(character, movement)) {
+        return;
+    }
+    if (checked_move_handler) {
+        checked_move_handler(character, movement, mode);
+        return;
+    }
+    rots::log::write_stderr("rots::combat: checked move has no registered app handler; move refused.");
+}
+
 void set_check_simple_move_hook(check_simple_move_fn hook)
 {
     g_check_simple_move_hook = hook;

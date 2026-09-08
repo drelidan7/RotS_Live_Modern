@@ -54,6 +54,10 @@
 #define CON_ACCTLEGPWD 38
 #define CON_ACCTVERIFY 39
 #define CON_ACCTDELCNF1 40
+#define CON_ACCTPWDFAIL 41
+#define CON_ACCTFORGOTCODE 42
+#define CON_ACCTFORGOTNEW 43
+#define CON_ACCTFORGOTCNF 44
 
 /* modes for flags */
 #define DFLAG_IS_SPAMMING 1
@@ -79,6 +83,14 @@ struct descriptor_data {
     char account_email[MAX_INPUT_LENGTH]; /* authenticated account email */
     char account_password[MAX_ACCOUNT_PASSWORD_LENGTH + 1]; /* transient account password */
     char account_character_name[MAX_INPUT_LENGTH]; /* pending account character action */
+    // Absolute connection-state expiration; zero disables the deadline.
+    time_t state_deadline;
+    // Account roster sort enum encoded without a persist dependency in core.
+    int roster_sort;
+    // Session-only highest-profession filter enum.
+    int roster_filter;
+    // Persists the chosen sort only when the player leaves this roster visit.
+    bool roster_sort_dirty;
     int bad_pws; /* number of bad pw attemps this login	*/
     int pos; /* position in player-file		*/
     int connected; /* mode of 'connectedness'		*/
@@ -92,6 +104,8 @@ struct descriptor_data {
     unsigned int len_str; /* present length of *str               */
     unsigned int cur_str; /* current pointer position in *str     */
     int prompt_mode; /* control of prompt-printing		*/
+    // A bare prompt reached the socket; the next game-text flush needs a leading break.
+    bool bare_prompt_pending;
     char buf[MAX_STRING_LENGTH]; /* buffer for raw input			*/
     char last_input[MAX_INPUT_LENGTH]; /* the last input			*/
     char small_outbuf[SMALL_BUFSIZE]; /* standard output bufer		*/

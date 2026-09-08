@@ -310,7 +310,7 @@ TEST(Color, UnknownFieldNameListsAllValidFieldsWithLeadingSpaceAndCrlf)
     const std::string output = descriptor.output;
     EXPECT_EQ(output,
         "Possible arguments are:\n\r"
-        " narrate chat yell tell say roomname hit damage character object enemy description group magic weather off on default\n\r"
+        " narrate chat yell tell say roomname hit damage character object enemy description group magic weather mob off on default\n\r"
         "Usage:\n\r"
         "  color <slot> <ansi colour>\n\r"
         "  color <slot> fg ansi <ansi colour>\n\r"
@@ -385,4 +385,37 @@ TEST(Color, InterpreterAcceptsColorAsAliasForColour)
     ASSERT_GE(colour_command, 0);
     EXPECT_EQ(cmd_info[color_command].command_pointer, cmd_info[colour_command].command_pointer);
     EXPECT_EQ(cmd_info[color_command].command_pointer, &do_color);
+}
+
+TEST(Color, MobSlotIsConfigurableThroughTheCommand)
+{
+    char_data character { };
+    initialize_player_character(&character);
+    ScopedClearCharFields character_cleanup { character };
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    character.desc = &descriptor;
+    char color_command[] = "mob bright blue";
+    do_color(&character, color_command, nullptr, 0, 0);
+    EXPECT_EQ(get_colornum(&character, COLOR_MOB), CBBLU);
+    EXPECT_NE(std::string(descriptor.output).find("You colour mob"), std::string::npos);
+}
+
+TEST(Color, MobSlotStartsNormalUntilTheDefaultSetIsApplied)
+{
+    char_data character { };
+    initialize_player_character(&character);
+    ScopedClearCharFields character_cleanup { character };
+    EXPECT_EQ(get_colornum(&character, COLOR_MOB), CNRM);
+    set_colors_default(&character);
+    EXPECT_EQ(get_colornum(&character, COLOR_MOB), CGRN);
+    EXPECT_EQ(get_colornum(&character, COLOR_CHAR), CGRN);
+    EXPECT_EQ(character.profs->color_settings[COLOR_MOB].background.mode, COLOR_VALUE_DEFAULT);
+}
+
+TEST(Color, MobSlotKeepsExistingAbbreviations)
+{
+    EXPECT_EQ(find_color_field("mob"), COLOR_MOB);
+    EXPECT_EQ(find_color_field("m"), COLOR_MAGIC);
+    EXPECT_EQ(find_color_field("c"), COLOR_CHAT);
 }

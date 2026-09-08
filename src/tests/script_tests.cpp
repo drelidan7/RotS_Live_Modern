@@ -253,3 +253,66 @@ TEST(TriggerRoomEvent, EnterNeverConsultsAnOccupantAfterADenial) {
         << "Same guard-regression check as the ON_BEFORE_ENTER case above, for ON_ENTER's "
            "trigger_char_enter() walk.";
 }
+
+script_data* get_next_command(script_data* current_command);
+
+TEST(GetNextCommand, ReturnsAfterOuterEndWhenNestedEndIsAdjacent)
+{
+    script_data outer_begin { };
+    script_data inner_begin { };
+    script_data inner_end { };
+    script_data outer_end { };
+    script_data following_command { };
+    outer_begin.command_type = SCRIPT_BEGIN;
+    inner_begin.command_type = SCRIPT_BEGIN;
+    inner_end.command_type = SCRIPT_END;
+    outer_end.command_type = SCRIPT_END;
+    following_command.command_type = SCRIPT_ABORT;
+    outer_begin.next = &inner_begin;
+    inner_begin.next = &inner_end;
+    inner_end.next = &outer_end;
+    outer_end.next = &following_command;
+    EXPECT_EQ(get_next_command(&outer_begin), &following_command);
+}
+
+TEST(GetNextCommand, ReturnsAfterElseBoundaryImmediatelyFollowingNestedBlock)
+{
+    script_data outer_begin { };
+    script_data inner_begin { };
+    script_data inner_end { };
+    script_data else_boundary { };
+    script_data else_command { };
+    outer_begin.command_type = SCRIPT_BEGIN;
+    inner_begin.command_type = SCRIPT_BEGIN;
+    inner_end.command_type = SCRIPT_END;
+    else_boundary.command_type = SCRIPT_END_ELSE_BEGIN;
+    else_command.command_type = SCRIPT_ABORT;
+    outer_begin.next = &inner_begin;
+    inner_begin.next = &inner_end;
+    inner_end.next = &else_boundary;
+    else_boundary.next = &else_command;
+    EXPECT_EQ(get_next_command(&outer_begin), &else_command);
+}
+
+TEST(GetNextCommand, UnterminatedBlockReturnsNull)
+{
+    script_data begin { };
+    script_data command { };
+    begin.command_type = SCRIPT_BEGIN;
+    command.command_type = SCRIPT_ABORT;
+    begin.next = &command;
+    EXPECT_EQ(get_next_command(&begin), nullptr);
+}
+
+TEST(GetNextCommand, UnterminatedNestedBlockReturnsNull)
+{
+    script_data outer_begin { };
+    script_data inner_begin { };
+    script_data command { };
+    outer_begin.command_type = SCRIPT_BEGIN;
+    inner_begin.command_type = SCRIPT_BEGIN;
+    command.command_type = SCRIPT_ABORT;
+    outer_begin.next = &inner_begin;
+    inner_begin.next = &command;
+    EXPECT_EQ(get_next_command(&outer_begin), nullptr);
+}

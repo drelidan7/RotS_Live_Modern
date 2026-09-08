@@ -6,10 +6,35 @@
 #if defined(PREDEF_PLATFORM_LINUX)
 #include <cerrno>
 #include <fcntl.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #endif
 
 namespace rots_net {
+
+bool set_tcp_nodelay(SocketType socket_handle)
+{
+    const int enabled = 1;
+#if defined(PREDEF_PLATFORM_WINDOWS)
+    return setsockopt(socket_handle, IPPROTO_TCP, TCP_NODELAY,
+               reinterpret_cast<const char*>(&enabled), sizeof(enabled))
+        == 0;
+#else
+    return setsockopt(socket_handle, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled)) == 0;
+#endif
+}
+
+bool set_keepalive(SocketType socket_handle)
+{
+    const int enabled = 1;
+#if defined(PREDEF_PLATFORM_WINDOWS)
+    return setsockopt(socket_handle, SOL_SOCKET, SO_KEEPALIVE,
+               reinterpret_cast<const char*>(&enabled), sizeof(enabled))
+        == 0;
+#else
+    return setsockopt(socket_handle, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled)) == 0;
+#endif
+}
 
 #if defined(PREDEF_PLATFORM_WINDOWS)
 

@@ -1,18 +1,20 @@
 #include "../account_management.h"
+#include "../comm.h"
 #include "../db.h"
 #include "../handler.h"
 #include "../interpre.h"
-#include "../player_limits.h"
 #include "../objects_json.h"
+#include "../player_limits.h"
 #include "../profs.h"
 #include "../protocol.h"
+#include "../rots_net.h"
 #include "../spells.h"
-#include "rots/persist/file_formats.h"
-#include "rots/core/character.h"
-#include "rots/core/room.h"
-#include "rots/core/descriptor.h"
-#include "rots/core/types.h"
 #include "../utils.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/room.h"
+#include "rots/core/types.h"
+#include "rots/persist/file_formats.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -33,6 +35,8 @@
 // fixture below) are POSIX-only; the tests that use them skip entirely on
 // Windows before reaching either.
 #if !defined(_WIN32)
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
@@ -51,6 +55,7 @@ static constexpr const char* kTrueCommandPath = "/bin/true";
 extern struct player_index_element* player_table;
 extern struct char_data* character_list;
 extern struct descriptor_data* descriptor_list;
+extern struct txt_block* bufpool;
 extern struct room_data world;
 extern FILE* fpCommand;
 extern int iCommands;
@@ -604,7 +609,7 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListCapitalizesFirstLetterOfStored
     ASSERT_TRUE(account::write_account_character_file(".", "acct", make_stored_character("aragorn", 50, RACE_WOOD), &error_message)) << error_message;
     ASSERT_TRUE(account::write_account_character_file(".", "acct", make_stored_character("legolas", 45, RACE_HUMAN), &error_message)) << error_message;
 
-    const std::string output = account::format_account_character_list(".", account_data);
+    const std::string output = account::format_account_character_list(".", account_data, account::RosterSort::Account);
 
     EXPECT_EQ(output,
         "\n\rLinked characters:\n\r"
@@ -629,7 +634,7 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListOnlyChangesTheFirstByteOfStore
     ASSERT_TRUE(account::write_account_character_file(".", "acct", make_stored_character("mCduck", 12, RACE_WOOD), &error_message)) << error_message;
     ASSERT_TRUE(account::write_account_character_file(".", "acct", make_stored_character("oBrian", 9, RACE_HUMAN), &error_message)) << error_message;
 
-    const std::string output = account::format_account_character_list(".", account_data);
+    const std::string output = account::format_account_character_list(".", account_data, account::RosterSort::Account);
 
     EXPECT_EQ(output,
         "\n\rLinked characters:\n\r"
@@ -643,7 +648,7 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListKeepsEmptyMessageForAccountsWi
 {
     account::AccountData account_data;
 
-    const std::string output = account::format_account_character_list(".", account_data);
+    const std::string output = account::format_account_character_list(".", account_data, account::RosterSort::Account);
 
     EXPECT_EQ(output, "\n\rNo linked characters yet.\n\r");
 }
@@ -661,7 +666,7 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListFallsBackToUnknownWhoStyleEntr
     std::string error_message;
     ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message)) << error_message;
 
-    const std::string output = account::format_account_character_list(".", account_data);
+    const std::string output = account::format_account_character_list(".", account_data, account::RosterSort::Account);
 
     EXPECT_EQ(output,
         "\n\rLinked characters:\n\r"
@@ -678,18 +683,19 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListTruncatesVeryLargeRenderedList
 
     account::AccountData account_data;
     account_data.account_name = "acct";
-    for (int index = 0; index < 105; ++index)
+    for (int index = 0; index < 205; ++index) {
         account_data.characters.push_back("char" + std::to_string(index));
+    }
     std::string error_message;
     ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message)) << error_message;
 
-    const std::string output = account::format_account_character_list(".", account_data);
+    const std::string output = account::format_account_character_list(".", account_data, account::RosterSort::Account);
 
     EXPECT_NE(output.find("[ ?? ???] Char0"), std::string::npos);
-    EXPECT_NE(output.find("[ ?? ???] Char99"), std::string::npos);
-    EXPECT_EQ(output.find("[ ?? ???] Char100"), std::string::npos);
+    EXPECT_NE(output.find("[ ?? ???] Char199"), std::string::npos);
+    EXPECT_EQ(output.find("[ ?? ???] Char200"), std::string::npos);
     EXPECT_NE(output.find("\n\r... and 5 more\n\r"), std::string::npos);
-    EXPECT_NE(output.find("\n\r100 characters displayed.\n\r"), std::string::npos);
+    EXPECT_NE(output.find("\n\r200 characters displayed.\n\r"), std::string::npos);
 }
 
 TEST(InterpreAccountMenu, AccountMenuChoiceOneWritesCapitalizedCharacterListToDescriptorOutput)
@@ -768,8 +774,9 @@ TEST(InterpreAccountMenu, AccountMenuPlayChoiceWritesWhoStyleCharacterPromptToDe
         "\n\rLinked characters for your account:\n\r"
         "1) [ 50 WdE] Aragorn     2) [ 45 Hum] Legolas     \n\r"
         "\n\r2 characters displayed.\n\r"
-        "\n\r0) Back to Account Menu.\n\r"
-        "\n\rCharacter number: ");
+        "\n\rSort: (A)-Z  (L)evel  ra(C)e  (S)ide      Show only: (W)arrior (R)anger (T)mystic (M)age\n\r"
+        "0) Back to Account Menu.\n\r"
+        "\n\rCharacter number or name: ");
 }
 
 TEST(InterpreAccountMenu, ActiveAccountSessionShowsPlayingLinkedCharacterInAccountMenu)
@@ -1053,7 +1060,7 @@ TEST(InterpreAccountMenu, ActiveLevelNinetyOneBlocksDifferentLinkedCharacterBefo
         << "Blocked selection should happen before creating or updating player-table entries.";
     const std::string output = descriptor.output;
     EXPECT_NE(output.find("You are already connected as Aragorn."), std::string::npos) << output;
-    EXPECT_NE(output.find("\n\rCharacter number: "), std::string::npos) << output;
+    EXPECT_NE(output.find("\n\rCharacter number or name: "), std::string::npos) << output;
 
     EXPECT_FALSE(std::filesystem::exists("players"));
     EXPECT_FALSE(std::filesystem::exists("plrobjs"));
@@ -1486,7 +1493,7 @@ TEST(InterpreAccountMenu, MultipleLowActiveSessionsStillRestrictDifferentLinkedC
     EXPECT_EQ(select_descriptor.pos, -1);
     const std::string selection_output = select_descriptor.output;
     EXPECT_NE(selection_output.find("You are already connected as Aragorn."), std::string::npos) << selection_output;
-    EXPECT_NE(selection_output.find("\n\rCharacter number: "), std::string::npos) << selection_output;
+    EXPECT_NE(selection_output.find("\n\rCharacter number or name: "), std::string::npos) << selection_output;
 
     free_char(level_ninety_one_descriptor.character);
     free_char(low_level_descriptor.character);
@@ -1599,7 +1606,7 @@ TEST(InterpreAccountMenu, LinkedRosterLevelNinetyOneDoesNotUnlockDifferentSelect
     EXPECT_EQ(select_descriptor.character, nullptr);
     const std::string output = select_descriptor.output;
     EXPECT_NE(output.find("You are already connected as Aragorn."), std::string::npos) << output;
-    EXPECT_NE(output.find("\n\rCharacter number: "), std::string::npos) << output;
+    EXPECT_NE(output.find("\n\rCharacter number or name: "), std::string::npos) << output;
 
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
@@ -2863,10 +2870,10 @@ TEST(InterpreAccountMenu, RestrictedActiveCharacterStillAllowsListResetAndLogout
     logout_descriptor.output = logout_descriptor.small_outbuf;
     char logout_choice[] = "0";
     nanny(&logout_descriptor, logout_choice);
-    EXPECT_EQ(logout_descriptor.connected, CON_NME);
+    EXPECT_EQ(logout_descriptor.connected, CON_CLOSE);
     EXPECT_STREQ(logout_descriptor.account_name, "");
     EXPECT_STREQ(logout_descriptor.account_email, "");
-    EXPECT_NE(std::string(logout_descriptor.output).find("Account email: "), std::string::npos);
+    EXPECT_NE(std::string(logout_descriptor.output).find("Goodbye.\n\r"), std::string::npos);
 
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
@@ -3791,8 +3798,8 @@ TEST(InterpreAccountMenu, AccountLogoutLogsEmailAndHostExactlyOnce)
         stderr_output = stderr_redirect.read_contents();
     }
 
-    EXPECT_EQ(descriptor.connected, CON_NME);
-    EXPECT_EQ(std::string(descriptor.output), "Account email: ");
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+    EXPECT_EQ(std::string(descriptor.output), "Goodbye.\n\r");
     EXPECT_NE(stderr_output.find("Account logout for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
     EXPECT_EQ(count_occurrences(stderr_output, "Account logout for player@example.com [127.0.0.1]"), 1u) << stderr_output;
 }
@@ -4353,7 +4360,7 @@ TEST(InterpreAccountMenu, FailedSelectionAfterDeleteDoesNotLeaveReplacementDescr
     EXPECT_EQ(descriptor.character, nullptr);
     EXPECT_EQ(descriptor.pos, -1);
     EXPECT_NE(std::string(descriptor.output).find("deleted and cannot be selected"), std::string::npos);
-    EXPECT_NE(std::string(descriptor.output).find("Character number: "), std::string::npos);
+    EXPECT_NE(std::string(descriptor.output).find("Character number or name: "), std::string::npos);
 }
 
 TEST(InterpreAccountMenu, CreatingNewCharacterAfterDeleteRecreatesDescriptorCharacterShell)
@@ -5408,6 +5415,1425 @@ TEST(InterpreAccountMenu, AdvanceLevelStillPersistsWhenAccountOwnershipLookupFai
 
     free_char(descriptor.character);
     descriptor.character = nullptr;
+}
+
+std::string read_file_contents(const std::string& path)
+{
+    FILE* file = std::fopen(path.c_str(), "rb");
+    EXPECT_NE(file, nullptr) << "Expected test helper to open fixture file: " << path;
+    if (file == nullptr) {
+        return "";
+    }
+
+    std::string contents;
+    char buffer[256];
+    while (true) {
+        const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
+        if (bytes_read > 0) {
+            contents.append(buffer, bytes_read);
+        }
+
+        if (bytes_read < sizeof(buffer)) {
+            EXPECT_EQ(std::ferror(file), 0) << "Expected test helper to read fixture file cleanly: " << path;
+            break;
+        }
+    }
+
+    EXPECT_EQ(std::fclose(file), 0);
+    return contents;
+}
+
+void make_file_executable(const std::string& path)
+{
+    ASSERT_EQ(rots_chmod(path.c_str(), 0700), 0)
+        << "Expected test helper to mark fixture file executable: " << path;
+}
+
+int rots_open_null_write()
+{
+#if defined(_WIN32)
+    return _open("NUL", O_WRONLY);
+#else
+    return open("/dev/null", O_WRONLY);
+#endif
+}
+
+TEST(InterpreAccountMenu, WrongAccountPasswordRecordsAFailedLoginAttemptOnTheAccount)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWD;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "host.example.com");
+    char wrong_password[] = "WrongPass1";
+
+    nanny(&descriptor, wrong_password);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTPWD);
+    EXPECT_NE(std::string(descriptor.output).find("Invalid account credentials."), std::string::npos);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_EQ(reloaded_account.failed_login_count, 1);
+    EXPECT_EQ(reloaded_account.failed_login_last_host, "host.example.com");
+    EXPECT_NE(reloaded_account.failed_login_last_at, 0);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, SuccessfulAccountLoginReportsAndClearsRecordedLoginFailures)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+    stored_account.failed_login_count = 2;
+    stored_account.failed_login_last_at = 1700002500;
+    stored_account.failed_login_last_host = "attacker.example.com";
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWD;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "host.example.com");
+    char correct_password[] = "ValidPass1";
+
+    nanny(&descriptor, correct_password);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    const std::string output = descriptor.output;
+    EXPECT_NE(output.find("2 FAILED LOGIN ATTEMPTS SINCE YOUR LAST SUCCESSFUL LOGIN."), std::string::npos);
+    EXPECT_NE(output.find("Most recent: 2023-11-14 22:55:00 UTC from attacker.example.com"), std::string::npos);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_EQ(reloaded_account.failed_login_count, 0);
+    EXPECT_EQ(reloaded_account.failed_login_last_at, 0);
+    EXPECT_TRUE(reloaded_account.failed_login_last_host.empty());
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, StateDeadlineClosesTheConnectionOnceItPasses)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data* descriptor = allocate_descriptor();
+    descriptor->descriptor = 7;
+    descriptor->connected = CON_ACCTPWD;
+    descriptor->state_deadline = 1700002000;
+    descriptor_list = descriptor;
+
+    check_state_deadlines(1700002000);
+
+    EXPECT_EQ(descriptor->connected, CON_CLOSE);
+    EXPECT_EQ(descriptor->state_deadline, 0);
+    EXPECT_NE(std::string(descriptor->output).find("Timed out."), std::string::npos);
+}
+
+TEST(InterpreAccountMenu, StateDeadlineLeavesConnectionsAloneBeforeItPasses)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data* descriptor = allocate_descriptor();
+    descriptor->descriptor = 7;
+    descriptor->connected = CON_ACCTPWD;
+    descriptor->state_deadline = 1700002000;
+    descriptor_list = descriptor;
+
+    check_state_deadlines(1700001999);
+
+    EXPECT_EQ(descriptor->connected, CON_ACCTPWD);
+    EXPECT_EQ(descriptor->state_deadline, 1700002000);
+    EXPECT_EQ(std::string(descriptor->output), "");
+}
+
+TEST(InterpreAccountMenu, StateDeadlineIgnoresDescriptorsWithoutOne)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data* descriptor = allocate_descriptor();
+    descriptor->descriptor = 7;
+    descriptor->connected = CON_ACCTMENU;
+    descriptor->state_deadline = 0;
+    descriptor_list = descriptor;
+
+    check_state_deadlines(1900000000);
+
+    EXPECT_EQ(descriptor->connected, CON_ACCTMENU);
+    EXPECT_EQ(std::string(descriptor->output), "");
+}
+
+TEST(InterpreAccountMenu, StateDeadlineNamesTheExpiredCodeInTheForgotPasswordStates)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data* descriptor = allocate_descriptor();
+    descriptor->descriptor = 7;
+    descriptor->connected = CON_ACCTFORGOTNEW;
+    descriptor->state_deadline = 1700002000;
+    descriptor_list = descriptor;
+
+    check_state_deadlines(1700002001);
+
+    EXPECT_EQ(descriptor->connected, CON_CLOSE);
+    EXPECT_NE(std::string(descriptor->output).find("That reset code has expired."), std::string::npos);
+}
+
+// account_character_name holds the plaintext reset code through the forgot-password states and
+// account_password the new one being typed. nanny() scrubs both on every exit; a close fired by the
+// deadline sweep has to match that hygiene rather than leaving them on the descriptor.
+TEST(InterpreAccountMenu, StateDeadlineScrubsTheResetCodeAndPasswordFromTheDescriptor)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data* descriptor = allocate_descriptor();
+    descriptor->descriptor = 7;
+    descriptor->connected = CON_ACCTFORGOTCNF;
+    descriptor->state_deadline = 1700002000;
+    std::snprintf(descriptor->account_character_name, sizeof(descriptor->account_character_name), "%s", "123456");
+    std::snprintf(descriptor->account_password, sizeof(descriptor->account_password), "%s", "BrandNew1");
+    descriptor_list = descriptor;
+
+    check_state_deadlines(1700002001);
+
+    EXPECT_EQ(descriptor->connected, CON_CLOSE);
+    EXPECT_TRUE(std::string(descriptor->account_character_name).empty());
+    EXPECT_TRUE(std::string(descriptor->account_password).empty());
+}
+
+TEST(InterpreAccountMenu, FifthWrongAccountPasswordOffersTheResetMenuInsteadOfDisconnecting)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWD;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "host.example.com");
+
+    char wrong_password[] = "WrongPass1";
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        descriptor.connected = CON_ACCTPWD;
+        nanny(&descriptor, wrong_password);
+    }
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTPWDFAIL);
+    const std::string output = descriptor.output;
+    EXPECT_NE(output.find("1) Reset your account password"), std::string::npos);
+    EXPECT_NE(output.find("0) Disconnect"), std::string::npos);
+    EXPECT_NE(descriptor.state_deadline, 0);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, ResetMenuChoiceZeroDisconnects)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWDFAIL;
+    descriptor.state_deadline = 1900000000;
+    char choice[] = "0";
+
+    nanny(&descriptor, choice);
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+    EXPECT_EQ(descriptor.state_deadline, 0);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, ResetMenuRedrawsOnInvalidInputWithoutExtendingTheDeadline)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWDFAIL;
+    descriptor.state_deadline = 1900000000;
+    char choice[] = "banana";
+
+    nanny(&descriptor, choice);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTPWDFAIL);
+    EXPECT_EQ(descriptor.state_deadline, 1900000000);
+    EXPECT_NE(std::string(descriptor.output).find("1) Reset your account password"), std::string::npos);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, ResetMenuChoiceOneAdvancesToTheCodePromptForAnUnknownAddress)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWDFAIL;
+    descriptor.state_deadline = 1900000000;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "nobody@example.com");
+    char choice[] = "1";
+
+    nanny(&descriptor, choice);
+
+    // Identical to the real-account path: same message, same next state, a deadline from the code.
+    EXPECT_EQ(descriptor.connected, CON_ACCTFORGOTCODE);
+    EXPECT_NE(std::string(descriptor.output).find("If an account exists for that address"), std::string::npos);
+    EXPECT_NE(descriptor.state_deadline, 0);
+    EXPECT_NE(descriptor.state_deadline, 1900000000);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, CorrectResetCodeAdvancesToTheNewPasswordPrompt)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    const std::string capture_path = temp_directory.path() + "/captured-mail.txt";
+    const std::string command_script_path = temp_directory.path() + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+
+    long expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(".", "player@example.com", time(0), &expiry, &error_message)) << error_message;
+    const std::string captured_mail = read_file_contents(capture_path);
+    const std::string marker = "Password reset code: ";
+    const size_t code_offset = captured_mail.find(marker);
+    ASSERT_NE(code_offset, std::string::npos);
+    std::string mailed_code = captured_mail.substr(code_offset + marker.size(), 6);
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTCODE;
+    descriptor.state_deadline = expiry;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+
+    std::vector<char> code_buffer(mailed_code.begin(), mailed_code.end());
+    code_buffer.push_back('\0');
+    nanny(&descriptor, code_buffer.data());
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTFORGOTNEW);
+    EXPECT_EQ(std::string(descriptor.account_character_name), mailed_code);
+    EXPECT_NE(std::string(descriptor.output).find("New account password:"), std::string::npos);
+    // The code's own expiry keeps bounding the connection through the password prompts.
+    EXPECT_EQ(descriptor.state_deadline, expiry);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, WrongResetCodeIsReportedImmediatelyAndRePrompts)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Reset issue uses the POSIX sendmail implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    long expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(".", "player@example.com", time(0), &expiry, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTCODE;
+    descriptor.state_deadline = expiry;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    char wrong_code[] = "000000";
+
+    nanny(&descriptor, wrong_code);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTFORGOTCODE);
+    EXPECT_NE(std::string(descriptor.output).find("Reset code: "), std::string::npos);
+    EXPECT_TRUE(std::string(descriptor.account_character_name).empty());
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, FifthWrongResetCodeDisconnects)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Reset issue uses the POSIX sendmail implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    long expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(".", "player@example.com", time(0), &expiry, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTCODE;
+    descriptor.state_deadline = expiry;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+
+    char wrong_code[] = "000000";
+    for (int attempt = 0; attempt < account::MAX_PASSWORD_RESET_ATTEMPTS; ++attempt) {
+        if (descriptor.connected != CON_ACCTFORGOTCODE) {
+            break;
+        }
+        nanny(&descriptor, wrong_code);
+    }
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+    EXPECT_NE(std::string(descriptor.output).find("Too many invalid reset codes."), std::string::npos);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+// The whole point of the code prompt is that it cannot be used to ask whether an address has an
+// account behind it. Five wrong codes must therefore end the same way, and say the same words,
+// whether or not there is an account to count the attempts on.
+TEST(InterpreAccountMenu, ResetCodePromptTreatsAnUnknownAddressIdenticallyToARealOne)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Reset issue uses the POSIX sendmail implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    long expiry = 0;
+    ASSERT_TRUE(account::start_password_reset(".", "player@example.com", time(0), &expiry, &error_message)) << error_message;
+
+    char wrong_code[] = "000000";
+
+    descriptor_data known_descriptor = make_descriptor();
+    known_descriptor.output = known_descriptor.small_outbuf;
+    known_descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(known_descriptor.descriptor, 0);
+    known_descriptor.connected = CON_ACCTFORGOTCODE;
+    known_descriptor.state_deadline = expiry;
+    std::snprintf(known_descriptor.account_email, sizeof(known_descriptor.account_email), "%s", "player@example.com");
+
+    descriptor_data unknown_descriptor = make_descriptor();
+    unknown_descriptor.output = unknown_descriptor.small_outbuf;
+    unknown_descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(unknown_descriptor.descriptor, 0);
+    unknown_descriptor.connected = CON_ACCTFORGOTCODE;
+    unknown_descriptor.state_deadline = expiry;
+    std::snprintf(unknown_descriptor.account_email, sizeof(unknown_descriptor.account_email), "%s", "nobody@example.com");
+
+    for (int attempt = 0; attempt < account::MAX_PASSWORD_RESET_ATTEMPTS; ++attempt) {
+        nanny(&known_descriptor, wrong_code);
+        nanny(&unknown_descriptor, wrong_code);
+    }
+
+    // The address with no account is disconnected on the fifth wrong code exactly as the real one
+    // is, rather than being re-prompted forever.
+    EXPECT_EQ(unknown_descriptor.connected, CON_CLOSE);
+    EXPECT_EQ(known_descriptor.connected, CON_CLOSE);
+    EXPECT_NE(std::string(unknown_descriptor.output).find("Too many invalid reset codes."), std::string::npos);
+    // Not merely the same ending -- the same words, all the way through.
+    EXPECT_EQ(std::string(unknown_descriptor.output), std::string(known_descriptor.output));
+
+    close(known_descriptor.descriptor);
+    close(unknown_descriptor.descriptor);
+}
+
+TEST(InterpreAccountMenu, ResetCodePromptDisconnectsOnEmptyInput)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTCODE;
+    char empty_input[] = "";
+
+    nanny(&descriptor, empty_input);
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, ForgotPasswordHappyPathResetsThePasswordAndDisconnects)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    const std::string capture_path = temp_directory.path() + "/captured-mail.txt";
+    const std::string command_script_path = temp_directory.path() + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWDFAIL;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "host.example.com");
+
+    char request[] = "1";
+    nanny(&descriptor, request);
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTCODE);
+
+    const std::string captured_mail = read_file_contents(capture_path);
+    const std::string marker = "Password reset code: ";
+    const size_t code_offset = captured_mail.find(marker);
+    ASSERT_NE(code_offset, std::string::npos);
+    std::string mailed_code = captured_mail.substr(code_offset + marker.size(), 6);
+
+    std::vector<char> code_buffer(mailed_code.begin(), mailed_code.end());
+    code_buffer.push_back('\0');
+    nanny(&descriptor, code_buffer.data());
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTNEW);
+
+    char new_password[] = "BrandNew1";
+    nanny(&descriptor, new_password);
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTCNF);
+
+    char confirm_password[] = "BrandNew1";
+    nanny(&descriptor, confirm_password);
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+    EXPECT_NE(std::string(descriptor.output).find("Please log in again with your new password."), std::string::npos);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_TRUE(account::verify_password("BrandNew1", reloaded_account.password_hash));
+    EXPECT_TRUE(reloaded_account.password_reset_code_hash.empty());
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, ForgotPasswordRejectsAPasswordFailingPolicyWithoutAdvancing)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTNEW;
+    char weak_password[] = "short";
+
+    nanny(&descriptor, weak_password);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTFORGOTNEW);
+    EXPECT_NE(std::string(descriptor.output).find("New account password:"), std::string::npos);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, ForgotPasswordMismatchedConfirmationReturnsToTheNewPasswordPrompt)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTNEW;
+
+    char new_password[] = "BrandNew1";
+    nanny(&descriptor, new_password);
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTCNF);
+
+    char mismatch[] = "Different1";
+    nanny(&descriptor, mismatch);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTFORGOTNEW);
+    EXPECT_NE(std::string(descriptor.output).find("Passwords don't match"), std::string::npos);
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+// Defence in depth: the code was already checked at the prompt, but completion must re-check rather
+// than trust whatever the descriptor is carrying.
+TEST(InterpreAccountMenu, ForgotPasswordCompletionReVerifiesTheCodeRatherThanTrustingTheDescriptor)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTFORGOTNEW;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_character_name, sizeof(descriptor.account_character_name), "%s", "000000");
+
+    char new_password[] = "BrandNew1";
+    nanny(&descriptor, new_password);
+    char confirm_password[] = "BrandNew1";
+    nanny(&descriptor, confirm_password);
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_TRUE(account::verify_password("ValidPass1", reloaded_account.password_hash));
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+// The product decision is deliberate: a completed reset must not disconnect a session already
+// playing on the account, even though that is the account-theft scenario the feature exists for
+// -- a forced link-drop can get a character killed and their gear lost. Verify the survival, not
+// just the absence of a crash: an active playing session stays connected and attached through a
+// completed reset on a different descriptor.
+TEST(InterpreAccountMenu, ForgotPasswordCompletionLeavesAnActivePlayingSessionConnected)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "Captured sendmail requires the POSIX delivery implementation.";
+#endif
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/P-T", 0700), 0);
+
+    const std::string capture_path = temp_directory.path() + "/captured-mail.txt";
+    const std::string command_script_path = temp_directory.path() + "/capture-sendmail.sh";
+    write_text_file(command_script_path, "#!/bin/sh\ncat > \"" + capture_path + "\"\n");
+    make_file_executable(command_script_path);
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", command_script_path);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "acct", "aragorn", 1700010202, &stored_account, &error_message)) << error_message;
+
+    descriptor_data active_descriptor = make_descriptor();
+    active_descriptor.output = active_descriptor.small_outbuf;
+    active_descriptor.connected = CON_PLYNG;
+    active_descriptor.descriptor = 7;
+    attach_active_character(&active_descriptor, "aragorn", 50, 4242);
+    descriptor_list = &active_descriptor;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.descriptor = rots_open_null_write();
+    ASSERT_GE(descriptor.descriptor, 0);
+    descriptor.connected = CON_ACCTPWDFAIL;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "host.example.com");
+
+    char request[] = "1";
+    nanny(&descriptor, request);
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTCODE);
+
+    const std::string captured_mail = read_file_contents(capture_path);
+    const std::string marker = "Password reset code: ";
+    const size_t code_offset = captured_mail.find(marker);
+    ASSERT_NE(code_offset, std::string::npos);
+    std::string mailed_code = captured_mail.substr(code_offset + marker.size(), 6);
+
+    std::vector<char> code_buffer(mailed_code.begin(), mailed_code.end());
+    code_buffer.push_back('\0');
+    nanny(&descriptor, code_buffer.data());
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTNEW);
+
+    char new_password[] = "BrandNew1";
+    nanny(&descriptor, new_password);
+    ASSERT_EQ(descriptor.connected, CON_ACCTFORGOTCNF);
+
+    char confirm_password[] = "BrandNew1";
+    nanny(&descriptor, confirm_password);
+
+    ASSERT_EQ(descriptor.connected, CON_CLOSE);
+
+    // The reset must have actually completed, or the survival assertions below would pass
+    // vacuously.
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_TRUE(account::verify_password("BrandNew1", reloaded_account.password_hash));
+    EXPECT_FALSE(account::verify_password("ValidPass1", reloaded_account.password_hash));
+
+    EXPECT_EQ(active_descriptor.connected, CON_PLYNG);
+    ASSERT_NE(active_descriptor.character, nullptr);
+    EXPECT_EQ(active_descriptor.character->desc, &active_descriptor);
+
+    free_char(active_descriptor.character);
+    active_descriptor.character = nullptr;
+
+    rots_close_fd(static_cast<int>(descriptor.descriptor));
+}
+
+TEST(InterpreAccountMenu, AccountMenuChoiceOneHonoursThePersistedRosterSort)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+    // Inserted in the opposite order of level, so a level-sorted render can only match by actually
+    // honouring the stored sort -- not by an accident of insertion order (Finding 2: option 1
+    // hardcoded RosterSort::Account regardless of what was persisted).
+    stored_account.characters = { "legolas", "aragorn" };
+    stored_account.roster_sort = "level";
+    stored_account.updated_at = 1700010201;
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_character_file(".", "acct", make_stored_character("aragorn", 50, RACE_WOOD), &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_character_file(".", "acct", make_stored_character("legolas", 45, RACE_HUMAN), &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    char choice[] = "1";
+
+    nanny(&descriptor, choice);
+
+    const std::string output = descriptor.output;
+    // A player who reads a number off this screen and later types it under option 2 must land on
+    // the same character -- so the numbering here has to match the persisted sort, even though
+    // option 1 has no selection of its own.
+    EXPECT_NE(output.find("1) [ 50 WdE] Aragorn     2) [ 45 Hum] Legolas     "), std::string::npos) << output;
+}
+
+TEST(InterpreAccountMenu, RosterSortKeypressDoesNotWriteAccountFile)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    stored_account.characters = { "aragorn", "legolas" };
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    const std::string account_path = "accounts/P-T/player@example.com/account.json";
+    std::string before_write;
+    ASSERT_TRUE(account::read_text_file(account_path, &before_write, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.connected = CON_ACCTSLCT;
+
+    char sort_choice[] = "l";
+    nanny(&descriptor, sort_choice);
+
+    EXPECT_TRUE(descriptor.roster_sort_dirty)
+        << "the keypress should mark the session dirty, even though it must not write yet";
+    EXPECT_EQ(static_cast<account::RosterSort>(descriptor.roster_sort), account::RosterSort::Level);
+
+    std::string after_write;
+    ASSERT_TRUE(account::read_text_file(account_path, &after_write, &error_message)) << error_message;
+    EXPECT_EQ(before_write, after_write)
+        << "a sort keypress must not touch account.json -- the write happens only on leaving the roster";
+}
+
+TEST(InterpreAccountMenu, RosterSortLeavingViaZeroAfterChangeWritesAccountFile)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    stored_account.characters = { "aragorn", "legolas" };
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(stored_account.roster_sort.empty());
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.connected = CON_ACCTSLCT;
+
+    char sort_choice[] = "l";
+    nanny(&descriptor, sort_choice);
+    ASSERT_TRUE(descriptor.roster_sort_dirty);
+
+    char leave_choice[] = "0";
+    nanny(&descriptor, leave_choice);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_FALSE(descriptor.roster_sort_dirty);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_EQ(reloaded_account.roster_sort, "level");
+}
+
+TEST(InterpreAccountMenu, RosterSortRedundantKeypressDoesNotMarkDirtyOrWriteOnLeaving)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    stored_account.characters = { "aragorn", "legolas" };
+    stored_account.roster_sort = "level";
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    const std::string account_path = "accounts/P-T/player@example.com/account.json";
+    std::string before_write;
+    ASSERT_TRUE(account::read_text_file(account_path, &before_write, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.connected = CON_ACCTSLCT;
+    descriptor.roster_sort = static_cast<int>(account::RosterSort::Level);
+    descriptor.roster_sort_dirty = false;
+
+    // Pressing the already-active sort key: a player who habitually re-presses 'l' must not
+    // trigger a write on every visit -- that would be a global account_cache flush per visit
+    // against a design budgeted at once or twice per character lifetime.
+    char sort_choice[] = "l";
+    nanny(&descriptor, sort_choice);
+    EXPECT_FALSE(descriptor.roster_sort_dirty)
+        << "pressing the already-active sort key must not mark the session dirty";
+
+    char leave_choice[] = "0";
+    nanny(&descriptor, leave_choice);
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+
+    std::string after_write;
+    ASSERT_TRUE(account::read_text_file(account_path, &after_write, &error_message)) << error_message;
+    EXPECT_EQ(before_write, after_write)
+        << "leaving without an actual sort change must not touch account.json";
+}
+
+TEST(InterpreAccountMenu, RosterSortReturningToTheStoredValueDoesNotWriteOnLeaving)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    stored_account.characters = { "aragorn", "legolas" };
+    stored_account.roster_sort = "level";
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    const std::string account_path = "accounts/P-T/player@example.com/account.json";
+    std::string before_write;
+    ASSERT_TRUE(account::read_text_file(account_path, &before_write, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.connected = CON_ACCTSLCT;
+    descriptor.roster_sort = static_cast<int>(account::RosterSort::Level);
+    descriptor.roster_filter = static_cast<int>(account::RosterFilter::None);
+    descriptor.roster_sort_dirty = false;
+
+    // Press away from, then back to, the stored sort. Each keypress differs from the session's
+    // immediately-prior sort, so both mark the session dirty (the keypress handler only compares
+    // against the session's own last sort) -- but the account on disk never actually changes.
+    char away_choice[] = "a";
+    nanny(&descriptor, away_choice);
+    ASSERT_TRUE(descriptor.roster_sort_dirty);
+
+    char back_choice[] = "l";
+    nanny(&descriptor, back_choice);
+    ASSERT_TRUE(descriptor.roster_sort_dirty)
+        << "the keypress handler compares against the session's own last sort, not the stored one";
+
+    char leave_choice[] = "0";
+    nanny(&descriptor, leave_choice);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_FALSE(descriptor.roster_sort_dirty);
+
+    std::string after_write;
+    ASSERT_TRUE(account::read_text_file(account_path, &after_write, &error_message)) << error_message;
+    EXPECT_EQ(before_write, after_write)
+        << "leaving on a sort that matches the stored value must not touch account.json, even though "
+           "the session round-tripped through a dirty state getting there";
+}
+
+TEST(InterpreAccountMenu, RosterSortStoredValueLoadsWhenReenteringRoster)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    stored_account.characters = { "aragorn", "legolas" };
+    stored_account.roster_sort = "level";
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.connected = CON_ACCTMENU;
+    // Stale session state from a hypothetical earlier visit -- entering the roster must both
+    // load the stored sort and reset these, not just leave whatever was there.
+    descriptor.roster_sort = static_cast<int>(account::RosterSort::Account);
+    descriptor.roster_filter = static_cast<int>(account::RosterFilter::Warrior);
+    descriptor.roster_sort_dirty = true;
+
+    char play_choice[] = "2";
+    nanny(&descriptor, play_choice);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTSLCT);
+    EXPECT_EQ(static_cast<account::RosterSort>(descriptor.roster_sort), account::RosterSort::Level);
+    EXPECT_EQ(static_cast<account::RosterFilter>(descriptor.roster_filter), account::RosterFilter::None);
+    EXPECT_FALSE(descriptor.roster_sort_dirty);
+}
+
+TEST(InterpreAccountMenu, RosterSortAndFilterKeysMapToTheClaimedEnumerators)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    stored_account.characters = { "aragorn", "legolas" };
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    struct KeyExpectation {
+        // Input key entered at the roster prompt.
+        char key;
+        // Selects whether this row checks sorting or filtering state.
+        bool is_sort_key;
+        // Expected ordering after a sort-key input.
+        account::RosterSort expected_sort;
+        // Expected filter after a filter-key input.
+        account::RosterFilter expected_filter;
+    };
+    // Tasks 3/4 already prove RosterSort::Race and RosterFilter::Ranger etc. order/filter
+    // correctly; this only proves each KEY maps to the enumerator it claims to (a transposed
+    // label, e.g. 'c' wired to Side instead of Race, would ship undetected otherwise).
+    const KeyExpectation expectations[] = {
+        { 'a', true, account::RosterSort::Name, account::RosterFilter::None },
+        { 'l', true, account::RosterSort::Level, account::RosterFilter::None },
+        { 'c', true, account::RosterSort::Race, account::RosterFilter::None },
+        { 's', true, account::RosterSort::Side, account::RosterFilter::None },
+        { 'w', false, account::RosterSort::Account, account::RosterFilter::Warrior },
+        { 'r', false, account::RosterSort::Account, account::RosterFilter::Ranger },
+        { 't', false, account::RosterSort::Account, account::RosterFilter::Mystic },
+        { 'm', false, account::RosterSort::Account, account::RosterFilter::Mage },
+    };
+
+    for (const KeyExpectation& expectation : expectations) {
+        descriptor_data descriptor = make_descriptor();
+        descriptor.output = descriptor.small_outbuf;
+        descriptor.connected = CON_ACCTSLCT;
+
+        char choice[2] = { expectation.key, '\0' };
+        nanny(&descriptor, choice);
+
+        if (expectation.is_sort_key) {
+            EXPECT_EQ(static_cast<account::RosterSort>(descriptor.roster_sort), expectation.expected_sort)
+                << "key '" << expectation.key << "' did not select the sort it claims to";
+        } else {
+            EXPECT_EQ(static_cast<account::RosterFilter>(descriptor.roster_filter), expectation.expected_filter)
+                << "key '" << expectation.key << "' did not select the filter it claims to";
+        }
+    }
+}
+
+TEST(InterpreAccountMenu, RosterSortPersistsOnSuccessfulCharacterSelection)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    ScopedPlayerTableReset player_table_reset;
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+    static char test_motd[] = "Test MOTD\r\n";
+    ScopedMotdOverride motd_override(test_motd);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    char_file_u legolas = make_stored_character("legolas", 45, RACE_HUMAN);
+    legolas.specials2.idnum = 7373;
+    legolas.specials2.load_room = 3001;
+    ASSERT_TRUE(account::write_account_character_file(".", "acct", legolas, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_object_file(".", "acct", "legolas", &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_exploit_file(".", "acct", "legolas", &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.connected = CON_ACCTSLCT;
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    char sort_choice[] = "l";
+    nanny(&descriptor, sort_choice);
+    ASSERT_TRUE(descriptor.roster_sort_dirty);
+
+    // Selecting a character is how a player normally leaves the roster -- this is the path
+    // Finding 1 says was silently dropping the sort (only "0" persisted it before the fix).
+    char select_choice[] = "1";
+    nanny(&descriptor, select_choice);
+
+    EXPECT_EQ(descriptor.connected, CON_SLCT);
+    ASSERT_NE(descriptor.character, nullptr);
+    ASSERT_NE(descriptor.character->player.name, nullptr);
+    EXPECT_STREQ(descriptor.character->player.name, "legolas")
+        << "selecting must load the character rendered at that row, not merely some character";
+    EXPECT_FALSE(descriptor.roster_sort_dirty);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    EXPECT_EQ(reloaded_account.roster_sort, "level");
+
+    free_char(descriptor.character);
+    descriptor.character = nullptr;
+}
+
+TEST(InterpreAccountMenu, RecoverySecretsBypassSnoopingAndInputHistory)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "The input probe uses a POSIX socketpair.";
+#else
+    for (int connection_state : { CON_ACCTFORGOTCODE, CON_ACCTFORGOTNEW, CON_ACCTFORGOTCNF }) {
+        const SnoopProbeResult result = snoop_output_for_input_state(connection_state, "Secret123");
+        EXPECT_EQ(result.queued_input, "Secret123");
+        EXPECT_TRUE(result.snoop_output.empty());
+        EXPECT_TRUE(result.last_input.empty());
+    }
+#endif
+}
+
+TEST(InterpreAccountMenu, RendersAFullRosterWithinTheOutputBuffer)
+{
+    account::AccountData stored_account;
+    stored_account.account_name = "unavailable-account";
+    for (int index = 0; index < 1000; ++index) {
+        stored_account.characters.push_back("character" + std::to_string(index));
+    }
+    for (account::RosterSort sort : { account::RosterSort::Account, account::RosterSort::Side }) {
+        descriptor_data descriptor = make_descriptor();
+        descriptor.output = descriptor.small_outbuf;
+        const std::string prompt = account::format_account_character_prompt(
+            "/missing-roster-fixture", stored_account, sort, account::RosterFilter::None);
+        write_to_output(prompt, &descriptor);
+        EXPECT_GE(descriptor.bufptr, 0);
+        EXPECT_NE(std::string(descriptor.output).find("200 characters displayed."), std::string::npos);
+        EXPECT_NE(std::string(descriptor.output).find("Character number or name: "), std::string::npos);
+        if (descriptor.large_outbuf != nullptr) {
+            // Return the buffer to the same game pool used by write_to_output.
+            descriptor.large_outbuf->next = bufpool;
+            bufpool = descriptor.large_outbuf;
+        }
+    }
+}
+
+TEST(InterpreAccountMenu, UnknownStoredSortFallsBackAndFilterOnlyVisitDoesNotPersist)
+{
+    TemporaryDirectory temporary_directory;
+    ScopedWorkingDirectory working_directory(temporary_directory.path());
+    ScopedDescriptorListReset descriptor_list_reset;
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message));
+    stored_account.characters = { "aragorn" };
+    stored_account.roster_sort = "future-sort";
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message));
+    const std::string account_path = account::account_file_path(".", "player@example.com");
+    std::string original_json = read_file_contents(account_path);
+    const size_t object_end = original_json.rfind('}');
+    ASSERT_NE(object_end, std::string::npos);
+    original_json.insert(object_end, ",\n  \"fixture_marker\": true\n");
+    write_text_file(account_path, original_json);
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    char play_choice[] = "2";
+    nanny(&descriptor, play_choice);
+    ASSERT_EQ(descriptor.connected, CON_ACCTSLCT);
+    EXPECT_EQ(descriptor.roster_sort, static_cast<int>(account::RosterSort::Account));
+    char filter_choice[] = "m";
+    nanny(&descriptor, filter_choice);
+    EXPECT_EQ(descriptor.roster_filter, static_cast<int>(account::RosterFilter::Mage));
+    EXPECT_FALSE(descriptor.roster_sort_dirty);
+    char back_choice[] = "0";
+    nanny(&descriptor, back_choice);
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_EQ(read_file_contents(account_path), original_json);
+}
+
+TEST(InterpreAccountMenu, PipelinedResetMenuInputKeepsTheFollowingCodeOutOfSnoopAndHistory)
+{
+#if defined(_WIN32)
+    GTEST_SKIP() << "The input probe uses a POSIX socketpair.";
+#else
+    int sockets[2] = { -1, -1 };
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    descriptor_data victim_descriptor = make_descriptor();
+    victim_descriptor.output = victim_descriptor.small_outbuf;
+    victim_descriptor.connected = CON_ACCTPWDFAIL;
+    victim_descriptor.descriptor = sockets[0];
+    descriptor_data snooper_descriptor = make_descriptor();
+    snooper_descriptor.output = snooper_descriptor.small_outbuf;
+    char_data snooper { };
+    snooper.desc = &snooper_descriptor;
+    victim_descriptor.snoop.snoop_by = &snooper;
+    std::string first_line;
+    write_and_process_snooped_input(&victim_descriptor, sockets[1], "1\n123456", &first_line);
+    EXPECT_EQ(first_line, "1");
+    char second_line[MAX_INPUT_LENGTH] { };
+    EXPECT_TRUE(get_from_q(&victim_descriptor.input, second_line));
+    EXPECT_STREQ(second_line, "123456");
+    EXPECT_STREQ(snooper_descriptor.output, "");
+    EXPECT_STREQ(victim_descriptor.last_input, "");
+    close(sockets[0]);
+    close(sockets[1]);
+#endif
+}
+
+// Owns a portable local TCP pair for capturing reconnect negotiation and MSDP bytes.
+class ScopedReconnectWire {
+public:
+    explicit ScopedReconnectWire(descriptor_data& descriptor)
+        : descriptor_(descriptor)
+        , previous_socket_(descriptor.descriptor)
+    {
+        const SocketType listener = socket(AF_INET, SOCK_STREAM, 0);
+        if (!rots_net::is_valid_socket(listener)) {
+            ADD_FAILURE() << "Could not create reconnect loopback listener";
+            return;
+        }
+        sockaddr_in address { };
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = 0;
+        socklen_t address_length = sizeof(address);
+        if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0
+            || getsockname(listener, reinterpret_cast<sockaddr*>(&address), &address_length) != 0
+            || listen(listener, 1) != 0) {
+            ADD_FAILURE() << "Could not bind reconnect loopback listener";
+            rots_net::close_socket(listener);
+            return;
+        }
+        capture_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+        if (!rots_net::is_valid_socket(capture_socket_)
+            || connect(capture_socket_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+            ADD_FAILURE() << "Could not connect reconnect loopback client";
+            rots_net::close_socket(listener);
+            return;
+        }
+        server_socket_ = accept(listener, nullptr, nullptr);
+        rots_net::close_socket(listener);
+        if (!rots_net::is_valid_socket(server_socket_)) {
+            ADD_FAILURE() << "Could not accept reconnect loopback client";
+            return;
+        }
+        rots_net::set_tcp_nodelay(server_socket_);
+        rots_net::set_nonblocking(capture_socket_);
+        descriptor_.descriptor = server_socket_;
+    }
+
+    ~ScopedReconnectWire()
+    {
+        descriptor_.descriptor = previous_socket_;
+        if (rots_net::is_valid_socket(server_socket_)) {
+            rots_net::close_socket(server_socket_);
+        }
+        if (rots_net::is_valid_socket(capture_socket_)) {
+            rots_net::close_socket(capture_socket_);
+        }
+    }
+
+    std::string read_output()
+    {
+        std::string output;
+        if (!rots_net::is_valid_socket(server_socket_)) {
+            return output;
+        }
+        // Bound both packet-arrival waits and the total drain, including Windows TCP scheduling.
+        for (int attempt = 0; attempt < 32; ++attempt) {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(capture_socket_, &readable);
+            timeval timeout { };
+            timeout.tv_usec = 50000;
+#if defined(_WIN32)
+            const int ready = select(0, &readable, nullptr, nullptr, &timeout);
+#else
+            const int ready = select(capture_socket_ + 1, &readable, nullptr, nullptr, &timeout);
+#endif
+            if (ready <= 0) {
+                break;
+            }
+            char buffer[8192];
+            const auto count = rots_net::read_socket(capture_socket_, buffer, sizeof(buffer));
+            if (count <= 0) {
+                break;
+            }
+            output.append(buffer, static_cast<size_t>(count));
+        }
+        return output;
+    }
+
+private:
+    // Borrows the test descriptor only while this fixture installs its owned socket.
+    descriptor_data& descriptor_;
+    // Restores the descriptor's previous closed/socket marker on destruction.
+    SocketType previous_socket_;
+    // Owns the accepted game endpoint used by real protocol writers.
+    SocketType server_socket_ = rots_net::kInvalidSocket;
+    // Owns the client endpoint from which negotiation and MSDP bytes are read.
+    SocketType capture_socket_ = rots_net::kInvalidSocket;
+};
+
+void expect_reconnect_room_wire(std::string_view wire)
+{
+    // Initial TTYPE negotiation proves the reconnect called ProtocolNegotiate.
+    EXPECT_NE(wire.find(std::string_view("\xff\xfd\x18", 3)), std::string_view::npos);
+    std::string room_vnum = "\xff\xfa";
+    room_vnum += static_cast<char>(TELOPT_MSDP);
+    room_vnum += static_cast<char>(MSDP_VAR);
+    room_vnum += "ROOM_VNUM";
+    room_vnum += static_cast<char>(MSDP_VAL);
+    room_vnum += "1200\xff\xf0";
+    EXPECT_NE(wire.find(room_vnum), std::string_view::npos);
+    std::string room_table;
+    room_table += static_cast<char>(MSDP_VAR);
+    room_table += "ROOM";
+    room_table += static_cast<char>(MSDP_VAL);
+    room_table += static_cast<char>(MSDP_TABLE_OPEN);
+    EXPECT_NE(wire.find(room_table), std::string_view::npos);
+}
+
+TEST(InterpreAccountMenu, SwitchedReconnectInitializesProtocolAndRoomSnapshot)
+{
+    for (const bool preserve_existing_protocol : { false, true }) {
+        SCOPED_TRACE(preserve_existing_protocol);
+        TemporaryDirectory temp_directory;
+        ScopedWorkingDirectory working_directory(temp_directory.path());
+        ScopedDescriptorListReset descriptor_list_reset;
+        ScopedPlayerTableReset player_table_reset;
+        ScopedTestWorld test_world;
+        test_world.room().number = 1200;
+        char_data* const saved_character_list = character_list;
+        ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+        ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+        account::AccountData stored_account;
+        std::string error_message;
+        ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+        char_file_u stored_character = make_stored_character("aragorn", 95, RACE_HUMAN);
+        stored_character.specials2.idnum = 4242;
+        stored_character.specials2.load_room = 1200;
+        ASSERT_TRUE(account::write_account_character_file(".", "acct", stored_character, &error_message)) << error_message;
+        ASSERT_TRUE(account::write_default_account_object_file(".", "acct", "aragorn", &error_message)) << error_message;
+        ASSERT_TRUE(account::write_default_account_exploit_file(".", "acct", "aragorn", &error_message)) << error_message;
+        ASSERT_TRUE(account::admin_link_character(".", "acct", "aragorn", 1700010201, &stored_account, &error_message)) << error_message;
+
+        descriptor_data original_descriptor = make_descriptor();
+        original_descriptor.output = original_descriptor.small_outbuf;
+        char_data* original_character = attach_active_character(&original_descriptor, "aragorn", 95, 4242);
+        set_location(original_character, 0);
+        SET_BIT(original_character->specials2.pref, PRF_MSDP);
+        descriptor_data switched_descriptor = make_descriptor();
+        switched_descriptor.output = switched_descriptor.small_outbuf;
+        char_data* switched_body = attach_active_character(&switched_descriptor, "orc", 10, 9292);
+        SET_BIT(switched_body->specials2.act, MOB_ISNPC);
+        switched_descriptor.original = original_character;
+        original_character->desc = &switched_descriptor;
+        switched_body->next = original_character;
+        original_character->next = nullptr;
+        character_list = switched_body;
+        descriptor_data reconnect = make_descriptor();
+        reconnect.output = reconnect.small_outbuf;
+        reconnect.connected = CON_ACCTSLCT;
+        ScopedReconnectWire wire_capture(reconnect);
+        protocol_t* existing_protocol = nullptr;
+        if (preserve_existing_protocol) {
+            reconnect.pProtocol = ProtocolCreate();
+            reconnect.pProtocol->ScreenWidth = 123;
+            existing_protocol = reconnect.pProtocol;
+        }
+        register_game_output_sinks();
+        char selection[] = "1";
+        nanny(&reconnect, selection);
+        EXPECT_EQ(reconnect.connected, CON_PLYNG);
+        EXPECT_EQ(reconnect.character, original_character);
+        EXPECT_NE(reconnect.pProtocol, nullptr);
+        const std::string reconnect_wire = wire_capture.read_output();
+        expect_reconnect_room_wire(reconnect_wire);
+        if (preserve_existing_protocol) {
+            EXPECT_EQ(reconnect.pProtocol, existing_protocol);
+            if (reconnect.pProtocol != nullptr) {
+                EXPECT_EQ(reconnect.pProtocol->ScreenWidth, 123);
+            }
+        }
+        if (reconnect.pProtocol != nullptr) {
+            EXPECT_EQ(reconnect.pProtocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt, 1200);
+            EXPECT_NE(std::string(reconnect.pProtocol->pVariables[eMSDP_ROOM]->pValueString).find("1200"), std::string::npos);
+            ProtocolDestroy(reconnect.pProtocol);
+            reconnect.pProtocol = nullptr;
+        }
+        EXPECT_EQ(switched_descriptor.original, nullptr);
+        EXPECT_EQ(switched_descriptor.connected, CON_CLOSE);
+        character_list = saved_character_list;
+        original_character->desc = nullptr;
+        switched_body->desc = nullptr;
+        free_char(original_character);
+        // Restore the PC-owned allocation model used by attach_active_character.
+        REMOVE_BIT(switched_body->specials2.act, MOB_ISNPC);
+        free_char(switched_body);
+    }
+}
+
+TEST(InterpreAccountMenu, LegacyQuickReconnectInitializesProtocolAndRoomSnapshot)
+{
+    for (const bool preserve_existing_protocol : { false, true }) {
+        SCOPED_TRACE(preserve_existing_protocol);
+        ScopedDescriptorListReset descriptor_list_reset;
+        ScopedPlayerTableReset player_table_reset;
+        ScopedTestWorld test_world;
+        test_world.room().number = 1200;
+        char_data* const saved_character_list = character_list;
+        descriptor_data original_descriptor = make_descriptor();
+        original_descriptor.output = original_descriptor.small_outbuf;
+        char_data* original_character = attach_active_character(&original_descriptor, "aragorn", 95, 4242);
+        original_character->desc = nullptr;
+        original_character->next = nullptr;
+        set_location(original_character, 0);
+        SET_BIT(original_character->specials2.pref, PRF_MSDP);
+        character_list = original_character;
+        descriptor_data reconnect = make_descriptor();
+        reconnect.output = reconnect.small_outbuf;
+        reconnect.connected = CON_SLCT;
+        reconnect.account_name[0] = '\0';
+        attach_active_character(&reconnect, "aragorn", 95, 4242);
+        ScopedReconnectWire wire_capture(reconnect);
+        protocol_t* existing_protocol = nullptr;
+        if (preserve_existing_protocol) {
+            reconnect.pProtocol = ProtocolCreate();
+            reconnect.pProtocol->ScreenWidth = 123;
+            existing_protocol = reconnect.pProtocol;
+        }
+        register_game_output_sinks();
+        char selection[] = "1";
+        nanny(&reconnect, selection);
+        EXPECT_EQ(reconnect.connected, CON_PLYNG);
+        EXPECT_EQ(reconnect.character, original_character);
+        EXPECT_NE(reconnect.pProtocol, nullptr);
+        const std::string reconnect_wire = wire_capture.read_output();
+        expect_reconnect_room_wire(reconnect_wire);
+        if (preserve_existing_protocol) {
+            EXPECT_EQ(reconnect.pProtocol, existing_protocol);
+            if (reconnect.pProtocol != nullptr) {
+                EXPECT_EQ(reconnect.pProtocol->ScreenWidth, 123);
+            }
+        }
+        if (reconnect.pProtocol != nullptr) {
+            EXPECT_EQ(reconnect.pProtocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt, 1200);
+            EXPECT_NE(std::string(reconnect.pProtocol->pVariables[eMSDP_ROOM]->pValueString).find("1200"), std::string::npos);
+            ProtocolDestroy(reconnect.pProtocol);
+            reconnect.pProtocol = nullptr;
+        }
+        character_list = saved_character_list;
+        original_character->desc = nullptr;
+        free_char(original_character);
+    }
 }
 
 } // namespace

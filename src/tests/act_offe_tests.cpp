@@ -32,6 +32,7 @@
 // outside their own TU) -- forward-declared here with the ACMD() macro,
 // mirroring act_format_tests.cpp:41's `ACMD(do_bash);`.
 ACMD(do_rescue);
+ACMD(do_bash);
 
 // combat_list is a comm.cpp/fight.cpp-owned process-wide global that
 // set_fighting() (fight.cpp) links stack-local char_data into -- mirrors
@@ -207,4 +208,120 @@ TEST(DoRescue, ReportsNoMortalFightingWhenNobodyInTheRoomIsFightingTheVictim) {
     EXPECT_EQ(context.victim.specials.fighting, nullptr);
 
     remove_char_exists(kVictimAbsNumber);
+}
+
+namespace {
+
+// Owns a healthy, already engaged bash pair and restores delay/combat globals.
+struct BashInterruptionContext {
+    // Existing room and global-list fixture reused for this combat pair.
+    DoRescueContext scene;
+    // The victim's battle-mage specialization and interruption coefficients.
+    char_prof_data victim_profs { };
+    // A connected victim prevents damage's unrelated link-dead flee path.
+    descriptor_data victim_descriptor { };
+    // The registered target supplied to the delayed bash completion.
+    waiting_type target { };
+
+    BashInterruptionContext()
+    {
+        scene.ch.specials2.act = MOB_ISNPC;
+        GET_OB(&scene.ch) = 200;
+        scene.ch.player.level = 20;
+        scene.ch.player.short_descr = const_cast<char*>("the basher");
+        scene.ch.specials.fighting = &scene.victim;
+        scene.victim.specials.fighting = &scene.ch;
+        for (char_data* character : { &scene.ch, &scene.victim }) {
+            character->abilities.hit = character->tmpabilities.hit = 1000;
+            character->abilities.con = character->tmpabilities.con = 20;
+            character->abilities.str = character->tmpabilities.str = 20;
+            character->abilities.dex = character->tmpabilities.dex = 20;
+            character->specials.position = POSITION_FIGHTING;
+        }
+        scene.victim.player.race = RACE_HUMAN;
+        scene.victim.player.level = 20;
+        scene.victim.profs = &victim_profs;
+        victim_profs.specialization = game_types::PS_BattleMage;
+        victim_profs.prof_level[PROF_MAGE] = 24;
+        victim_profs.prof_level[PROF_WARRIOR] = 18;
+        scene.victim.specials.tactics = TACTICS_NORMAL;
+        reset_capturing_descriptor(victim_descriptor, &scene.victim);
+        victim_descriptor.descriptor = 1;
+        scene.victim.desc = &victim_descriptor;
+        scene.victim.delay.wait_value = 19;
+        scene.victim.delay.priority = 30;
+        scene.victim.delay.cmd = CMD_CAST;
+        scene.victim.delay.subcmd = 11;
+        scene.victim.specials.affected_by |= AFF_WAITWHEEL;
+        waiting_list = &scene.victim;
+        scene.victim.abs_number = kVictimAbsNumber;
+        set_char_exists(kVictimAbsNumber, &scene.victim);
+        target.targ1.type = TARGET_CHAR;
+        target.targ1.ch_num = kVictimAbsNumber;
+        target.targ1.ptr.ch = &scene.victim;
+    }
+
+    ~BashInterruptionContext()
+    {
+        remove_char_exists(kVictimAbsNumber);
+    }
+
+    void land(double first_interruption, double damage_interruption)
+    {
+        // Bash accuracy consumes two draws, followed by its interruption
+        // decision and damage's independent decision when the cast survives.
+        push_test_random_value(0.0);
+        push_test_random_value(0.0);
+        push_test_random_value(first_interruption);
+        push_test_random_value(damage_interruption);
+        for (int draw = 0; draw < 32; ++draw) {
+            push_test_random_value(0.0);
+        }
+        do_bash(&scene.ch, mutable_arg(""), &target, CMD_BASH, 1);
+    }
+};
+
+} // namespace
+
+TEST(DoBash, BattleMageCanKeepCastingThroughABashWhileStillTakingDamage)
+{
+    BashInterruptionContext context;
+    context.land(0.0, 0.0);
+    EXPECT_EQ(context.scene.victim.tmpabilities.hit, 999);
+    EXPECT_EQ(context.scene.victim.delay.wait_value, 19);
+    EXPECT_EQ(context.scene.victim.delay.cmd, CMD_CAST);
+    EXPECT_EQ(context.scene.victim.delay.subcmd, 11);
+    EXPECT_FALSE(IS_AFFECTED(&context.scene.victim, AFF_BASH));
+}
+
+TEST(DoBash, DamageStillMakesItsIndependentInterruptionRollAfterBashResistance)
+{
+    BashInterruptionContext context;
+    context.land(0.0, 0.99);
+    EXPECT_EQ(context.scene.victim.tmpabilities.hit, 999);
+    EXPECT_EQ(context.scene.victim.delay.wait_value, 0);
+    EXPECT_EQ(context.scene.victim.delay.subcmd, -1);
+    EXPECT_FALSE(IS_AFFECTED(&context.scene.victim, AFF_BASH));
+}
+
+TEST(DoBash, FailedResistanceAndIneligibleCastsReceiveTheBashDelay)
+{
+    for (int scenario = 0; scenario < 4; ++scenario) {
+        SCOPED_TRACE(scenario);
+        BashInterruptionContext context;
+        if (scenario == 1) {
+            context.victim_profs.specialization = game_types::PS_None;
+        } else if (scenario == 2) {
+            context.scene.victim.specials.affected_by &= ~AFF_WAITWHEEL;
+        } else if (scenario == 3) {
+            context.scene.victim.delay.priority = 41;
+        }
+        // cmd 0 isolates the completion teardown in these replacement controls.
+        context.scene.victim.delay.cmd = 0;
+        context.land(0.99, 0.0);
+        EXPECT_EQ(context.scene.victim.tmpabilities.hit, 999);
+        EXPECT_EQ(context.scene.victim.delay.cmd, CMD_BASH);
+        EXPECT_EQ(context.scene.victim.delay.priority, 80);
+        EXPECT_TRUE(IS_AFFECTED(&context.scene.victim, AFF_BASH));
+    }
 }

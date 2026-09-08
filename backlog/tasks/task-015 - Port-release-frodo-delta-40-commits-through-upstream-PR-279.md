@@ -1,11 +1,11 @@
 ---
 id: TASK-015
 title: Port latest release-frodo through e0458069 into the modern architecture
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-19 03:35'
-updated_date: '2026-09-08 02:54'
+updated_date: '2026-09-08 15:39'
 labels: []
 milestone: m-4
 dependencies: []
@@ -41,7 +41,7 @@ Follow docs/superpowers/specs/2026-07-10-upstream-sync-validation-design.md's po
 - [x] #2 Every ported behavior change lands with a test or characterization pin on this tree; goldens regenerated only for disclosed intentional drift
 - [x] #3 make smoke-account passes (MANDATORY — #279 logout, MSDP, prompt/EAGAIN and CHARSET changes sit squarely on the login/connection path)
 - [x] #4 All three censuses (location-read, room-resolve, string-view) exit 0; no raw location spelling, flat-layout path or reversed library dependency is reintroduced
-- [ ] #5 Full verification cadence: both hosts green, boot goldens byte-identical or disclosed, i386 battery + six CI jobs at finalization
+- [x] #5 Full verification cadence: both hosts green, boot goldens byte-identical or disclosed, i386 battery + six CI jobs at finalization
 - [x] #6 Local uaf-port follow-ups at 1d242d46 are dispositioned and adapted: summon distance, remote-credit death-room XP, poison punishment/attribution separation and supporting registry bounds; existing modern UAF fixes retained and regression-tested
 <!-- AC:END -->
 
@@ -76,4 +76,6 @@ Autonomous continuation: U/C/O implemented and independently reviewed; native201
 2026-09-07 final local gate complete: i386 step0/1/2/3 exit0 in sequence. CMake CTest2194 discovered/2187pass/7skip/0fail; clean monolithic2181 discovered/2157pass/24skip/0fail/no crash; boot golden matches. Monolithic count plus13 standalone gates equals CTest2194. Its17 additional ConvertEquivalence skips are the flat Makefile's absent CMake-only converter path; all17 passed in CMake. Logs: log/i386-battery/step1-20260907T160431Z.log, step2-20260907T163233Z.log, step3-20260907T170205Z.log. All74 frozen source/build/data hashes unchanged. All functionality, local review and local validation finished; TASK-030 also closed. AC5 remains open solely for the six exact-change remote CI jobs, unavailable for this uncommitted local diff. No remaining implementation slice, commit, push, merge or live-server action. doc-003 records full counts, skips, provenance and external completion boundary.
 
 2026-09-08: the push of 746c3358 to master failed exactly one of the six required CI jobs, Linux x64 ASan+UBSan (run 34178608118): five InterpreAccountMenu tests failed on LeakSanitizer reports after passing their assertions (UnlockSelectAllowsOneDifferentLinkedCharacterSelectionAndConsumesAtEntry, both StaleAccountBackedCharacterMenuAllowsSelection* tests, RosterSortReturningToTheStoredValueDoesNotWriteOnLeaving, UnknownStoredSortFallsBackAndFilterOnlyVisitDoesNotPersist). Reproduced in rots64 with the linux-x64-sanitize preset and detect_leaks=1. Two test-fixture leak classes, no production leak: (1) the ported reconnect-parity ProtocolCreate() in nanny allocates pProtocol for stack test descriptors that never run close_socket (production descriptors already own one from new_descriptor); (2) the two new roster tests overflow small_outbuf and never return the promoted large_outbuf to bufpool. Fix (local, uncommitted): ProtocolDestroy at the end of the three reconnect tests and ScopedDescriptorLargeOutbufReturn in the two roster tests (src/tests/interpre_account_menu_tests.cpp only). Verified: rots64 linux-x64-sanitize full ctest with detect_leaks=1 and the CI suppressions file 2194/2194, 0 failed; macOS macos-arm64-asan full ctest 2194/2194, 0 failed; changed lines clang-format clean. Why local gates missed it: the local cadence ran the macOS ASan preset (no LeakSanitizer) and the plain Linux preset only; AGENTS.local.md (ignored, machine-local) now adds the Linux leak-detection gate mirroring CI. AC5 stays open until the fix is committed and pushed and all six jobs pass.
+
+2026-09-08 DONE: fixture-leak fix committed and pushed as fa4d9b25 (Fix CI tests). CI run 34182495749 on master at fa4d9b25: all six required jobs pass (Linux x64, Linux x64 ASan+UBSan, Linux i386 legacy, macOS arm64, macOS arm64 ASan+UBSan, Windows MSVC) plus advisory clang-tidy. AC5 is met on the exact changes now on master; AC1-4 and AC6 were met locally per the 2026-09-07 notes. The port is MERGED on master (746c3358 + fa4d9b25), not a branch; no deployment to the live server is implied. Remaining limitation: the local verification cadence had no LeakSanitizer leg before this task, which is why the fixture leaks reached CI; the machine-local AGENTS.local.md now names the Linux leak-detection gate.
 <!-- SECTION:NOTES:END -->

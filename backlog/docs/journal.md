@@ -293,3 +293,20 @@ every placed character) is filed as TASK-030, not fixed in passing. 1984 → 198
 finalization legs measured green (both hosts, ASan, monolithic, six-seed shuffle, i386 battery,
 three censuses, boot + seed42 goldens, six CI jobs on PR #32). Branch
 fix/task-025-summon-dark-ok, PR #32; merge is the owner's call.
+
+## 2026-09-08 — TASK-015 done (release-frodo port through e0458069, CI green after fixture fix)
+
+The largest upstream sync so far landed as a port rather than a merge: 72 release-frodo commits
+(through upstream PR #292 and the roster merge PR #291) plus 38 supplemental commits from the
+local uaf-port branch, each re-expressed through the modern owners and re-proven under this
+tree's gates (1989 → 2194 tests, smoke-account, i386 battery, three censuses, one disclosed
+golden drift). It went to master directly as `746c3358` on 2026-09-07 and turned the Linux
+ASan+UBSan job red on five `InterpreAccountMenu` tests — LeakSanitizer catching stack test
+descriptors that leak a `pProtocol` (the ported reconnect-parity path) or a promoted
+`large_outbuf` (two new roster tests). No production leak; the local cadence had never run a
+leak-detecting configuration, the same blind spot that bit TASK-026's merge on 2026-08-23. The
+fixture fix (`fa4d9b25`) took CI run 34182495749 to green on all six required jobs, closing AC5
+and the task. Lesson recorded on the task and in the machine-local cadence: a touched test file
+now gets the `linux-x64-sanitize` preset with `detect_leaks=1` in `rots64`, not just macOS ASan.
+Still open in the Upstream Sync milestone: nothing; TASK-016 (adopt upstream's smoke-account CI
+job) remains in Housekeeping.

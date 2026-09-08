@@ -15,6 +15,7 @@
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "rots/persist/file_formats.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -1175,6 +1176,16 @@ TEST(InterpreAccountMenu, UnlockSelectAllowsOneDifferentLinkedCharacterSelection
     descriptor.character = nullptr;
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
+    // nanny()'s reconnect-existing-body path (interpre.cpp, MSDP reconnect
+    // parity ported by TASK-015) allocates pProtocol for a descriptor that has
+    // none; production frees it via close_socket(), which these stack-local
+    // descriptors never run through (LeakSanitizer, sanitize-linux CI job).
+    if (descriptor.pProtocol != nullptr)
+        ProtocolDestroy(descriptor.pProtocol);
+    if (active_descriptor.pProtocol != nullptr)
+        ProtocolDestroy(active_descriptor.pProtocol);
+    if (second_descriptor.pProtocol != nullptr)
+        ProtocolDestroy(second_descriptor.pProtocol);
 }
 
 TEST(InterpreAccountMenu, UnlockSelectDoesNotApplyToLaterUnrelatedRestriction)
@@ -2370,6 +2381,16 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenAnyA
     free_char(low_level_descriptor.character);
     high_level_descriptor.character = nullptr;
     low_level_descriptor.character = nullptr;
+    // nanny()'s reconnect-existing-body path (interpre.cpp, MSDP reconnect
+    // parity ported by TASK-015) allocates pProtocol for a descriptor that has
+    // none; production frees it via close_socket(), which these stack-local
+    // descriptors never run through (LeakSanitizer, sanitize-linux CI job).
+    if (descriptor.pProtocol != nullptr)
+        ProtocolDestroy(descriptor.pProtocol);
+    if (high_level_descriptor.pProtocol != nullptr)
+        ProtocolDestroy(high_level_descriptor.pProtocol);
+    if (low_level_descriptor.pProtocol != nullptr)
+        ProtocolDestroy(low_level_descriptor.pProtocol);
 }
 
 TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLinkedRosterHasLevelOneHundred)
@@ -2453,6 +2474,14 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     descriptor.character = nullptr;
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
+    // nanny()'s reconnect-existing-body path (interpre.cpp, MSDP reconnect
+    // parity ported by TASK-015) allocates pProtocol for a descriptor that has
+    // none; production frees it via close_socket(), which these stack-local
+    // descriptors never run through (LeakSanitizer, sanitize-linux CI job).
+    if (descriptor.pProtocol != nullptr)
+        ProtocolDestroy(descriptor.pProtocol);
+    if (active_descriptor.pProtocol != nullptr)
+        ProtocolDestroy(active_descriptor.pProtocol);
 }
 
 TEST(InterpreAccountMenu, RestrictedActiveCharacterBlocksNewCharacterCreation)
@@ -6319,6 +6348,9 @@ TEST(InterpreAccountMenu, RosterSortReturningToTheStoredValueDoesNotWriteOnLeavi
 
     descriptor_data descriptor = make_descriptor();
     descriptor.output = descriptor.small_outbuf;
+    // The roster prompt/menu overflows small_outbuf; return the promoted
+    // large_outbuf to bufpool at scope exit (LeakSanitizer, sanitize-linux CI).
+    ScopedDescriptorLargeOutbufReturn large_outbuf_return(descriptor);
     descriptor.connected = CON_ACCTSLCT;
     descriptor.roster_sort = static_cast<int>(account::RosterSort::Level);
     descriptor.roster_filter = static_cast<int>(account::RosterFilter::None);
@@ -6544,6 +6576,9 @@ TEST(InterpreAccountMenu, UnknownStoredSortFallsBackAndFilterOnlyVisitDoesNotPer
     write_text_file(account_path, original_json);
     descriptor_data descriptor = make_descriptor();
     descriptor.output = descriptor.small_outbuf;
+    // The roster prompt/menu overflows small_outbuf; return the promoted
+    // large_outbuf to bufpool at scope exit (LeakSanitizer, sanitize-linux CI).
+    ScopedDescriptorLargeOutbufReturn large_outbuf_return(descriptor);
     char play_choice[] = "2";
     nanny(&descriptor, play_choice);
     ASSERT_EQ(descriptor.connected, CON_ACCTSLCT);
